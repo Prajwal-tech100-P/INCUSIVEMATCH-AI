@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}Messages - Inclusive Match AI{% endblock %}
+
+{% block extra_head %}
+<style>
+.chat-container { height: calc(100vh - 160px); min-height: 520px; }
+.chat-sidebar { border-right: 1px solid rgba(0,0,0,0.08); background: #f8fafc; overflow-y: auto; }
+.chat-history { overflow-y: auto; flex: 1; background: #f1f5f9; padding: 1.5rem; }
+.message-bubble { max-width: 72%; }
+.bubble-in { background: #fff; border: 1px solid #e2e8f0; border-bottom-left-radius: 4px; }
+.bubble-out { background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff; border-bottom-right-radius: 4px; }
+.contact-item { cursor: pointer; border-left: 3px solid transparent; transition: all .15s; }
+.contact-item:hover { background: #eef2ff; border-left-color: #6366f1; }
+.contact-item.active { background: #eef2ff; border-left-color: #6366f1; font-weight: 600; }
+#video-container { display: none; background: #000; border-radius: .5rem; overflow: hidden; position: relative; aspect-ratio: 16/9; }
+#webcam-feed { width: 100%; height: 100%; object-fit: cover; }
+#sign-text-overlay { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.7); color:#fff; padding: 4px 14px; border-radius: 20px; font-weight:700; font-size:.9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set partner_id = active_partner.id if active_partner else '' %}
+<div class="container-fluid py-3">
+    <div class="card shadow-sm border-0 glass-panel overflow-hidden chat-container">
+        <div class="row g-0 h-100">
+
+            <!-- Sidebar: Inbox -->
+            <div class="col-md-4 col-lg-3 chat-sidebar d-flex flex-column">
+                <div class="p-3 border-bottom bg-white">
+                    <h6 class="fw-bold mb-0 text-primary"><i class="bi bi-chat-dots me-2"></i>Messages</h6>
+                </div>
+                <div class="flex-grow-1 overflow-auto">
+                    {% if inbox %}
+                        {% for item in inbox %}
+                        <a href="{{ url_for('chat.chat_with', partner_id=item.partner.id) }}"
+                           class="d-flex align-items-center p-3 text-decoration-none text-dark contact-item {% if active_partner and active_partner.id == item.partner.id %}active{% endif %}">
+                            <img src="{{ url_for('static', filename='uploads/' + item.partner.profile_pic) }}"
+                                 onerror="this.src='https://ui-avatars.com/api/?name={{ item.partner.name | urlencode }}&background=6366f1&color=fff&size=40'"
+                                 class="rounded-circle me-3 flex-shrink-0" width="42" height="42" style="object-fit:cover;" alt="">
+                            <div class="overflow-hidden">
+                                <p class="mb-0 fw-semibold text-truncate">{{ item.partner.name }}</p>
+                                <p class="mb-0 text-muted small text-truncate">{{ item.last_message.text[:40] }}</p>
+                            </div>
+                        </a>
+                        {% endfor %}
+                    {% else %}
+                        <div class="p-4 text-center text-muted small">
+                            <i class="bi bi-chat-square-dots fs-3 d-block mb-2"></i>
+                            No conversations yet.<br>Go <a href="{{ url_for('main.dashboard') }}">Discover</a> to find matches.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Chat Window -->
+            <div class="col-md-8 col-lg-9 h-100 d-flex flex-column">
+                {% if active_partner %}
+                <!-- Chat Header -->
+                <div class="p-3 border-bottom bg-white d-flex justify-content-between align-items-center">
+                    <a href="{{ url_for('profile.view_profile', user_id=active_partner.id) }}" class="d-flex align-items-center text-decoration-none text-dark">
+                        <img src="{{ url_for('static', filename='uploads/' + active_partner.profile_pic) }}"
+                             onerror="this.src='https://ui-avatars.com/api/?name={{ active_partner.name | urlencode }}&background=6366f1&color=fff&size=40'"
+                             class="rounded-circle me-2" width="40" height="40" style="object-fit:cover;" alt="">
+                        <div>
+                            <p class="mb-0 fw-bold">{{ active_partner.name }}</p>
+                            <p class="mb-0 text-muted" style="font-size:.75rem;"><i class="bi bi-circle-fill text-success me-1" style="font-size:.5rem;"></i>Online</p>
+                        </div>
+                    </a>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-light btn-sm rounded-pill" id="btn-speech" title="Speech to Text"><i class="bi bi-mic"></i></button>
+                        <button type="button" class="btn btn-light btn-sm rounded-pill js-start-call"
+                            data-partner-id="{{ active_partner.id }}" data-partner-name="{{ active_partner.name|e }}"
+                            title="Start Video Call" aria-label="Start video call with {{ active_partner.name|e }}">
+                            <i class="bi bi-camera-video"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Sign-to-Text Video -->
+                <div id="video-container" class="mx-3 mt-2">
+                    <video id="webcam-feed" autoplay playsinline></video>
+                    <div id="sign-text-overlay">Recognizing…</div>
+                    <button id="close-camera" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 rounded-circle" style="width:28px;height:28px;line-height:1;"><i class="bi bi-x"></i></button>
+                </div>
+
+                <!-- Chat History -->
+                <div class="chat-history" id="chat-history">
+                    <div class="text-center mb-3"><span class="badge bg-secondary rounded-pill small">Conversation</span></div>
+                    {% if messages %}
+                        {% for msg in messages %}
+                        <div class="d-flex mb-3 {% if msg.sender_id == current_user_id %}justify-content-end{% endif %}">
+                            <div class="message-bubble p-3 rounded-3 shadow-sm {% if msg.sender_id == current_user_id %}bubble-out{% else %}bubble-in{% endif %}">
+                                <p class="mb-1" style="line-height:1.4;">{{ msg.text }}</p>
+                                <small class="{% if msg.sender_id == current_user_id %}text-white-50{% else %}text-muted{% endif %}" style="font-size:.7rem;">
+                                    {{ msg.timestamp.strftime('%I:%M %p') if msg.timestamp else '' }}
+                                </small>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center text-muted small py-4">
+                            <i class="bi bi-hand-wave fs-3 d-block mb-2"></i>
+                            Say hello to <strong>{{ active_partner.name }}</strong>!
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Input Area -->
+                <div class="p-3 border-top bg-white">
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-light rounded-circle p-2 flex-shrink-0" id="btn-tts" title="Read last message aloud"><i class="bi bi-volume-up"></i></button>
+                        <input type="text" id="msg-input" class="form-control bg-light rounded-pill border-0 px-4" placeholder="Type a message…" aria-label="Type a message">
+                        <button type="button" id="btn-send" class="btn btn-primary rounded-circle p-2 flex-shrink-0" style="width:44px;height:44px;">
+                            <i class="bi bi-send-fill"></i>
+                        </button>
+                    </div>
+                    <div id="msg-error" class="text-danger small mt-1 ps-2" style="display:none;"></div>
+                </div>
+
+                {% else %}
+                <!-- No active chat selected -->
+                <div class="flex-grow-1 d-flex flex-column align-items-center justify-content-center text-muted">
+                    <i class="bi bi-chat-heart" style="font-size:5rem; color:#c7d2fe;"></i>
+                    <h5 class="mt-3 fw-semibold">Select a conversation</h5>
+                    <p class="text-center small">Choose someone from your inbox, or <a href="{{ url_for('main.dashboard') }}">find a match</a> first.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if active_partner %}
+<script>
+const PARTNER_ID="{{ active_partner.id }}", CURRENT_ID="{{ current_user_id }}";
+const chatHistory=document.getElementById("chat-history"), msgInput=document.getElementById("msg-input"), msgError=document.getElementById("msg-error");
+chatHistory.scrollTop=chatHistory.scrollHeight;
+const socket=io();
+socket.emit("join_user_room",{});
+function appendIncoming(data){
+  if(data.sender_id!==PARTNER_ID || data.receiver_id!==CURRENT_ID) return;
+  const div=document.createElement("div"); div.className="d-flex mb-3";
+  const bubble=document.createElement("div"); bubble.className="message-bubble p-3 rounded-3 shadow-sm bubble-in";
+  const p=document.createElement("p"); p.className="mb-1"; p.style.lineHeight="1.4"; p.textContent=data.text;
+  const s=document.createElement("small"); s.className="text-muted"; s.style.fontSize=".7rem"; s.textContent=data.timestamp;
+  bubble.append(p,s); div.appendChild(bubble); chatHistory.appendChild(div); chatHistory.scrollTop=chatHistory.scrollHeight;
+}
+socket.on("new_message",appendIncoming);
+async function sendMessage(){
+ const text=msgInput.value.trim(); if(!text)return; msgInput.value=""; msgError.style.display="none";
+ try{
+  const res=await fetch("/chat/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({receiver_id:PARTNER_ID,text})});
+  const data=await res.json();
+  if(!res.ok){msgError.textContent=data.error||"Unable to send.";msgError.style.display="block";msgInput.value=text;return;}
+  const div=document.createElement("div");div.className="justify-content-end d-flex mb-3";
+  const bubble=document.createElement("div");bubble.className="message-bubble p-3 rounded-3 shadow-sm bubble-out";
+  const p=document.createElement("p");p.className="mb-1";p.textContent=text;
+  const s=document.createElement("small");s.className="text-white-50";s.style.fontSize=".7rem";s.textContent=data.timestamp;
+  bubble.append(p,s);div.appendChild(bubble);chatHistory.appendChild(div);chatHistory.scrollTop=chatHistory.scrollHeight;
+ }catch(e){msgError.textContent="Server unavailable. Try again.";msgError.style.display="block";msgInput.value=text;}
+}
+document.getElementById("btn-send").onclick=sendMessage;
+msgInput.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}};
+const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition, btnSpeech=document.getElementById("btn-speech");
+if(SpeechRecognition){const r=new SpeechRecognition();r.continuous=false;r.lang="en-US";r.onresult=e=>msgInput.value=e.results[0][0].transcript;btnSpeech.onclick=()=>r.start();}else btnSpeech.disabled=true;
+document.getElementById("btn-tts").onclick=()=>{const b=chatHistory.querySelectorAll(".bubble-in p");if(b.length)speechSynthesis.speak(new SpeechSynthesisUtterance(b[b.length-1].textContent));};
+</script>
+{% endif %}
+{% endblock %}

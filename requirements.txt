@@ -1,0 +1,22 @@
+Flask==3.0.3
+Flask-PyMongo==2.3.0
+pymongo==4.7.2
+python-dotenv==1.0.1
+Werkzeug==3.0.3
+Flask-Login==0.6.3
+Flask-SocketIO==5.3.6
+Pillow==10.4.0
+eventlet==0.36.1
+opencv-python==4.10.0.84
+
+# Optional sign-model training
+pandas==2.2.3
+scikit-learn==1.5.2
+joblib==1.4.2
+# Sign recognition runtime (install separately if your Python version supports it):
+# mediapipe
+
+# GRU/LSTM sequence sign recognition
+torch>=2.5
+
+gunicorn==23.0.0

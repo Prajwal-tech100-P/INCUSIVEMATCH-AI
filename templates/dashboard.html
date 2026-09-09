@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block title %}Discover - Inclusive Match AI{% endblock %}
+
+{% block extra_head %}
+<style>
+.card-profile-img { width: 100%; height: 220px; object-fit: cover; background: #e9ecef; }
+/* Compact Discover cards: same design, smaller footprint */
+.discover-grid { row-gap: 1rem !important; }
+.discover-card .profile-photo { height: 180px !important; }
+.discover-card .card-body { padding: 0.75rem 0.9rem !important; }
+.discover-card .card-footer { padding: 0.65rem 0.9rem !important; }
+.discover-card .card-text { margin-bottom: 0.35rem !important; }
+.discover-card .mt-2 { margin-top: 0.5rem !important; }
+.match-score-badge { font-size: 0.75rem; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+
+
+    <!-- Match Notifications -->
+    {% if unread_notifications > 0 %}
+    <div class="alert alert-success border-0 shadow-sm rounded-4 d-flex align-items-start gap-3 mb-4" id="match-notification-panel">
+        <div class="fs-3"><i class="bi bi-bell-fill"></i></div>
+        <div class="flex-grow-1">
+            <div class="fw-bold">You have {{ unread_notifications }} new notification{{ 's' if unread_notifications != 1 else '' }}!</div>
+            {% for notification in notifications if not notification.get('is_read') %}
+                <div class="small mt-1">
+                    <strong>{{ notification.get('title', 'Notification') }}</strong>
+                    — {{ notification.get('message', '') }}
+                    {% if notification.get('related_user_id') %}
+                        <a href="{{ url_for('profile.view_profile', user_id=notification.get('related_user_id')) }}" class="fw-semibold ms-1">View profile</a>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+        <button class="btn btn-sm btn-outline-success rounded-pill" id="mark-all-notifications" type="button">Mark read</button>
+    </div>
+    {% endif %}
+
+    <!-- Recent Notifications -->
+    {% if notifications %}
+    <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+        <div class="card-header bg-white border-0 pt-3 px-4 d-flex justify-content-between align-items-center">
+            <span class="fw-bold"><i class="bi bi-bell me-2 text-primary"></i>Recent Notifications</span>
+            <span class="badge rounded-pill bg-primary">{{ unread_notifications }} new</span>
+        </div>
+        <div class="list-group list-group-flush">
+            {% for notification in notifications[:5] %}
+            <div class="list-group-item px-4 py-3 {% if not notification.get('is_read') %}bg-light{% endif %}" data-notification-id="{{ notification._id }}">
+                <div class="d-flex gap-3 align-items-start">
+                    <div class="text-primary fs-4"><i class="bi bi-{% if notification.get('type') == 'match' %}heart-fill{% else %}bell-fill{% endif %}"></i></div>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold">{{ notification.get('title', 'Notification') }}</div>
+                        <div class="small text-muted">{{ notification.get('message', '') }}</div>
+                    </div>
+                    {% if not notification.get('is_read') %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill mark-notification" data-id="{{ notification._id }}">Read</button>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold mb-0">Discover</h2>
+            <p class="text-muted mb-0 small">Find your compatible match</p>
+        </div>
+        <ul class="nav nav-pills" id="discoveryTabs">
+            <li class="nav-item"><a class="nav-link active rounded-pill" href="#" data-tab="candidates">Explore</a></li>
+            <li class="nav-item"><a class="nav-link rounded-pill" href="#" data-tab="matches">Mutual Matches</a></li>
+        </ul>
+    </div>
+
+    <!-- Explore (Candidates) Tab -->
+    <div id="candidates" class="tab-panel active">
+        {% if candidates %}
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3 discover-grid">
+            {% for candidate in candidates %}
+            <div class="col" id="card-{{ candidate._id }}">
+                <div class="card h-100 shadow-sm border-0 glass-panel hover-lift overflow-hidden discover-card">
+                    <!-- Profile Picture -->
+                    <div class="profile-photo" style="overflow:hidden; background:#f1f5f9; display:flex; align-items:center; justify-content:center;">
+                        <img src="{{ url_for('static', filename='uploads/' + candidate.get('profile_pic', 'default.png')) }}"
+                             onerror="this.src='https://ui-avatars.com/api/?name={{ candidate.name | urlencode }}&background=6366f1&color=fff&size=220'"
+                             style="width:100%; height:100%; object-fit:cover;" alt="{{ candidate.name }}'s profile picture">
+                    </div>
+
+                    <div class="card-body pb-2">
+                        <div class="d-flex justify-content-between align-items-start mb-1">
+                            <h5 class="card-title fw-bold mb-0">{{ candidate.get('name', 'User') }}</h5>
+                            {% if candidate._match_score > 0 %}
+                            <span class="badge bg-success rounded-pill match-score-badge px-2">
+                                <i class="bi bi-stars"></i> {{ candidate._match_score }}% Match
+                            </span>
+                            {% endif %}
+                        </div>
+                        <p class="card-text text-muted small mb-2">
+                            <i class="bi bi-chat-square-text me-1"></i>{{ candidate.get('comm_pref', 'text') | title }}
+                        </p>
+                        {% if candidate.get('bio') %}
+                        <p class="card-text text-muted small">{{ candidate.bio[:80] }}{% if candidate.bio|length > 80 %}…{% endif %}</p>
+                        {% endif %}
+                        <div class="mt-2">
+                            {% for interest in candidate.get('interests', [])[:4] %}
+                            <span class="badge bg-light text-dark border rounded-pill me-1 mb-1 small">{{ interest }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="card-footer bg-white border-0 d-flex justify-content-between align-items-center p-3">
+                        <a href="{{ url_for('profile.view_profile', user_id=candidate._id) }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">View Profile</a>
+                        <div>
+                            <button class="btn btn-outline-danger rounded-circle p-2 lh-1 me-2 action-btn"
+                                    data-action="dislike" data-target-id="{{ candidate._id }}"
+                                    title="Pass" data-bs-toggle="tooltip">
+                                <i class="bi bi-x-lg fs-5"></i>
+                            </button>
+                            <button class="btn btn-primary rounded-circle p-2 lh-1 action-btn"
+                                    data-action="like" data-target-id="{{ candidate._id }}"
+                                    title="Like" data-bs-toggle="tooltip">
+                                <i class="bi bi-heart-fill fs-5"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="bi bi-people text-muted" style="font-size: 5rem;"></i>
+            <h4 class="mt-3 fw-bold text-muted">No more candidates right now</h4>
+            <p class="text-muted">Check back later — or <a href="{{ url_for('profile.edit_profile') }}">update your interests</a> to expand your matches.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Mutual Matches Tab -->
+    <div id="matches" class="tab-panel">
+        {% if mutual_matches %}
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+            {% for match in mutual_matches %}
+            <div class="col">
+                <div class="card h-100 shadow-sm border-0 glass-panel hover-lift overflow-hidden border-start border-4 border-success">
+                    <div style="height:180px; overflow:hidden; background:#f1f5f9; display:flex; align-items:center; justify-content:center;">
+                        <img src="{{ url_for('static', filename='uploads/' + match.get('profile_pic', 'default.png')) }}"
+                             onerror="this.src='https://ui-avatars.com/api/?name={{ match.name | urlencode }}&background=22c55e&color=fff&size=180'"
+                             style="width:100%; height:100%; object-fit:cover;" alt="{{ match.get('name') }}">
+                    </div>
+                    <div class="card-body">
+                        <h5 class="fw-bold">{{ match.get('name') }}</h5>
+                        <p class="text-muted small">{{ match.get('comm_pref', 'text') | title }}</p>
+                    </div>
+                    <div class="card-footer bg-white border-0 d-flex gap-2 p-3">
+                        <a href="{{ url_for('chat.chat_with', partner_id=match._id) }}" class="btn btn-primary btn-sm rounded-pill flex-grow-1"><i class="bi bi-chat-dots me-1"></i>Chat</a>
+                        <button type="button" class="btn btn-outline-primary btn-sm rounded-pill js-start-call"
+                                data-partner-id="{{ match._id }}" data-partner-name="{{ match.name|e }}">
+                                <i class="bi bi-camera-video me-1"></i>Call
+                            </button>
+                        <a href="{{ url_for('profile.view_profile', user_id=match._id) }}" class="btn btn-outline-secondary btn-sm rounded-pill">Profile</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="bi bi-heart text-muted" style="font-size: 5rem;"></i>
+            <h4 class="mt-3 fw-bold text-muted">No mutual matches yet</h4>
+            <p class="text-muted">Start liking profiles to get matches!</p>
+            <button class="btn btn-primary rounded-pill" data-tab="candidates" onclick="switchTab('candidates')">Explore Profiles</button>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('#discoveryTabs .nav-link').forEach(l => l.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+}
+
+document.querySelectorAll('#discoveryTabs .nav-link').forEach(link => {
+    link.addEventListener('click', e => {
+        e.preventDefault();
+        switchTab(link.dataset.tab);
+    });
+});
+
+// Notification actions
+document.querySelectorAll('.mark-notification').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        await fetch(`/notifications/${btn.dataset.id}/read`, { method: 'POST' });
+        const item = btn.closest('[data-notification-id]');
+        if (item) item.classList.remove('bg-light');
+        btn.remove();
+    });
+});
+
+const markAllButton = document.getElementById('mark-all-notifications');
+if (markAllButton) {
+    markAllButton.addEventListener('click', async () => {
+        await fetch('/notifications/read-all', { method: 'POST' });
+        document.querySelectorAll('.mark-notification').forEach(btn => btn.remove());
+        const panel = document.getElementById('match-notification-panel');
+        if (panel) panel.remove();
+    });
+}
+
+// Real-time match notification for the currently logged-in user.
+if (typeof io !== 'undefined') {
+    const socket = io();
+    socket.emit('join_user_room', {});
+    socket.on('match_notification', data => {
+        const toast = document.createElement('div');
+        toast.className = 'position-fixed top-0 end-0 p-3';
+        toast.style.zIndex = 9999;
+        toast.innerHTML = `<div class="toast show text-bg-success border-0 shadow-lg rounded-4" role="alert">
+            <div class="d-flex p-2">
+                <div class="toast-body">
+                    <div class="fw-bold"><i class="bi bi-heart-fill me-2"></i>${data.title || "It's a match! 💕"}</div>
+                    <div class="small">${data.message || "You have a new mutual match."}</div>
+                    <a href="/chat/${data.partner_id}" class="btn btn-light btn-sm rounded-pill mt-2">Start Chat</a>
+                </div>
+                <button type="button" class="btn-close btn-close-white ms-auto" onclick="this.closest('.toast').remove()"></button>
+            </div>
+        </div>`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 7000);
+    });
+}
+
+document.querySelectorAll('.action-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const action = btn.dataset.action;
+        const targetId = btn.dataset.targetId;
+        const card = document.getElementById(`card-${targetId}`);
+
+        try {
+            const res = await fetch(`/${action}/${targetId}`, { method: 'POST' });
+            const data = await res.json();
+
+            // Animate card out
+            if (card) {
+                card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.9)';
+                setTimeout(() => card.remove(), 350);
+            }
+
+            if (data.mutual) {
+                const toast = document.createElement('div');
+                toast.className = 'position-fixed bottom-0 end-0 p-3';
+                toast.style.zIndex = 9999;
+                toast.innerHTML = `<div class="toast show align-items-center text-bg-success border-0 shadow-lg rounded-3" role="alert">
+                    <div class="d-flex p-2">
+                        <div class="toast-body fw-bold"><i class="bi bi-heart-fill me-2"></i>It's a mutual match! 🎉 You can now chat.</div>
+                        <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                </div>`;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 4000);
+            }
+        } catch (err) {
+            console.error('Action failed:', err);
+        }
+    });
+});
+</script>
+{% endblock %}

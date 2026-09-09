@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome - Inclusive Match AI{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="py-5 text-center container-fluid bg-primary text-white d-flex align-items-center" style="min-height: 70vh; background: linear-gradient(135deg, var(--primary-color) 0%, #312e81 100%);">
+    <div class="row w-100 justify-content-center">
+        <div class="col-lg-8 col-md-10 mx-auto">
+            <h1 class="display-3 fw-bold mb-4">Connect Without Barriers</h1>
+            <p class="lead mb-5 text-white-50">
+                The first AI-powered dating and communication platform designed exclusively for the Deaf and Hard-of-Hearing community. Find compatible matches and communicate seamlessly.
+            </p>
+            <div class="d-grid gap-3 d-sm-flex justify-content-sm-center">
+                <a href="/register" class="btn btn-light btn-lg px-5 py-3 fw-bold text-primary rounded-pill hover-lift shadow-sm">Get Started</a>
+                <a href="#how-it-works" class="btn btn-outline-light btn-lg px-5 py-3 fw-bold rounded-pill hover-lift">Learn More</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Features Section -->
+<section id="how-it-works" class="py-5 bg-white">
+    <div class="container py-5">
+        <div class="text-center mb-5">
+            <h2 class="fw-bold">Designed for Accessibility</h2>
+            <p class="text-muted">Experience dating tailored to your communication preferences.</p>
+        </div>
+        <div class="row g-4 text-center">
+            <div class="col-md-4">
+                <div class="p-4 glass-panel h-100 hover-lift">
+                    <div class="fs-1 text-primary mb-3"><i class="bi bi-robot"></i></div>
+                    <h4 class="fw-semibold">AI Matchmaking</h4>
+                    <p class="text-muted">Our smart algorithm analyzes your interests, hobbies, and communication preferences to recommend the most compatible partners.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-4 glass-panel h-100 hover-lift">
+                    <div class="fs-1 text-primary mb-3"><i class="bi bi-camera-video"></i></div>
+                    <h4 class="fw-semibold">Sign-to-Text</h4>
+                    <p class="text-muted">Communicate effortlessly using your webcam. Our Computer Vision AI translates predefined sign language gestures into text.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-4 glass-panel h-100 hover-lift">
+                    <div class="fs-1 text-primary mb-3"><i class="bi bi-shield-check"></i></div>
+                    <h4 class="fw-semibold">Safe & Inclusive</h4>
+                    <p class="text-muted">Built-in AI moderation and face verification ensures a safe, respectful, and authentic environment for everyone.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Call to Action -->
+<section class="py-5 bg-light border-top">
+    <div class="container text-center">
+        <h3 class="fw-bold mb-3">Ready to find your match?</h3>
+        <a href="/register" class="btn btn-primary btn-lg rounded-pill px-4 hover-lift shadow-sm">Join Inclusive Match AI Today</a>
+    </div>
+</section>
+{% endblock %}

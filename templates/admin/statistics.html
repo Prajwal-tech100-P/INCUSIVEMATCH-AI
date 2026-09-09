@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Statistics - Admin{% endblock %}
+{% block content %}
+<div class="container py-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div><h2 class="fw-bold mb-1">📈 Statistics</h2><p class="text-muted mb-0">Key Inclusive Match AI platform metrics.</p></div>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-light rounded-pill">Dashboard</a>
+    </div>
+    <div class="row g-4">
+        {% for label,value,icon in [
+            ("Total Users",stats.user_count,"people"),
+            ("Active Users",stats.active_count,"person-check"),
+            ("Mutual Matches",stats.match_count,"heart-fill"),
+            ("All Messages",stats.message_count,"chat-dots"),
+            ("Messages (7 days)",stats.message_count_7d,"activity"),
+            ("Reports",stats.report_count,"exclamation-triangle"),
+            ("Unread Notifications",stats.unread_notifications,"bell")
+        ] %}
+        <div class="col-sm-6 col-lg-4">
+            <div class="card border-0 shadow-sm rounded-4 p-4 h-100">
+                <i class="bi bi-{{ icon }} fs-3 text-primary"></i>
+                <div class="text-muted small mt-3">{{ label }}</div>
+                <div class="display-6 fw-bold">{{ value }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

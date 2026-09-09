@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}Video Call with {{ partner.name }} - Inclusive Match AI{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div><h3 class="fw-bold mb-0">Video &amp; Audio Call</h3><small class="text-muted">with {{ partner.name }}</small></div>
+    <a href="{{ url_for('chat.chat_with', partner_id=partner.id) }}" class="btn btn-light rounded-pill">Back to Chat</a>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card bg-dark border-0 rounded-4 overflow-hidden shadow-sm">
+        <div class="position-relative" style="aspect-ratio:16/9; background:#111;">
+          <video id="remote" autoplay playsinline class="w-100 h-100" style="object-fit:cover"></video>
+          <div id="remotePlaceholder" class="position-absolute top-50 start-50 translate-middle text-center text-white-50">
+            <i class="bi bi-camera-video fs-1"></i><div class="mt-2">Waiting for {{ partner.name }}…</div>
+          </div>
+          <video id="local" autoplay muted playsinline class="position-absolute bottom-0 end-0 m-3 rounded-3" style="width:28%;max-height:30%;object-fit:cover;border:2px solid white;background:#222"></video>
+          <div id="status" class="position-absolute top-0 start-0 m-3 badge bg-secondary">Ready to call</div>
+        </div>
+        <div class="p-3 d-flex flex-wrap gap-2 align-items-center">
+          <button id="start" class="btn btn-primary rounded-pill"><i class="bi bi-camera-video me-1"></i> Start Camera &amp; Mic</button>
+          <button id="mute" class="btn btn-light rounded-pill" disabled><i class="bi bi-mic me-1"></i> Mute</button>
+          <button id="camera" class="btn btn-light rounded-pill" disabled><i class="bi bi-camera-video me-1"></i> Camera Off</button>
+          <button id="hangup" class="btn btn-danger rounded-pill"><i class="bi bi-telephone-x me-1"></i> End Call</button>
+        </div>
+        <div id="permissionHelp" class="px-3 pb-3 small text-warning d-none"></div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm rounded-4 p-3 h-100">
+        <h5 class="fw-bold">🤟 Sign → Text</h5>
+        <p class="small text-muted">WebRTC carries the live audio/video. OpenCV decodes frames, MediaPipe extracts hand landmarks, and a trained classifier produces the sign text.</p>
+        <div class="alert alert-info small">GRU analyzes a short sequence of hand landmarks and smooths predictions to reduce one-frame mistakes. A trained model is required; confidence is not guaranteed accuracy.</div>
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" id="speak-sign" checked>
+          <label class="form-check-label small" for="speak-sign">🔊 Speak recognized sign</label>
+        </div>
+        <div id="sign-output" class="p-3 bg-light rounded-3">Waiting for the other user…</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+// Socket.IO is loaded by base.html. This page adds only call-specific logic.
+const socket = io({ transports: ["websocket", "polling"] });
+const PARTNER_ID = "{{ partner.id }}";
+const MY_ID = "{{ current_user.id }}";
+const callParams = new URLSearchParams(window.location.search);
+const INCOMING_CALL = callParams.get("incoming") === "1";
+const OUTGOING_CALL = callParams.get("outgoing") === "1";
+const AUTO_START = INCOMING_CALL || OUTGOING_CALL;
+const localVideo = document.getElementById("local");
+const remoteVideo = document.getElementById("remote");
+const remotePlaceholder = document.getElementById("remotePlaceholder");
+const statusEl = document.getElementById("status");
+const permissionHelp = document.getElementById("permissionHelp");
+const startBtn = document.getElementById("start");
+const muteBtn = document.getElementById("mute");
+const cameraBtn = document.getElementById("camera");
+const hangupBtn = document.getElementById("hangup");
+
+let pc = null;
+let stream = null;
+let peerPresent = false;
+let remoteUserId = null;
+let makingOffer = false;
+let ignoreOffer = false;
+let pendingCandidates = [];
+let ended = false;
+
+function setStatus(text) { statusEl.textContent = text; }
+function showPermissionHelp(text) { permissionHelp.textContent = text; permissionHelp.classList.remove("d-none"); }
+function hidePermissionHelp() { permissionHelp.classList.add("d-none"); }
+
+function isInitiator() {
+  // Deterministic initiator: only one side creates the initial offer.
+  return String(MY_ID) < String(PARTNER_ID);
+}
+
+function createPeer() {
+  if (pc) return pc;
+  pc = new RTCPeerConnection({
+    iceServers: {{ webrtc_ice_servers | tojson }}
+  });
+
+  pc.onicecandidate = event => {
+    if (event.candidate) {
+      socket.emit("signal", { partner_id: PARTNER_ID, type: "candidate", candidate: event.candidate });
+    }
+  };
+
+  pc.ontrack = event => {
+    if (event.streams && event.streams[0]) {
+      remoteVideo.srcObject = event.streams[0];
+      remotePlaceholder.classList.add("d-none");
+      remoteVideo.play().catch(() => {});
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    const state = pc.connectionState;
+    if (state === "connected") setStatus("Connected");
+    else if (state === "connecting") setStatus("Connecting…");
+    else if (state === "disconnected") setStatus("Connection interrupted");
+    else if (state === "failed") setStatus("Call connection failed");
+    else if (state === "closed") setStatus("Call ended");
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === "failed") setStatus("Network connection failed");
+  };
+
+  pc.onnegotiationneeded = async () => {
+    // Initial negotiation is controlled explicitly to avoid offer glare.
+  };
+
+  return pc;
+}
+
+function addLocalTracks() {
+  if (!stream) return;
+  const peer = createPeer();
+  for (const track of stream.getTracks()) {
+    if (!peer.getSenders().some(sender => sender.track && sender.track.kind === track.kind)) {
+      peer.addTrack(track, stream);
+    }
+  }
+}
+
+async function ensureMedia() {
+  if (stream) return true;
+  hidePermissionHelp();
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStatus("Camera/mic unavailable");
+    showPermissionHelp("Your browser does not expose camera/microphone access here. Open the app on localhost for local development, or use the deployed HTTPS address. For mobile testing, use the deployed HTTPS address rather than a local IP certificate.");
+    return false;
+  }
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+    localVideo.srcObject = stream;
+    localVideo.play().catch(() => {});
+    createPeer();
+    addLocalTracks();
+    muteBtn.disabled = false;
+    cameraBtn.disabled = false;
+    startBtn.textContent = "Camera & Mic Ready";
+    setStatus(peerPresent ? "Ready — connecting…" : "Waiting for {{ partner.name }}…");
+    return true;
+  } catch (error) {
+    console.error("getUserMedia error:", error);
+    setStatus("Camera/microphone blocked");
+    const reason = error && error.name ? error.name : "Unknown error";
+    if (reason === "NotAllowedError" || reason === "PermissionDeniedError") {
+      showPermissionHelp("Camera/microphone permission is blocked. In your browser, click the camera/lock icon beside the address bar → allow Camera and Microphone → reload this page. Also check Windows Settings → Privacy & security → Camera/Microphone.");
+    } else if (reason === "NotFoundError") {
+      showPermissionHelp("No camera or microphone was found. Connect a device and check Windows camera/microphone settings.");
+    } else if (reason === "NotReadableError") {
+      showPermissionHelp("Another application may be using the camera or microphone. Close Zoom, Teams, Camera, OBS, etc., then try again.");
+    } else {
+      showPermissionHelp("Browser could not access the camera/microphone (" + reason + "). Check browser permissions and use localhost/127.0.0.1 or HTTPS.");
+    }
+    return false;
+  }
+}
+
+async function makeOffer() {
+  if (!peerPresent || !stream || !pc || makingOffer || !isInitiator()) return;
+  if (pc.signalingState !== "stable") return;
+  makingOffer = true;
+  try {
+    const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+    await pc.setLocalDescription(offer);
+    socket.emit("signal", { partner_id: PARTNER_ID, type: "offer", sdp: pc.localDescription });
+    setStatus("Calling…");
+  } catch (error) {
+    console.error("Offer error:", error);
+    setStatus("Could not start call");
+  } finally {
+    makingOffer = false;
+  }
+}
+
+async function flushCandidates() {
+  if (!pc || !pc.remoteDescription) return;
+  while (pendingCandidates.length) {
+    try { await pc.addIceCandidate(pendingCandidates.shift()); }
+    catch (error) { console.warn("ICE candidate error:", error); }
+  }
+}
+
+socket.on("connect", async () => {
+  setStatus(AUTO_START ? "Starting camera & mic…" : "Ready — waiting for both users");
+  socket.emit("join_call", { partner_id: PARTNER_ID });
+
+  // Both caller and accepted recipient start their local media automatically.
+  // The browser will ask for permission the first time.
+  if (AUTO_START) {
+    await ensureMedia();
+  }
+});
+
+socket.on("call_ready", async data => {
+  const announcedUserId = data && data.user_id ? String(data.user_id) : null;
+
+  // join_call also sends the event back to the user who joined. Do not treat
+  // our own event as evidence that a second browser is present.
+  if (!announcedUserId || announcedUserId === String(MY_ID)) return;
+
+  peerPresent = true;
+  remoteUserId = announcedUserId;
+  setStatus(stream ? "Both users ready — connecting…" : "Your match is ready. Start Camera & Mic.");
+  if (stream && isInitiator()) await makeOffer();
+});
+
+socket.on("call_error", data => {
+  setStatus((data && data.message) || "Call is not available");
+});
+
+socket.on("signal", async data => {
+  if (!data || !data.type || String(data.from) === String(MY_ID)) return;
+  peerPresent = true;
+  remoteUserId = String(data.from);
+  if (!(await ensureMedia())) return;
+
+  try {
+    if (data.type === "offer") {
+      // Only the deterministic non-initiator accepts the initial offer.
+      if (isInitiator()) return;
+      await pc.setRemoteDescription(data.sdp);
+      await flushCandidates();
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit("signal", { partner_id: PARTNER_ID, type: "answer", sdp: pc.localDescription });
+      setStatus("Connecting…");
+    } else if (data.type === "answer") {
+      if (!isInitiator()) return;
+      await pc.setRemoteDescription(data.sdp);
+      await flushCandidates();
+      setStatus("Connected");
+    } else if (data.type === "candidate") {
+      if (pc.remoteDescription) await pc.addIceCandidate(data.candidate);
+      else pendingCandidates.push(data.candidate);
+    }
+  } catch (error) {
+    console.error("Signaling error:", error);
+    setStatus("Call negotiation error");
+  }
+});
+
+socket.on("peer_left", () => {
+  peerPresent = false;
+  remoteUserId = null;
+  remoteVideo.srcObject = null;
+  remotePlaceholder.classList.remove("d-none");
+  if (pc) { pc.close(); pc = null; }
+  pendingCandidates = [];
+  setStatus("The other user left the call.");
+});
+
+startBtn.onclick = async () => {
+  const ok = await ensureMedia();
+  if (ok && peerPresent && isInitiator()) await makeOffer();
+};
+
+muteBtn.onclick = () => {
+  if (!stream) return;
+  const track = stream.getAudioTracks()[0];
+  if (!track) return;
+  track.enabled = !track.enabled;
+  muteBtn.innerHTML = track.enabled ? '<i class="bi bi-mic me-1"></i> Mute' : '<i class="bi bi-mic-mute me-1"></i> Unmute';
+};
+
+cameraBtn.onclick = () => {
+  if (!stream) return;
+  const track = stream.getVideoTracks()[0];
+  if (!track) return;
+  track.enabled = !track.enabled;
+  cameraBtn.innerHTML = track.enabled ? '<i class="bi bi-camera-video me-1"></i> Camera Off' : '<i class="bi bi-camera-video-off me-1"></i> Camera On';
+};
+
+hangupBtn.onclick = () => {
+  if (ended) return;
+  ended = true;
+  if (stream) stream.getTracks().forEach(track => track.stop());
+  if (pc) pc.close();
+  socket.emit("leave_call", { partner_id: PARTNER_ID });
+  location.href = "{{ url_for('chat.chat_with', partner_id=partner.id) }}";
+};
+
+window.addEventListener("beforeunload", () => {
+  if (!ended) socket.emit("leave_call", { partner_id: PARTNER_ID });
+});
+
+// Sign recognition: analyze the PARTNER'S received video, so each user sees\n// text for the other person's signs. The server runs MediaPipe + GRU over a\n// rolling sequence rather than making a decision from a single frame.\nconst signOutput = document.getElementById("sign-output");\nconst speakSign = document.getElementById("speak-sign");\nlet signBusy = false;\nlet lastSpoken = "";\nlet lastSpokenAt = 0;\n\nfunction speakRecognizedSign(text) {\n  if (!speakSign.checked || !window.speechSynthesis || !text || text === "UNCERTAIN") return;\n  const now = Date.now();\n  // Avoid repeatedly speaking the same prediction while the user holds a sign.\n  if (text === lastSpoken && now - lastSpokenAt < 3500) return;\n  lastSpoken = text;\n  lastSpokenAt = now;\n  window.speechSynthesis.cancel();\n  const utterance = new SpeechSynthesisUtterance(text);\n  utterance.rate = 0.95;\n  window.speechSynthesis.speak(utterance);\n}\n\nasync function recognizePartnerFrame() {\n  if (signBusy || !remoteVideo.srcObject || remoteVideo.readyState < 2 || remoteVideo.videoWidth < 2) return;\n  signBusy = true;\n  const canvas = document.createElement("canvas");\n  // 640px wide is enough for hand landmarks and keeps mobile uploads small.\n  const width = Math.min(remoteVideo.videoWidth, 640);\n  const height = Math.round(width * remoteVideo.videoHeight / remoteVideo.videoWidth);\n  canvas.width = width;\n  canvas.height = height;\n  canvas.getContext("2d", { willReadFrequently: true }).drawImage(remoteVideo, 0, 0, width, height);\n  canvas.toBlob(async blob => {\n    try {\n      if (!blob) return;\n      const fd = new FormData();\n      fd.append("frame", blob, "partner-frame.jpg");\n      const response = await fetch("{{ url_for('video.recognize_sign') }}", { method: "POST", body: fd, credentials: "same-origin" });\n      if (!response.ok) return;\n      const result = await response.json();\n      if (result.text) {\n        const confidence = Number(result.confidence || 0).toFixed(1);\n        signOutput.textContent = `${result.text} — ${confidence}% confidence`;\n        if (result.text !== "UNCERTAIN") speakRecognizedSign(result.text);\n      } else if (result.message) {\n        signOutput.textContent = result.message;\n      }\n    } catch (error) {\n      console.warn("Sign recognition request failed:", error);\n    } finally {\n      signBusy = false;\n    }\n  }, "image/jpeg", 0.70);\n}\n\n// Five requests/second gives the GRU enough temporal information while\n// keeping the browser responsive. The model itself needs 24 frames first.\nsetInterval(recognizePartnerFrame, 200);\n</script>
+{% endblock %}

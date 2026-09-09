@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Community Video Call - {{ community.get('name') }}{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div><h3 class="fw-bold mb-0">📹 Community Video Call</h3><div class="text-muted small">{{ community.get('icon','🤟') }} {{ community.get('name') }} · Maximum 5 participants</div></div>
+    <a href="{{ url_for('community.view', community_id=community._id) }}" class="btn btn-light rounded-pill">Back to Community</a>
+  </div>
+  <div class="card bg-dark border-0 rounded-4 shadow-sm p-3">
+    <div id="call-grid" class="row g-2"></div>
+    <div id="status" class="text-white-50 small mt-2">Joining community call…</div>
+    <div class="d-flex flex-wrap gap-2 mt-3">
+      <button id="start" class="btn btn-primary rounded-pill"><i class="bi bi-camera-video me-1"></i> Start Camera & Mic</button>
+      <button id="mute" class="btn btn-light rounded-pill" disabled>Mute</button>
+      <button id="camera" class="btn btn-light rounded-pill" disabled>Camera Off</button>
+      <button id="hangup" class="btn btn-danger rounded-pill">Leave Call</button>
+    </div>
+    <div id="permissionHelp" class="small text-warning mt-2"></div>
+  </div>
+  <div class="alert alert-info small mt-3 rounded-4">
+    <strong>🤟 Accessibility:</strong> WebRTC carries the call. Your existing sign-recognition API can process the local camera feed for Sign → Text. Private 1-to-1 calls still require a mutual match.
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+const COMMUNITY_ID="{{ community._id }}", MY_ID="{{ current_user.id }}", MY_NAME={{ current_user.name|tojson }};
+const socket=io({transports:["websocket","polling"]});
+const grid=document.getElementById("call-grid"), statusEl=document.getElementById("status"), startBtn=document.getElementById("start"), muteBtn=document.getElementById("mute"), cameraBtn=document.getElementById("camera"), hangupBtn=document.getElementById("hangup");
+let stream=null, peers={}, peerNames={}, ended=false;
+
+function setStatus(t){statusEl.textContent=t;}
+function card(id,name,video){
+  let wrap=document.getElementById("peer-"+id);
+  if(!wrap){wrap=document.createElement("div");wrap.id="peer-"+id;wrap.className="col-12 col-md-6 col-lg-4";wrap.innerHTML=`<div class="position-relative rounded-3 overflow-hidden bg-black" style="aspect-ratio:16/9"><video autoplay playsinline class="w-100 h-100" style="object-fit:cover"></video><span class="position-absolute bottom-0 start-0 m-2 badge bg-dark">${name}</span></div>`;grid.appendChild(wrap);}
+  wrap.querySelector("video").srcObject=video||null;
+}
+function removeCard(id){const el=document.getElementById("peer-"+id);if(el)el.remove();}
+function isInitiator(remoteId){return String(MY_ID)<String(remoteId);}
+function makePeer(remoteId, remoteName){
+  if(peers[remoteId]) return peers[remoteId];
+  const pc=new RTCPeerConnection({iceServers:{{ webrtc_ice_servers | tojson }}});
+  peers[remoteId]=pc; peerNames[remoteId]=remoteName||"Member";
+  if(stream) stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+  pc.onicecandidate=e=>{if(e.candidate)socket.emit("community_call_signal",{community_id:COMMUNITY_ID,target_id:remoteId,type:"candidate",candidate:e.candidate});};
+  pc.ontrack=e=>{if(e.streams&&e.streams[0])card(remoteId,peerNames[remoteId],e.streams[0]);};
+  pc.onconnectionstatechange=()=>{if(["failed","closed"].includes(pc.connectionState)){pc.close();delete peers[remoteId];removeCard(remoteId);}};
+  return pc;
+}
+async function ensureMedia(){
+ if(stream)return true;
+ if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+   setStatus("Camera/microphone unavailable");
+   document.getElementById("permissionHelp").textContent="Use the deployed HTTPS address (or localhost for local development) in a modern browser.";
+   return false;
+ }
+ try{stream=await navigator.mediaDevices.getUserMedia({video:true,audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});card(MY_ID,MY_NAME,stream);muteBtn.disabled=false;cameraBtn.disabled=false;startBtn.textContent="Camera & Mic Ready";return true;}
+ catch(e){setStatus("Camera/microphone permission required");document.getElementById("permissionHelp").textContent="Allow Camera and Microphone in the browser, then try again.";return false;}
+}
+async function offerTo(id,name){
+ const pc=makePeer(id,name); if(!stream||pc.signalingState!=="stable")return;
+ try{const offer=await pc.createOffer();await pc.setLocalDescription(offer);socket.emit("community_call_signal",{community_id:COMMUNITY_ID,target_id:id,type:"offer",sdp:pc.localDescription});}catch(e){console.error(e);}
+}
+socket.on("connect",()=>{socket.emit("community_call_user_room",{});socket.emit("join_community_call",{community_id:COMMUNITY_ID});});
+socket.on("community_call_members",async data=>{
+ const ok=await ensureMedia();
+ for(const m of (data.members||[])){makePeer(String(m.user_id),m.name); if(ok&&isInitiator(String(m.user_id))) await offerTo(String(m.user_id),m.name);}
+ setStatus((data.members||[]).length?"Connected to community room":"Waiting for other members…");
+});
+socket.on("community_call_user_joined",async data=>{
+ const id=String(data.user_id); if(id===MY_ID)return;
+ makePeer(id,data.name); if(await ensureMedia()&&isInitiator(id)) await offerTo(id,data.name);
+ setStatus("Member joined the call.");
+});
+socket.on("community_call_signal",async data=>{
+ const id=String(data.from); if(id===MY_ID)return;
+ const pc=makePeer(id,data.from_name);
+ try{
+  if(data.type==="offer"){if(isInitiator(id))return; await ensureMedia(); if(!pc.getSenders().length)stream.getTracks().forEach(t=>pc.addTrack(t,stream)); await pc.setRemoteDescription(data.sdp); const ans=await pc.createAnswer(); await pc.setLocalDescription(ans); socket.emit("community_call_signal",{community_id:COMMUNITY_ID,target_id:id,type:"answer",sdp:pc.localDescription});}
+  else if(data.type==="answer"){if(isInitiator(id)) {await pc.setRemoteDescription(data.sdp);}}
+  else if(data.type==="candidate"){try{await pc.addIceCandidate(data.candidate)}catch(e){}}
+ }catch(e){console.error("Community signaling",e);}
+});
+socket.on("community_call_user_left",data=>{const id=String(data.user_id);if(peers[id]){peers[id].close();delete peers[id];}removeCard(id);});
+socket.on("community_call_error",data=>setStatus(data.message||"Community call unavailable"));
+startBtn.onclick=async()=>{if(await ensureMedia()){for(const id of Object.keys(peers))if(isInitiator(id))await offerTo(id,peerNames[id]);setStatus("Camera & microphone ready.");}};
+muteBtn.onclick=()=>{const t=stream&&stream.getAudioTracks()[0];if(t){t.enabled=!t.enabled;muteBtn.textContent=t.enabled?"Mute":"Unmute";}};
+cameraBtn.onclick=()=>{const t=stream&&stream.getVideoTracks()[0];if(t){t.enabled=!t.enabled;cameraBtn.textContent=t.enabled?"Camera Off":"Camera On";}};
+function leave(){if(ended)return;ended=true;socket.emit("leave_community_call",{community_id:COMMUNITY_ID});if(stream)stream.getTracks().forEach(t=>t.stop());Object.values(peers).forEach(p=>p.close());location.href="{{ url_for('community.view', community_id=community._id) }}";}
+hangupBtn.onclick=leave;window.addEventListener("beforeunload",()=>{if(!ended)socket.emit("leave_community_call",{community_id:COMMUNITY_ID});});
+</script>
+{% endblock %}

@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}{{ community.get('name') }} - Community{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+    <div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="fs-2">{{ community.get('icon','🤟') }}</span>
+        <div><h3 class="fw-bold mb-0">{{ community.get('name') }}</h3>
+        <div class="small text-muted">{{ members|length }} / {{ max_members }} members · {{ community.get('category','General') }}</div></div>
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      {% if is_member %}
+      <a href="{{ url_for('community.community_call', community_id=community._id) }}" class="btn btn-outline-primary rounded-pill"><i class="bi bi-camera-video me-1"></i>Community Call</a>
+      {% if is_owner %}
+      <form method="POST" action="{{ url_for('community.delete', community_id=community._id) }}" onsubmit="return confirm('Delete this community and its messages?');">
+        <button class="btn btn-outline-danger rounded-pill"><i class="bi bi-trash me-1"></i>Delete</button>
+      </form>
+      {% else %}
+      <form method="POST" action="{{ url_for('community.leave', community_id=community._id) }}" onsubmit="return confirm('Leave this community?');">
+        <button class="btn btn-outline-secondary rounded-pill">Leave</button>
+      </form>
+      {% endif %}
+      {% else %}
+      <form method="POST" action="{{ url_for('community.join', community_id=community._id) }}">
+        <button class="btn btn-primary rounded-pill" {% if members|length >= max_members %}disabled{% endif %}><i class="bi bi-person-plus me-1"></i>Join</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not is_member %}
+  <div class="alert alert-info border-0 rounded-4">Join this community to participate in the group chat. Private 1-to-1 chat is still available only after a mutual match.</div>
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card border-0 shadow-sm rounded-4 overflow-hidden" style="min-height:620px;">
+        <div class="card-header bg-white border-0 p-3">
+          <div class="fw-bold"><i class="bi bi-chat-dots me-2 text-primary"></i>Group Chat</div>
+          <div class="small text-muted">Up to {{ max_members }} members · No match required</div>
+        </div>
+        <div id="community-history" class="p-3" style="height:480px;overflow-y:auto;background:#f8fafc;">
+          {% if messages %}
+            {% for msg in messages %}
+            <div class="d-flex mb-3 {% if msg.sender_id == current_user_id %}justify-content-end{% endif %}">
+              <div class="p-3 rounded-4 shadow-sm {% if msg.sender_id == current_user_id %}text-white bg-primary{% else %}bg-white border{% endif %}" style="max-width:75%;">
+                {% if msg.sender_id != current_user_id %}<div class="small fw-bold text-primary mb-1">{{ msg.sender_name }}</div>{% endif %}
+                <div>{{ msg.text }}</div>
+                <small class="{% if msg.sender_id == current_user_id %}text-white-50{% else %}text-muted{% endif %}">{{ msg.timestamp.strftime('%I:%M %p') if msg.timestamp else '' }}</small>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div id="empty-community" class="text-center text-muted py-5"><div class="fs-1">🤟</div><div class="fw-semibold mt-2">Start the conversation</div><div class="small">Introduce yourself to the group.</div></div>
+          {% endif %}
+        </div>
+        {% if is_member %}
+        <div class="border-top p-3 bg-white">
+          <div class="input-group">
+            <input id="community-input" class="form-control rounded-start-pill" maxlength="2000" placeholder="Message the community…">
+            <button id="community-send" class="btn btn-primary rounded-end-pill px-4"><i class="bi bi-send-fill"></i></button>
+          </div>
+          <div class="small text-muted mt-2"><i class="bi bi-shield-check me-1"></i>Messages are checked by the platform safety system.</div>
+          <div id="community-error" class="text-danger small mt-1"></div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm rounded-4 mb-3">
+        <div class="card-body p-4">
+          <h5 class="fw-bold">About</h5>
+          <p class="text-muted small mb-0">{{ community.get('description','Community for accessible interaction.') }}</p>
+        </div>
+      </div>
+      <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-4">
+          <h5 class="fw-bold mb-3"><i class="bi bi-people me-2 text-primary"></i>Members</h5>
+          {% for member in members %}
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <img src="{{ url_for('static', filename='uploads/' + member.profile_pic) }}" onerror="this.src='https://ui-avatars.com/api/?name={{ member.name | urlencode }}&background=6366f1&color=fff&size=40'" width="40" height="40" class="rounded-circle" style="object-fit:cover;">
+            <div class="flex-grow-1"><div class="fw-semibold">{{ member.name }} {% if member.id == community.created_by %}<span class="badge bg-warning text-dark">Creator</span>{% endif %}</div></div>
+            {% if is_member and member.id != current_user_id %}
+            <div class="dropdown">
+              <button class="btn btn-sm btn-light rounded-circle" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                  <form method="POST" action="{{ url_for('community.report', community_id=community._id) }}">
+                    <input type="hidden" name="reported_user_id" value="{{ member.id }}"><input type="hidden" name="reason" value="Reported from community">
+                    <button class="dropdown-item text-warning">Report member</button>
+                  </form>
+                </li>
+                <li>
+                  <form method="POST" action="{{ url_for('community.block', community_id=community._id) }}">
+                    <input type="hidden" name="blocked_user_id" value="{{ member.id }}">
+                    <button class="dropdown-item text-danger">Block in community</button>
+                  </form>
+                </li>
+              </ul>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="alert alert-light border rounded-4 small mt-3 mb-0">
+        <strong>Privacy rule:</strong> Community interaction does not unlock private chat. A private chat or private video call becomes available only after a mutual match.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+{% if is_member %}
+<script>
+const COMMUNITY_ID="{{ community._id }}", CURRENT_ID="{{ current_user_id }}";
+const historyEl=document.getElementById("community-history"), input=document.getElementById("community-input"), send=document.getElementById("community-send"), err=document.getElementById("community-error");
+const socket=io({transports:["websocket","polling"]});
+historyEl.scrollTop=historyEl.scrollHeight;
+socket.on("connect",()=>{ socket.emit("join_user_room",{}); socket.emit("join_community_user_room",{}); socket.emit("join_community",{community_id:COMMUNITY_ID}); });
+function appendMessage(data){
+  if(String(data.community_id)!==String(COMMUNITY_ID)) return;
+  const row=document.createElement("div"); row.className="d-flex mb-3 "+(String(data.sender_id)===String(CURRENT_ID)?"justify-content-end":"");
+  const bubble=document.createElement("div"); bubble.className="p-3 rounded-4 shadow-sm "+(String(data.sender_id)===String(CURRENT_ID)?"text-white bg-primary":"bg-white border"); bubble.style.maxWidth="75%";
+  if(String(data.sender_id)!==String(CURRENT_ID)){const n=document.createElement("div");n.className="small fw-bold text-primary mb-1";n.textContent=data.sender_name; bubble.appendChild(n);}
+  const t=document.createElement("div");t.textContent=data.text; bubble.appendChild(t);
+  const st=document.createElement("small");st.className=String(data.sender_id)===String(CURRENT_ID)?"text-white-50":"text-muted";st.textContent=data.timestamp||"";bubble.appendChild(st);
+  row.appendChild(bubble); historyEl.appendChild(row); historyEl.scrollTop=historyEl.scrollHeight;
+  const empty=document.getElementById("empty-community"); if(empty) empty.remove();
+}
+socket.on("community_message",appendMessage);
+socket.on("community_message_error",data=>{err.textContent=data.message||"Message was blocked.";});
+async function sendMessage(){const text=input.value.trim();if(!text)return;input.value="";err.textContent="";socket.emit("community_message",{community_id:COMMUNITY_ID,text});}
+send.addEventListener("click",sendMessage); input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}});
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Reports - Admin{% endblock %}
+{% block content %}
+<div class="container py-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div><h2 class="fw-bold mb-1">🚨 Reports</h2><p class="text-muted mb-0">Review safety reports submitted on the platform.</p></div>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-light rounded-pill">Dashboard</a>
+    </div>
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead><tr><th>Reporter</th><th>Reported User</th><th>Reason</th><th>Date</th></tr></thead>
+                <tbody>
+                {% for report in reports %}
+                    <tr>
+                        <td>{{ report.get('reporter_name', report.get('reporter_id', 'Unknown')) }}</td>
+                        <td>{{ report.get('reported_name', report.get('reported_id', 'Unknown')) }}</td>
+                        <td>{{ report.get('reason', 'Not specified') }}</td>
+                        <td>{{ report.get('created_at', '') }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="4" class="text-center py-5 text-muted"><i class="bi bi-shield-check fs-1 d-block mb-2"></i>No reports found. The platform is currently clear.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

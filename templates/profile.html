@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit Profile" if edit_mode else user.name }} - Inclusive Match AI{% endblock %}
+{% block content %}
+<div class="container py-5">
+ <div class="row justify-content-center">
+  <div class="col-lg-8">
+   <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+    <div class="p-4 bg-primary text-white">
+      <h2 class="fw-bold mb-1">{{ "Edit your profile" if edit_mode else user.name }}</h2>
+      <p class="mb-0 opacity-75">Your profile helps the AI recommend compatible people.</p>
+    </div>
+    <div class="card-body p-4 p-md-5">
+    {% if edit_mode %}
+    <form method="post" enctype="multipart/form-data">
+      <div class="mb-3"><label class="form-label fw-semibold">Profile photo</label><input class="form-control" type="file" name="profile_pic" accept=".jpg,.jpeg,.png,.webp,.gif"></div>
+      <div class="mb-3"><label class="form-label fw-semibold">Bio</label><textarea class="form-control" name="bio" rows="4" maxlength="500">{{ user.bio }}</textarea></div>
+      <div class="mb-3"><label class="form-label fw-semibold">Preferred communication</label>
+        <select class="form-select" name="comm_pref">
+          {% for x in ["text","sign language","speech","mixed"] %}<option value="{{ x }}" {% if user.comm_pref==x %}selected{% endif %}>{{ x|title }}</option>{% endfor %}
+        </select>
+      </div>
+      <label class="form-label fw-semibold">Interests</label>
+      <div class="row g-2 mb-4">{% for i in interests %}<div class="col-6 col-md-4"><label class="border rounded-3 p-2 w-100"><input type="checkbox" name="interests" value="{{ i }}" {% if i in user.interests %}checked{% endif %}> {{ i }}</label></div>{% endfor %}</div>
+      <button class="btn btn-primary rounded-pill px-4">Save Profile</button>
+      <a class="btn btn-light rounded-pill px-4 ms-2" href="{{ url_for('profile.my_profile') }}">Cancel</a>
+    </form>
+    {% else %}
+      <div class="text-center mb-4"><img src="{{ url_for('static', filename='uploads/'+user.profile_pic) }}" onerror="this.src='https://ui-avatars.com/api/?name={{ user.name|urlencode }}&size=180'" class="rounded-circle shadow" width="160" height="160" style="object-fit:cover"></div>
+      <h3 class="fw-bold">{{ user.name }}</h3>
+      <p class="text-muted">{{ user.comm_pref|title }} communication</p>
+      <p>{{ user.bio or "No bio added yet." }}</p>
+      <div>{% for i in user.interests %}<span class="badge bg-light text-dark border rounded-pill me-1 mb-1">{{ i }}</span>{% endfor %}</div>
+      {% if user.id == current_user.id %}<a href="{{ url_for('profile.edit_profile') }}" class="btn btn-primary rounded-pill mt-4">Edit Profile</a>{% endif %}
+    {% endif %}
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+{% endblock %}
