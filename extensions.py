@@ -7,4 +7,4 @@ mongo = PyMongo()
 login_manager = LoginManager()
 # Same-origin Socket.IO is the secure default. app.py may supply an explicit
 # production allow-list through configuration.
-socketio = SocketIO()
+socketio = SocketIO(async_mode="threading")

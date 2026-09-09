@@ -73,14 +73,10 @@ def create_app(config_class=Config):
         return {"status": "healthy", "service": "Inclusive Match AI"}
 
     return app
+
+
 app = create_app()
 
 if __name__ == "__main__":
-    socketio.run(
-    app,
-    host="0.0.0.0",
-    port=int(os.environ.get("PORT", 5000)),
-    debug=False
-    )
-
-
+    # Local development only. Production uses Gunicorn with threaded workers.
+    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
