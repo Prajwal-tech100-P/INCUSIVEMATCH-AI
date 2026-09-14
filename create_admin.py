@@ -5,17 +5,36 @@ from werkzeug.security import generate_password_hash
 app = create_app()
 
 with app.app_context():
-    email = input("Admin email: ").strip().lower()
-    name = input("Admin name: ").strip()
-    password = input("Admin password (min 6 chars): ")
-    if len(password) < 6:
-        raise SystemExit("Password must be at least 6 characters.")
-    if mongo.db.users.find_one({"email": email}):
-        raise SystemExit("Email already exists.")
-    mongo.db.users.insert_one({
-        "email": email, "name": name, "password": generate_password_hash(password),
-        "role": "admin", "bio": "Platform administrator", "interests": [],
-        "comm_pref": "mixed", "profile_pic": "default.png", "is_active": True,
-        "liked": [], "disliked": []
-    })
-    print("Admin account created.")
+
+    # Admin login details
+    email = "admin@inclusivematch.com"
+    password = "Admin@123"
+    name = "Admin"
+
+    # Create or update admin account
+    result = mongo.db.users.update_one(
+        {"email": email},
+        {
+            "$set": {
+                "email": email,
+                "name": name,
+                "password": generate_password_hash(password),
+                "role": "admin",
+                "is_active": True
+            }
+        },
+        upsert=True
+    )
+
+    if result.upserted_id:
+        print("Admin account created successfully.")
+    elif result.modified_count > 0:
+        print("Admin account updated successfully.")
+    else:
+        print("Admin account already exists and is correct.")
+
+    print("--------------------------------")
+    print("Admin Email:", email)
+    print("Admin Password:", password)
+    print("Admin Role: admin")
+    print("--------------------------------")

@@ -17,6 +17,7 @@ def register():
         password = request.form.get('password', '')
         confirm_password = request.form.get('confirm_password', '')
         comm_pref = request.form.get('comm_pref', 'text')
+
         if comm_pref == 'sign':
             comm_pref = 'sign language'
 
@@ -33,11 +34,18 @@ def register():
             return redirect(url_for('auth.register'))
 
         existing_user = UserModel.find_by_email(email)
+
         if existing_user:
             flash('That email address is already registered.', 'danger')
             return redirect(url_for('auth.register'))
 
-        UserModel.create_user(email, password, name, comm_pref=comm_pref)
+        UserModel.create_user(
+            email,
+            password,
+            name,
+            comm_pref=comm_pref
+        )
+
         flash('Account created! Please log in.', 'success')
         return redirect(url_for('auth.login'))
 
@@ -53,18 +61,39 @@ def login():
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
 
+        print("LOGIN EMAIL:", email)
+        print("PASSWORD RECEIVED:", bool(password))
+
         user = UserModel.find_by_email(email)
-        if user and user.is_active and UserModel.verify_password(user.password, password):
+
+        if user and user.is_active and UserModel.verify_password(
+            user.password,
+            password
+        ):
             login_user(user)
             flash(f'Welcome back, {user.name}!', 'success')
+
             next_page = request.args.get('next')
+
             if next_page:
                 parsed = urlparse(next_page)
-                if parsed.scheme or parsed.netloc or not next_page.startswith('/'):
+
+                if (
+                    parsed.scheme
+                    or parsed.netloc
+                    or not next_page.startswith('/')
+                ):
                     next_page = None
-            return redirect(next_page or url_for('main.dashboard'))
+
+            return redirect(
+                next_page or url_for('main.dashboard')
+            )
+
         else:
-            flash('Invalid email/password or your account is disabled.', 'danger')
+            flash(
+                'Invalid email/password or your account is disabled.',
+                'danger'
+            )
 
     return render_template('login.html')
 

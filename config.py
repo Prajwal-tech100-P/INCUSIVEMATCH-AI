@@ -28,7 +28,7 @@ class Config:
 
     MONGO_URI = os.environ.get(
         "MONGO_URI",
-        "mongodb+srv://inclusiveadmin:inclusiveDB_2026_Secure@cluster0.txo0wu2.mongodb.net/?appName=Cluster0"
+        "mongodb://localhost:27017/inclusive_match_db"
     )
 
     UPLOAD_FOLDER = os.path.join(
