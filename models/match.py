@@ -47,14 +47,43 @@ class Match:
         for x in excluded:
             oid = Match._oid(x)
             if oid: valid_oids.append(oid)
+        
+        # Base query
         query = {"_id": {"$nin": valid_oids}, "role": "user", "is_active": True}
         if comm_pref: query["comm_pref"] = comm_pref
+        
+        # User's filtering preferences
+        u_pref_gender = user.get("pref_gender", "Any")
+        if u_pref_gender != "Any":
+            query["gender"] = u_pref_gender
+            
+        u_pref_min_age = user.get("pref_min_age", 18)
+        u_pref_max_age = user.get("pref_max_age", 99)
+        query["age"] = {"$gte": u_pref_min_age, "$lte": u_pref_max_age}
+
         candidates = list(mongo.db.users.find(query))
+        
+        filtered_candidates = []
+        u_age = user.get("age", 18)
+        u_gender = user.get("gender", "Not Specified")
         mine = set(user.get("interests", []))
+        
         for c in candidates:
+            # Candidate's filtering preferences (Reverse matching)
+            c_pref_gender = c.get("pref_gender", "Any")
+            if c_pref_gender != "Any" and c_pref_gender != u_gender:
+                continue
+                
+            c_pref_min_age = c.get("pref_min_age", 18)
+            c_pref_max_age = c.get("pref_max_age", 99)
+            if not (c_pref_min_age <= u_age <= c_pref_max_age):
+                continue
+
             shared = len(mine & set(c.get("interests", [])))
             c["_match_score"] = min(100, shared * 15 + (10 if c.get("comm_pref") == user.get("comm_pref") else 0))
-        return sorted(candidates, key=lambda x: x["_match_score"], reverse=True)
+            filtered_candidates.append(c)
+            
+        return sorted(filtered_candidates, key=lambda x: x["_match_score"], reverse=True)
 
     @staticmethod
     def get_mutual_matches(user_id):

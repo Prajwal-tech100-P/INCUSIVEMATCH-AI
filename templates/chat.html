@@ -16,6 +16,60 @@
 #video-container { display: none; background: #000; border-radius: .5rem; overflow: hidden; position: relative; aspect-ratio: 16/9; }
 #webcam-feed { width: 100%; height: 100%; object-fit: cover; }
 #sign-text-overlay { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.7); color:#fff; padding: 4px 14px; border-radius: 20px; font-weight:700; font-size:.9rem; }
+
+/* --- 3-dot dropdown menu --- */
+.chat-menu-btn { border: none; background: none; font-size: 1.3rem; color: #64748b; cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: background .15s, color .15s; }
+.chat-menu-btn:hover { background: #eef2ff; color: #4f46e5; }
+.chat-dropdown { position: relative; }
+.chat-dropdown-menu {
+    display: none; position: absolute; right: 0; top: 110%; min-width: 180px;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.12); z-index: 100; overflow: hidden;
+    animation: menuFadeIn .15s ease;
+}
+.chat-dropdown-menu.show { display: block; }
+@keyframes menuFadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+.chat-dropdown-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+    font-size: .875rem; color: #334155; text-decoration: none; border: none; background: none;
+    width: 100%; cursor: pointer; transition: background .12s;
+}
+.chat-dropdown-item:hover { background: #f1f5f9; }
+.chat-dropdown-item.danger { color: #ef4444; }
+.chat-dropdown-item.danger:hover { background: #fef2f2; }
+.chat-dropdown-divider { height: 1px; background: #e2e8f0; margin: 0; }
+
+/* --- Online / Offline dot --- */
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+.status-dot.online { background: #22c55e; box-shadow: 0 0 0 2px rgba(34,197,94,.25); }
+.status-dot.offline { background: #94a3b8; }
+
+/* --- Report modal --- */
+.report-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    z-index: 1060; align-items: center; justify-content: center;
+}
+.report-modal-overlay.show { display: flex; }
+.report-modal {
+    background: #fff; border-radius: 16px; padding: 28px; width: 90%; max-width: 420px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.2); animation: menuFadeIn .2s ease;
+}
+.report-modal h5 { font-weight: 700; margin-bottom: 4px; }
+.report-modal textarea { border-radius: 10px; resize: none; }
+.report-modal .btn-report { background: #ef4444; color: #fff; border: none; border-radius: 10px; font-weight: 600; }
+.report-modal .btn-report:hover { background: #dc2626; }
+.report-modal .btn-cancel { background: #f1f5f9; border: none; border-radius: 10px; }
+
+/* --- Delete confirm toast --- */
+.delete-toast {
+    display: none; position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #1e293b; color: #fff; padding: 14px 24px; border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.25); z-index: 1070; font-size: .9rem;
+    animation: menuFadeIn .2s ease;
+}
+.delete-toast.show { display: flex; align-items: center; gap: 12px; }
+.delete-toast .btn-del-yes { background: #ef4444; color: #fff; border: none; border-radius: 8px; padding: 6px 16px; font-weight: 600; cursor: pointer; }
+.delete-toast .btn-del-no { background: #334155; color: #fff; border: none; border-radius: 8px; padding: 6px 16px; cursor: pointer; }
 </style>
 {% endblock %}
 
@@ -64,23 +118,42 @@
                              class="rounded-circle me-2" width="40" height="40" style="object-fit:cover;" alt="">
                         <div>
                             <p class="mb-0 fw-bold">{{ active_partner.name }}</p>
-                            <p class="mb-0 text-muted" style="font-size:.75rem;"><i class="bi bi-circle-fill text-success me-1" style="font-size:.5rem;"></i>Online</p>
+                            <p class="mb-0 text-muted" style="font-size:.75rem;" id="partner-status">
+                                <span class="status-dot {{ 'online' if is_partner_online else 'offline' }}" id="status-dot"></span>
+                                <span id="status-text">{{ 'Online' if is_partner_online else 'Offline' }}</span>
+                            </p>
                         </div>
                     </a>
-                    <div class="d-flex gap-2">
+                    <div class="d-flex gap-2 align-items-center">
                         <button class="btn btn-light btn-sm rounded-pill" id="btn-speech" title="Speech to Text"><i class="bi bi-mic"></i></button>
                         <button type="button" class="btn btn-light btn-sm rounded-pill js-start-call"
                             data-partner-id="{{ active_partner.id }}" data-partner-name="{{ active_partner.name|e }}"
                             title="Start Video Call" aria-label="Start video call with {{ active_partner.name|e }}">
                             <i class="bi bi-camera-video"></i>
                         </button>
+
+                        <!-- 3-dot menu -->
+                        <div class="chat-dropdown" id="chat-dropdown">
+                            <button class="chat-menu-btn" id="chat-menu-toggle" title="More options" aria-label="More options">
+                                <i class="bi bi-three-dots-vertical"></i>
+                            </button>
+                            <div class="chat-dropdown-menu" id="chat-dropdown-menu">
+                                <button class="chat-dropdown-item" id="btn-report-user">
+                                    <i class="bi bi-flag"></i> Report User
+                                </button>
+                                <div class="chat-dropdown-divider"></div>
+                                <button class="chat-dropdown-item danger" id="btn-delete-chat">
+                                    <i class="bi bi-trash3"></i> Delete Chat
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Sign-to-Text Video -->
                 <div id="video-container" class="mx-3 mt-2">
                     <video id="webcam-feed" autoplay playsinline></video>
-                    <div id="sign-text-overlay">Recognizing…</div>
+                    <div id="sign-text-overlay">Recognizing...</div>
                     <button id="close-camera" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 rounded-circle" style="width:28px;height:28px;line-height:1;"><i class="bi bi-x"></i></button>
                 </div>
 
@@ -91,10 +164,7 @@
                         {% for msg in messages %}
                         <div class="d-flex mb-3 {% if msg.sender_id == current_user_id %}justify-content-end{% endif %}">
                             <div class="message-bubble p-3 rounded-3 shadow-sm {% if msg.sender_id == current_user_id %}bubble-out{% else %}bubble-in{% endif %}">
-                                <p class="mb-1" style="line-height:1.4;">{{ msg.text }}</p>
-                                <small class="{% if msg.sender_id == current_user_id %}text-white-50{% else %}text-muted{% endif %}" style="font-size:.7rem;">
-                                    {{ msg.timestamp.strftime('%I:%M %p') if msg.timestamp else '' }}
-                                </small>
+                                <p class="mb-0" style="line-height:1.4;">{{ msg.text }}</p>
                             </div>
                         </div>
                         {% endfor %}
@@ -110,7 +180,7 @@
                 <div class="p-3 border-top bg-white">
                     <div class="d-flex align-items-center gap-2">
                         <button type="button" class="btn btn-light rounded-circle p-2 flex-shrink-0" id="btn-tts" title="Read last message aloud"><i class="bi bi-volume-up"></i></button>
-                        <input type="text" id="msg-input" class="form-control bg-light rounded-pill border-0 px-4" placeholder="Type a message…" aria-label="Type a message">
+                        <input type="text" id="msg-input" class="form-control bg-light rounded-pill border-0 px-4" placeholder="Type a message..." aria-label="Type a message">
                         <button type="button" id="btn-send" class="btn btn-primary rounded-circle p-2 flex-shrink-0" style="width:44px;height:44px;">
                             <i class="bi bi-send-fill"></i>
                         </button>
@@ -130,6 +200,41 @@
         </div>
     </div>
 </div>
+
+<!-- Report Modal -->
+<div class="report-modal-overlay" id="report-modal">
+    <div class="report-modal">
+        <h5><i class="bi bi-flag text-danger me-2"></i>Report User</h5>
+        <p class="text-muted small mb-3">Tell us why you are reporting this user. Our team will review your report.</p>
+        
+        <label for="report-category" class="form-label small fw-semibold mb-1">Reason</label>
+        <select id="report-category" class="form-select mb-3" style="border-radius: 10px;">
+            <option value="" disabled selected>Select a reason...</option>
+            <option value="Inappropriate behavior or language">Inappropriate behavior or language</option>
+            <option value="Harassment or bullying">Harassment or bullying</option>
+            <option value="Spam or scam">Spam or scam</option>
+            <option value="Other">Other</option>
+        </select>
+
+        <label for="report-reason" class="form-label small fw-semibold mb-1">Details (optional)</label>
+        <textarea id="report-reason" class="form-control mb-3" rows="3" maxlength="500" placeholder="Provide more context..."></textarea>
+        
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-cancel px-4" id="report-cancel">Cancel</button>
+            <button class="btn btn-report px-4" id="report-submit">
+                <i class="bi bi-flag-fill me-1"></i>Submit Report
+            </button>
+        </div>
+        <div id="report-feedback" class="small mt-2" style="display:none;"></div>
+    </div>
+</div>
+
+<!-- Delete Confirm Toast -->
+<div class="delete-toast" id="delete-toast">
+    <span>Delete entire chat?</span>
+    <button class="btn-del-yes" id="delete-confirm">Delete</button>
+    <button class="btn-del-no" id="delete-cancel">Cancel</button>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -140,15 +245,18 @@ const chatHistory=document.getElementById("chat-history"), msgInput=document.get
 chatHistory.scrollTop=chatHistory.scrollHeight;
 const socket=io();
 socket.emit("join_user_room",{});
+
+/* ── Incoming messages (no timestamp) ──────────────────────────────────── */
 function appendIncoming(data){
   if(data.sender_id!==PARTNER_ID || data.receiver_id!==CURRENT_ID) return;
   const div=document.createElement("div"); div.className="d-flex mb-3";
   const bubble=document.createElement("div"); bubble.className="message-bubble p-3 rounded-3 shadow-sm bubble-in";
-  const p=document.createElement("p"); p.className="mb-1"; p.style.lineHeight="1.4"; p.textContent=data.text;
-  const s=document.createElement("small"); s.className="text-muted"; s.style.fontSize=".7rem"; s.textContent=data.timestamp;
-  bubble.append(p,s); div.appendChild(bubble); chatHistory.appendChild(div); chatHistory.scrollTop=chatHistory.scrollHeight;
+  const p=document.createElement("p"); p.className="mb-0"; p.style.lineHeight="1.4"; p.textContent=data.text;
+  bubble.appendChild(p); div.appendChild(bubble); chatHistory.appendChild(div); chatHistory.scrollTop=chatHistory.scrollHeight;
 }
 socket.on("new_message",appendIncoming);
+
+/* ── Send message (no timestamp) ───────────────────────────────────────── */
 async function sendMessage(){
  const text=msgInput.value.trim(); if(!text)return; msgInput.value=""; msgError.style.display="none";
  try{
@@ -157,16 +265,103 @@ async function sendMessage(){
   if(!res.ok){msgError.textContent=data.error||"Unable to send.";msgError.style.display="block";msgInput.value=text;return;}
   const div=document.createElement("div");div.className="justify-content-end d-flex mb-3";
   const bubble=document.createElement("div");bubble.className="message-bubble p-3 rounded-3 shadow-sm bubble-out";
-  const p=document.createElement("p");p.className="mb-1";p.textContent=text;
-  const s=document.createElement("small");s.className="text-white-50";s.style.fontSize=".7rem";s.textContent=data.timestamp;
-  bubble.append(p,s);div.appendChild(bubble);chatHistory.appendChild(div);chatHistory.scrollTop=chatHistory.scrollHeight;
+  const p=document.createElement("p");p.className="mb-0";p.textContent=text;
+  bubble.appendChild(p);div.appendChild(bubble);chatHistory.appendChild(div);chatHistory.scrollTop=chatHistory.scrollHeight;
  }catch(e){msgError.textContent="Server unavailable. Try again.";msgError.style.display="block";msgInput.value=text;}
 }
 document.getElementById("btn-send").onclick=sendMessage;
 msgInput.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}};
+
+/* ── Speech / TTS ──────────────────────────────────────────────────────── */
 const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition, btnSpeech=document.getElementById("btn-speech");
 if(SpeechRecognition){const r=new SpeechRecognition();r.continuous=false;r.lang="en-US";r.onresult=e=>msgInput.value=e.results[0][0].transcript;btnSpeech.onclick=()=>r.start();}else btnSpeech.disabled=true;
 document.getElementById("btn-tts").onclick=()=>{const b=chatHistory.querySelectorAll(".bubble-in p");if(b.length)speechSynthesis.speak(new SpeechSynthesisUtterance(b[b.length-1].textContent));};
+
+/* ── 3-dot dropdown toggle ─────────────────────────────────────────────── */
+const menuToggle=document.getElementById("chat-menu-toggle");
+const menuDropdown=document.getElementById("chat-dropdown-menu");
+menuToggle.addEventListener("click",e=>{e.stopPropagation();menuDropdown.classList.toggle("show");});
+document.addEventListener("click",()=>menuDropdown.classList.remove("show"));
+menuDropdown.addEventListener("click",e=>e.stopPropagation());
+
+/* ── Report user ───────────────────────────────────────────────────────── */
+const reportModal=document.getElementById("report-modal");
+const reportFeedback=document.getElementById("report-feedback");
+document.getElementById("btn-report-user").addEventListener("click",()=>{
+  menuDropdown.classList.remove("show");
+  reportModal.classList.add("show");
+  reportFeedback.style.display="none";
+  document.getElementById("report-category").value="";
+  document.getElementById("report-reason").value="";
+});
+document.getElementById("report-cancel").addEventListener("click",()=>reportModal.classList.remove("show"));
+reportModal.addEventListener("click",e=>{if(e.target===reportModal)reportModal.classList.remove("show");});
+
+document.getElementById("report-submit").addEventListener("click",async()=>{
+  const category=document.getElementById("report-category").value;
+  const details=document.getElementById("report-reason").value.trim();
+  
+  if(!category){
+    reportFeedback.style.display="block";
+    reportFeedback.className="small mt-2 text-danger";
+    reportFeedback.textContent="Please select a reason.";
+    return;
+  }
+  
+  const reason = category + (details ? " - " + details : "");
+  
+  const btn=document.getElementById("report-submit"); btn.disabled=true; btn.innerHTML='<i class="bi bi-hourglass-split me-1"></i>Submitting...';
+  try{
+    const res=await fetch("/chat/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({partner_id:PARTNER_ID,reason})});
+    const data=await res.json();
+    reportFeedback.style.display="block";
+    if(res.ok){
+      reportFeedback.className="small mt-2 text-success";
+      reportFeedback.textContent=data.message||"Report submitted.";
+      setTimeout(()=>reportModal.classList.remove("show"),1500);
+    } else {
+      reportFeedback.className="small mt-2 text-danger";
+      reportFeedback.textContent=data.error||"Failed to submit report.";
+    }
+  }catch(e){
+    reportFeedback.style.display="block";
+    reportFeedback.className="small mt-2 text-danger";
+    reportFeedback.textContent="Network error. Try again.";
+  }finally{ btn.disabled=false; btn.innerHTML='<i class="bi bi-flag-fill me-1"></i>Submit Report'; }
+});
+
+/* ── Delete chat ───────────────────────────────────────────────────────── */
+const deleteToast=document.getElementById("delete-toast");
+document.getElementById("btn-delete-chat").addEventListener("click",()=>{
+  menuDropdown.classList.remove("show");
+  deleteToast.classList.add("show");
+});
+document.getElementById("delete-cancel").addEventListener("click",()=>deleteToast.classList.remove("show"));
+document.getElementById("delete-confirm").addEventListener("click",async()=>{
+  try{
+    const res=await fetch("/chat/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({partner_id:PARTNER_ID})});
+    if(res.ok){
+      // Clear chat history in UI
+      chatHistory.innerHTML='<div class="text-center text-muted small py-4"><i class="bi bi-check-circle fs-3 d-block mb-2 text-success"></i>Chat deleted.</div>';
+      deleteToast.classList.remove("show");
+    }
+  }catch(e){console.error(e);}
+});
+
+/* ── Online / Offline status (real-time via Socket.IO) ─────────────────── */
+const statusDot=document.getElementById("status-dot");
+const statusText=document.getElementById("status-text");
+socket.on("user_status",data=>{
+  if(data.user_id===PARTNER_ID){
+    if(data.online){
+      statusDot.className="status-dot online";
+      statusText.textContent="Online";
+    }else{
+      statusDot.className="status-dot offline";
+      statusText.textContent="Offline";
+    }
+  }
+});
 </script>
 {% endif %}
 {% endblock %}

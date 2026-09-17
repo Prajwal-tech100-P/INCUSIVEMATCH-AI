@@ -27,11 +27,28 @@ def edit_profile():
         bio = request.form.get('bio', '').strip()
         interests = request.form.getlist('interests')
         comm_pref = request.form.get('comm_pref', current_user.comm_pref)
+        
+        # New fields
+        age = int(request.form.get('age', current_user.age))
+        gender = request.form.get('gender', current_user.gender)
+        location = request.form.get('location', current_user.location)
+        relationship_goal = request.form.get('relationship_goal', current_user.relationship_goal)
+        
+        pref_min_age = int(request.form.get('pref_min_age', current_user.pref_min_age))
+        pref_max_age = int(request.form.get('pref_max_age', current_user.pref_max_age))
+        pref_gender = request.form.get('pref_gender', current_user.pref_gender)
 
         update_data = {
             'bio': bio,
             'interests': interests,
             'comm_pref': comm_pref,
+            'age': age,
+            'gender': gender,
+            'location': location,
+            'relationship_goal': relationship_goal,
+            'pref_min_age': pref_min_age,
+            'pref_max_age': pref_max_age,
+            'pref_gender': pref_gender,
         }
 
         # Handle profile picture upload
@@ -47,6 +64,14 @@ def edit_profile():
         return redirect(url_for('profile.my_profile'))
 
     return render_template('profile.html', user=current_user, interests=INTEREST_CHOICES, edit_mode=True)
+
+
+@profile_bp.route('/profile/verify', methods=['POST'])
+@login_required
+def verify_profile():
+    # Simulated verification endpoint for the face scan
+    UserModel.update_profile(current_user.id, {'is_verified': True})
+    return {'success': True, 'message': 'Profile verified successfully!'}
 
 
 @profile_bp.route('/profile/<user_id>')

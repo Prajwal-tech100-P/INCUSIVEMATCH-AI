@@ -16,7 +16,14 @@ joblib==1.4.2
 # Sign recognition runtime (install separately if your Python version supports it):
 # mediapipe
 
-# GRU/LSTM sequence sign recognition
+# GCN + Transformer sign recognition (primary model)
 torch>=2.5
+# torch-geometric: install with the wheel matching your torch+CUDA version.
+# CPU-only (works on any machine):
+#   pip install torch-geometric
+# With CUDA 12.x:
+#   pip install torch-geometric torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.5.0+cu121.html
+# The runtime falls back to BiGRU/SVM if torch-geometric is unavailable.
+torch-geometric
 
 gunicorn==23.0.0

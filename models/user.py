@@ -17,6 +17,20 @@ class UserModel(UserMixin):
         self._is_active = user_doc.get("is_active", True)
         self.liked = user_doc.get("liked", [])
         self.disliked = user_doc.get("disliked", [])
+        
+        # New multi-step profile fields
+        self.age = user_doc.get("age", 18)
+        self.gender = user_doc.get("gender", "Not Specified")
+        self.location = user_doc.get("location", "")
+        self.relationship_goal = user_doc.get("relationship_goal", "Friendship")
+        
+        # New matching preferences
+        self.pref_min_age = user_doc.get("pref_min_age", 18)
+        self.pref_max_age = user_doc.get("pref_max_age", 99)
+        self.pref_gender = user_doc.get("pref_gender", "Any")
+        
+        # Verification
+        self.is_verified = user_doc.get("is_verified", False)
 
     @property
     def is_active(self):
@@ -26,9 +40,27 @@ class UserModel(UserMixin):
 
     @staticmethod
     def create_user(email, password, name, comm_pref="text", role="user"):
-        doc = {"email": email, "password": generate_password_hash(password), "name": name,
-               "role": role, "bio": "", "interests": [], "comm_pref": comm_pref,
-               "profile_pic": "default.png", "is_active": True, "liked": [], "disliked": []}
+        doc = {
+            "email": email, 
+            "password": generate_password_hash(password), 
+            "name": name,
+            "role": role, 
+            "bio": "", 
+            "interests": [], 
+            "comm_pref": comm_pref,
+            "profile_pic": "default.png", 
+            "is_active": True, 
+            "liked": [], 
+            "disliked": [],
+            "age": 18,
+            "gender": "Not Specified",
+            "location": "",
+            "relationship_goal": "Friendship",
+            "pref_min_age": 18,
+            "pref_max_age": 99,
+            "pref_gender": "Any",
+            "is_verified": False
+        }
         result = mongo.db.users.insert_one(doc)
         return str(result.inserted_id)
 
