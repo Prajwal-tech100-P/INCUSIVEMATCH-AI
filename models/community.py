@@ -186,7 +186,7 @@ class Community:
                 socketio.emit("admin_report", {
                     "title": title,
                     "message": msg_body,
-                }, to=f"user:{admin_id}")
+                }, room=f"user:{admin_id}")
         except Exception:
             pass
 
