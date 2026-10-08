@@ -48,17 +48,19 @@ def create_app(config_class=Config):
             'health_check'
         ]
         
-        if request.endpoint in allowed_endpoints:
+        # Admins must always be able to access the admin panel to turn off maintenance.
+        # If unauthenticated, the @admin_required decorator will redirect them to login.
+        if request.endpoint in allowed_endpoints or request.blueprint == 'admin':
             return
 
-        # Fetch settings from MongoDB
+        # Fetch settings from MongoDB safely
         try:
             settings = mongo.db.app_settings.find_one({"_id": "app_settings"})
         except Exception:
             settings = None
             
-        if settings and settings.get("maintenance_mode"):
-            # Admins are exempt from maintenance mode
+        if settings and settings.get("maintenance_mode") is True:
+            # Admins are exempt from maintenance mode on all other routes too
             if current_user.is_authenticated and getattr(current_user, 'role', '') == 'admin':
                 return
                 
