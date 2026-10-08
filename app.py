@@ -50,7 +50,7 @@ def create_app(config_class=Config):
         
         # Admins must always be able to access the admin panel to turn off maintenance.
         # If unauthenticated, the @admin_required decorator will redirect them to login.
-        if request.endpoint in allowed_endpoints or request.blueprint == 'admin':
+        if getattr(request, 'endpoint', None) in allowed_endpoints or getattr(request, 'blueprint', None) == 'admin':
             return
 
         # Fetch settings from MongoDB safely
