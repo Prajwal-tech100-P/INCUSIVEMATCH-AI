@@ -43,7 +43,7 @@ def register():
             email,
             password,
             name,
-            comm_pref=comm_pref
+            comm_prefs=[comm_pref]
         )
 
         flash('Account created! Please log in.', 'success')

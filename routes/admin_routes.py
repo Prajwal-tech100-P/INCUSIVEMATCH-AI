@@ -74,7 +74,75 @@ def matches():
 @admin_required
 def reports():
     reports = list(mongo.db.reports.find().sort("created_at", -1))
+    for report in reports:
+        dt = report.get("created_at")
+        if isinstance(dt, datetime):
+            ist_dt = dt + timedelta(hours=5, minutes=30)
+            report["formatted_date"] = ist_dt.strftime("%d %b %Y, %I:%M %p")
+        else:
+            report["formatted_date"] = str(dt) if dt else "N/A"
     return render_template("admin/reports.html", reports=reports)
+
+
+@admin_bp.route("/reports/<report_id>/status", methods=["POST"])
+@admin_required
+def update_report_status(report_id):
+    new_status = request.form.get("status")
+    action = request.form.get("action_taken")
+
+    if new_status == "resolved" and not action:
+        flash("You must select an action when resolving a report.", "danger")
+        return redirect(url_for("admin.reports"))
+
+    if new_status in ["pending", "reviewed", "resolved", "dismissed"]:
+        try:
+            report = mongo.db.reports.find_one({"_id": ObjectId(report_id)})
+            if not report:
+                flash("Report not found.", "danger")
+                return redirect(url_for("admin.reports"))
+
+            update_data = {"status": new_status}
+            if new_status == "resolved":
+                update_data["action_taken"] = action
+                update_data["resolved_at"] = datetime.utcnow()
+
+                reported_id = report.get("reported_id")
+                if reported_id:
+                    if action == "User Blocked for 1 Week":
+                        mongo.db.users.update_one(
+                            {"_id": ObjectId(reported_id)},
+                            {"$set": {
+                                "is_active": False,
+                                "block_expiry": datetime.utcnow() + timedelta(days=7)
+                            }}
+                        )
+                    elif action == "Warning Issued":
+                        mongo.db.users.update_one(
+                            {"_id": ObjectId(reported_id)},
+                            {"$inc": {"warning_count": 1}}
+                        )
+                    elif action == "Message Removed":
+                        msg_id = report.get("message_id")
+                        if msg_id:
+                            mongo.db.messages.delete_one({"_id": ObjectId(msg_id)})
+                        else:
+                            reporter_id = report.get("reporter_id")
+                            if reporter_id:
+                                last_msg = mongo.db.messages.find_one(
+                                    {"sender_id": reported_id, "receiver_id": reporter_id},
+                                    sort=[("timestamp", -1)]
+                                )
+                                if last_msg:
+                                    mongo.db.messages.delete_one({"_id": last_msg["_id"]})
+
+            mongo.db.reports.update_one(
+                {"_id": ObjectId(report_id)},
+                {"$set": update_data}
+            )
+            flash("Report status updated.", "success")
+        except Exception:
+            flash("Invalid report ID or database error.", "danger")
+    return redirect(url_for("admin.reports"))
 
 
 @admin_bp.route("/messages")
@@ -110,17 +178,30 @@ def statistics():
 @admin_required
 def settings():
     if request.method == "POST":
-        # Keep this lightweight: settings are stored in a single admin config document.
         maintenance = request.form.get("maintenance_mode") == "on"
-        mongo.db.app_settings.update_one(
-            {"_id": "app_settings"},
-            {"$set": {"maintenance_mode": maintenance, "updated_at": datetime.utcnow()}},
-            upsert=True,
-        )
-        flash("Admin settings updated.", "success")
+        try:
+            mongo.db.app_settings.update_one(
+                {"_id": "app_settings"},
+                {"$set": {"maintenance_mode": maintenance, "updated_at": datetime.utcnow()}},
+                upsert=True,
+            )
+            if maintenance:
+                flash("Maintenance mode enabled.", "success")
+            else:
+                flash("Maintenance mode disabled.", "success")
+        except Exception as e:
+            import logging
+            logging.error(f"Error updating maintenance mode: {e}")
+            flash("Unable to update maintenance mode. Please try again.", "danger")
+            
         return redirect(url_for("admin.settings"))
-    settings = mongo.db.app_settings.find_one({"_id": "app_settings"}) or {"maintenance_mode": False}
-    return render_template("admin/settings.html", settings=settings)
+        
+    try:
+        settings_data = mongo.db.app_settings.find_one({"_id": "app_settings"}) or {"maintenance_mode": False}
+    except Exception:
+        settings_data = {"maintenance_mode": False}
+        
+    return render_template("admin/settings.html", settings=settings_data)
 
 
 @admin_bp.route("/users/<user_id>/toggle-active",methods=["POST"])

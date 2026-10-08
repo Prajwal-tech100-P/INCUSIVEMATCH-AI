@@ -1,51 +1,93 @@
 {% extends "base.html" %}
 
-{% block title %}Welcome - Inclusive Match AI{% endblock %}
+{% block title %}Welcome - InclusiveMatch AI{% endblock %}
 
 {% block content %}
 <!-- Hero Section -->
-<section class="py-5 text-center container-fluid bg-primary text-white d-flex align-items-center" style="min-height: 70vh; background: linear-gradient(135deg, var(--primary-color) 0%, #312e81 100%);">
-    <div class="row w-100 justify-content-center">
-        <div class="col-lg-8 col-md-10 mx-auto">
-            <h1 class="display-3 fw-bold mb-4">Connect Without Barriers</h1>
-            <p class="lead mb-5 text-white-50">
-                The first AI-powered dating and communication platform designed exclusively for the Deaf and Hard-of-Hearing community. Find compatible matches and communicate seamlessly.
-            </p>
-            <div class="d-grid gap-3 d-sm-flex justify-content-sm-center">
-                <a href="/register" class="btn btn-light btn-lg px-5 py-3 fw-bold text-primary rounded-pill hover-lift shadow-sm">Get Started</a>
-                <a href="#how-it-works" class="btn btn-outline-light btn-lg px-5 py-3 fw-bold rounded-pill hover-lift">Learn More</a>
+<section class="py-5 bg-white position-relative overflow-hidden">
+    <div class="container py-5">
+        <div class="row align-items-center g-5">
+            <div class="col-lg-6 order-2 order-lg-1 text-center text-lg-start">
+                <h1 class="display-4 fw-bold text-dark mb-4" style="line-height: 1.2;">
+                    Connect <br>
+                    Without <br>
+                    <span class="text-primary">Barriers</span>
+                </h1>
+                <p class="lead text-muted mb-5" style="max-width: 500px; margin: 0 auto; margin-left: 0;">
+                    AI-powered matching and accessible communication designed for everyone.
+                </p>
+                <div class="d-flex flex-column flex-sm-row gap-3 justify-content-center justify-content-lg-start">
+                    <a href="/register" class="btn btn-primary btn-lg rounded-pill px-5 fw-semibold d-flex align-items-center justify-content-center hover-lift shadow-sm">
+                        Get Started <i class="bi bi-arrow-right ms-2"></i>
+                    </a>
+                    <a href="#how-it-works" class="btn btn-outline-secondary btn-lg rounded-pill px-5 fw-semibold d-flex align-items-center justify-content-center hover-lift">
+                        Learn More
+                    </a>
+                </div>
+            </div>
+            
+            <div class="col-lg-6 order-1 order-lg-2 position-relative">
+                <!-- Abstract Illustration placeholder replacing the complex SVG -->
+                <div class="position-relative mx-auto" style="max-width: 500px; aspect-ratio: 1/1;">
+                    <div class="position-absolute top-50 start-50 translate-middle w-100 h-100 rounded-circle" style="background: radial-gradient(circle, rgba(99,102,241,0.1) 0%, rgba(255,255,255,0) 70%);"></div>
+                    <div class="position-absolute top-50 start-50 translate-middle w-75 h-75 rounded-circle border border-primary border-opacity-25" style="border-width: 2px !important;"></div>
+                    <div class="position-absolute top-50 start-50 translate-middle w-50 h-50 rounded-circle border border-primary border-opacity-50" style="border-width: 2px !important;"></div>
+                    
+                    <div class="position-absolute top-50 start-50 translate-middle bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow-lg" style="width: 80px; height: 80px;">
+                        <i class="bi bi-heart-fill fs-2"></i>
+                    </div>
+                    
+                    <div class="position-absolute bg-white text-primary rounded-circle d-flex align-items-center justify-content-center shadow-sm hover-lift" style="width: 60px; height: 60px; top: 10%; left: 20%;">
+                        <i class="bi bi-chat-dots fs-4"></i>
+                    </div>
+                    <div class="position-absolute bg-white text-primary rounded-circle d-flex align-items-center justify-content-center shadow-sm hover-lift" style="width: 60px; height: 60px; bottom: 15%; left: 15%;">
+                        <i class="bi bi-robot fs-4"></i>
+                    </div>
+                    <div class="position-absolute bg-white text-primary rounded-circle d-flex align-items-center justify-content-center shadow-sm hover-lift" style="width: 60px; height: 60px; top: 30%; right: 5%;">
+                        <i class="bi bi-camera-video fs-4"></i>
+                    </div>
+                    <div class="position-absolute bg-white text-primary rounded-circle d-flex align-items-center justify-content-center shadow-sm hover-lift" style="width: 60px; height: 60px; bottom: 25%; right: 15%;">
+                        <i class="bi bi-shield-check fs-4"></i>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </section>
 
 <!-- Features Section -->
-<section id="how-it-works" class="py-5 bg-white">
+<section id="how-it-works" class="py-5" style="background-color: var(--bg-color);">
     <div class="container py-5">
         <div class="text-center mb-5">
-            <h2 class="fw-bold">Designed for Accessibility</h2>
-            <p class="text-muted">Experience dating tailored to your communication preferences.</p>
+            <h2 class="fw-bold text-dark">Why Choose InclusiveMatch AI?</h2>
         </div>
         <div class="row g-4 text-center">
-            <div class="col-md-4">
-                <div class="p-4 glass-panel h-100 hover-lift">
-                    <div class="fs-1 text-primary mb-3"><i class="bi bi-robot"></i></div>
-                    <h4 class="fw-semibold">AI Matchmaking</h4>
-                    <p class="text-muted">Our smart algorithm analyzes your interests, hobbies, and communication preferences to recommend the most compatible partners.</p>
+            <div class="col-md-3 col-sm-6">
+                <div class="p-4 bg-white rounded-4 shadow-sm h-100 hover-lift border-0">
+                    <div class="fs-1 text-primary mb-3 bg-light rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;"><i class="bi bi-robot"></i></div>
+                    <h5 class="fw-bold text-dark">AI Matchmaking</h5>
+                    <p class="text-muted small">Personalized matches based on your interests, preferences and compatibility.</p>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="p-4 glass-panel h-100 hover-lift">
-                    <div class="fs-1 text-primary mb-3"><i class="bi bi-camera-video"></i></div>
-                    <h4 class="fw-semibold">Sign-to-Text</h4>
-                    <p class="text-muted">Communicate effortlessly using your webcam. Our Computer Vision AI translates predefined sign language gestures into text.</p>
+            <div class="col-md-3 col-sm-6">
+                <div class="p-4 bg-white rounded-4 shadow-sm h-100 hover-lift border-0">
+                    <div class="fs-1 text-primary mb-3 bg-light rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;"><i class="bi bi-camera-video"></i></div>
+                    <h5 class="fw-bold text-dark">Sign Language Recognition</h5>
+                    <p class="text-muted small">Real-time sign-to-text translation using advanced computer vision.</p>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="p-4 glass-panel h-100 hover-lift">
-                    <div class="fs-1 text-primary mb-3"><i class="bi bi-shield-check"></i></div>
-                    <h4 class="fw-semibold">Safe & Inclusive</h4>
-                    <p class="text-muted">Built-in AI moderation and face verification ensures a safe, respectful, and authentic environment for everyone.</p>
+            <div class="col-md-3 col-sm-6">
+                <div class="p-4 bg-white rounded-4 shadow-sm h-100 hover-lift border-0">
+                    <div class="fs-1 text-primary mb-3 bg-light rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;"><i class="bi bi-chat-square-dots"></i></div>
+                    <h5 class="fw-bold text-dark">Smart Communication</h5>
+                    <p class="text-muted small">Speech-to-text, text-to-speech, and automatic translation for better conversations.</p>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="p-4 bg-white rounded-4 shadow-sm h-100 hover-lift border-0">
+                    <div class="fs-1 text-primary mb-3 bg-light rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;"><i class="bi bi-shield-check"></i></div>
+                    <h5 class="fw-bold text-dark">Safe & Inclusive</h5>
+                    <p class="text-muted small">Verified profiles, content detection and a supportive community.</p>
                 </div>
             </div>
         </div>
@@ -53,10 +95,14 @@
 </section>
 
 <!-- Call to Action -->
-<section class="py-5 bg-light border-top">
-    <div class="container text-center">
-        <h3 class="fw-bold mb-3">Ready to find your match?</h3>
-        <a href="/register" class="btn btn-primary btn-lg rounded-pill px-4 hover-lift shadow-sm">Join Inclusive Match AI Today</a>
+<section class="py-5 position-relative overflow-hidden">
+    <div class="position-absolute top-0 start-0 w-100 h-100" style="background: linear-gradient(135deg, rgba(99,102,241,0.1) 0%, rgba(99,102,241,0.2) 100%);"></div>
+    <div class="container text-center py-5 position-relative z-index-1">
+        <h3 class="fw-bold text-dark mb-4">Ready to find your match?</h3>
+        <p class="text-muted mb-4">Join our growing community and start your journey today.</p>
+        <a href="/register" class="btn btn-primary btn-lg rounded-pill px-5 hover-lift shadow d-inline-flex align-items-center fw-semibold">
+            Join InclusiveMatch AI <i class="bi bi-arrow-right ms-2"></i>
+        </a>
     </div>
 </section>
 {% endblock %}

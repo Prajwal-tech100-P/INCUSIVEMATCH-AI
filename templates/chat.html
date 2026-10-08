@@ -39,10 +39,7 @@
 .chat-dropdown-item.danger:hover { background: #fef2f2; }
 .chat-dropdown-divider { height: 1px; background: #e2e8f0; margin: 0; }
 
-/* --- Online / Offline dot --- */
-.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
-.status-dot.online { background: #22c55e; box-shadow: 0 0 0 2px rgba(34,197,94,.25); }
-.status-dot.offline { background: #94a3b8; }
+/* --- Online / Offline dot (Removed) --- */
 
 /* --- Report modal --- */
 .report-modal-overlay {
@@ -76,11 +73,11 @@
 {% block content %}
 {% set partner_id = active_partner.id if active_partner else '' %}
 <div class="container-fluid py-3">
-    <div class="card shadow-sm border-0 glass-panel overflow-hidden chat-container">
+    <div class="card shadow-sm border-0 glass-panel chat-container">
         <div class="row g-0 h-100">
 
             <!-- Sidebar: Inbox -->
-            <div class="col-md-4 col-lg-3 chat-sidebar d-flex flex-column">
+            <div class="col-md-4 col-lg-3 chat-sidebar d-flex flex-column {% if not active_partner %}mobile-active{% endif %}">
                 <div class="p-3 border-bottom bg-white">
                     <h6 class="fw-bold mb-0 text-primary"><i class="bi bi-chat-dots me-2"></i>Messages</h6>
                 </div>
@@ -93,7 +90,9 @@
                                  onerror="this.src='https://ui-avatars.com/api/?name={{ item.partner.name | urlencode }}&background=6366f1&color=fff&size=40'"
                                  class="rounded-circle me-3 flex-shrink-0" width="42" height="42" style="object-fit:cover;" alt="">
                             <div class="overflow-hidden">
-                                <p class="mb-0 fw-semibold text-truncate">{{ item.partner.name }}</p>
+                                <p class="mb-0 fw-semibold text-truncate">
+                                    {{ item.partner.name }}
+                                </p>
                                 <p class="mb-0 text-muted small text-truncate">{{ item.last_message.text[:40] }}</p>
                             </div>
                         </a>
@@ -108,24 +107,29 @@
             </div>
 
             <!-- Chat Window -->
-            <div class="col-md-8 col-lg-9 h-100 d-flex flex-column">
+            <div class="col-md-8 col-lg-9 h-100 d-flex flex-column chat-main-window {% if not active_partner %}mobile-hidden{% endif %}">
                 {% if active_partner %}
                 <!-- Chat Header -->
                 <div class="p-3 border-bottom bg-white d-flex justify-content-between align-items-center">
-                    <a href="{{ url_for('profile.view_profile', user_id=active_partner.id) }}" class="d-flex align-items-center text-decoration-none text-dark">
-                        <img src="{{ url_for('static', filename='uploads/' + active_partner.profile_pic) }}"
-                             onerror="this.src='https://ui-avatars.com/api/?name={{ active_partner.name | urlencode }}&background=6366f1&color=fff&size=40'"
-                             class="rounded-circle me-2" width="40" height="40" style="object-fit:cover;" alt="">
-                        <div>
-                            <p class="mb-0 fw-bold">{{ active_partner.name }}</p>
-                            <p class="mb-0 text-muted" style="font-size:.75rem;" id="partner-status">
-                                <span class="status-dot {{ 'online' if is_partner_online else 'offline' }}" id="status-dot"></span>
-                                <span id="status-text">{{ 'Online' if is_partner_online else 'Offline' }}</span>
-                            </p>
-                        </div>
-                    </a>
+                    <div class="d-flex align-items-center">
+                        <a href="{{ url_for('chat.chat_home') }}" class="btn btn-sm btn-light me-2 d-md-none rounded-circle"><i class="bi bi-chevron-left"></i></a>
+                        <a href="{{ url_for('profile.view_profile', user_id=active_partner.id) }}" class="d-flex align-items-center text-decoration-none text-dark">
+                            <img src="{{ url_for('static', filename='uploads/' + active_partner.profile_pic) }}"
+                                 onerror="this.src='https://ui-avatars.com/api/?name={{ active_partner.name | urlencode }}&background=6366f1&color=fff&size=40'"
+                                 class="rounded-circle me-2" width="40" height="40" style="object-fit:cover;" alt="">
+                            <div>
+                                <p class="mb-0 fw-bold">{{ active_partner.name }}</p>
+                                <p class="mb-0 text-muted" style="font-size:.75rem;" id="partner-status">
+                                    {% if is_partner_online %}
+                                        <span class="text-success"><i class="bi bi-circle-fill" style="font-size: 8px;"></i> Online</span>
+                                    {% else %}
+                                        <span class="text-secondary"><i class="bi bi-circle" style="font-size: 8px;"></i> Offline</span>
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </a>
+                    </div>
                     <div class="d-flex gap-2 align-items-center">
-                        <button class="btn btn-light btn-sm rounded-pill" id="btn-speech" title="Speech to Text"><i class="bi bi-mic"></i></button>
                         <button type="button" class="btn btn-light btn-sm rounded-pill js-start-call"
                             data-partner-id="{{ active_partner.id }}" data-partner-name="{{ active_partner.name|e }}"
                             title="Start Video Call" aria-label="Start video call with {{ active_partner.name|e }}">
@@ -179,9 +183,14 @@
                 <!-- Input Area -->
                 <div class="p-3 border-top bg-white">
                     <div class="d-flex align-items-center gap-2">
-                        <button type="button" class="btn btn-light rounded-circle p-2 flex-shrink-0" id="btn-tts" title="Read last message aloud"><i class="bi bi-volume-up"></i></button>
+                        <button type="button" class="btn btn-light rounded-circle p-2 flex-shrink-0" id="btn-speech" title="Start speech to text" aria-label="Start speech to text">
+                            <i class="bi bi-mic"></i>
+                        </button>
+                        <button type="button" class="btn btn-light rounded-circle p-2 flex-shrink-0" id="btn-tts" title="Read last message aloud" aria-label="Read last message aloud">
+                            <i class="bi bi-volume-up"></i>
+                        </button>
                         <input type="text" id="msg-input" class="form-control bg-light rounded-pill border-0 px-4" placeholder="Type a message..." aria-label="Type a message">
-                        <button type="button" id="btn-send" class="btn btn-primary rounded-circle p-2 flex-shrink-0" style="width:44px;height:44px;">
+                        <button type="button" id="btn-send" class="btn btn-primary rounded-circle p-2 flex-shrink-0" style="width:44px;height:44px;" aria-label="Send message">
                             <i class="bi bi-send-fill"></i>
                         </button>
                     </div>
@@ -272,10 +281,91 @@ async function sendMessage(){
 document.getElementById("btn-send").onclick=sendMessage;
 msgInput.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}};
 
-/* ── Speech / TTS ──────────────────────────────────────────────────────── */
-const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition, btnSpeech=document.getElementById("btn-speech");
-if(SpeechRecognition){const r=new SpeechRecognition();r.continuous=false;r.lang="en-US";r.onresult=e=>msgInput.value=e.results[0][0].transcript;btnSpeech.onclick=()=>r.start();}else btnSpeech.disabled=true;
-document.getElementById("btn-tts").onclick=()=>{const b=chatHistory.querySelectorAll(".bubble-in p");if(b.length)speechSynthesis.speak(new SpeechSynthesisUtterance(b[b.length-1].textContent));};
+/* ── Speech-to-Text & Text-to-Speech ──────────────────────────────────────────────────────── */
+const btnSpeech = document.getElementById("btn-speech");
+const btnTts = document.getElementById("btn-tts");
+
+// Speech-to-Text logic
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SpeechRecognition) {
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.lang = "en-US";
+    let isListening = false;
+
+    recognition.onstart = () => {
+        isListening = true;
+        btnSpeech.classList.replace("btn-light", "btn-danger");
+        btnSpeech.setAttribute("aria-label", "Stop speech to text");
+        btnSpeech.title = "Listening...";
+        msgError.style.display = "block";
+        msgError.className = "text-primary small mt-1 ps-2";
+        msgError.textContent = "Listening...";
+    };
+
+    recognition.onresult = (e) => {
+        msgInput.value = e.results[0][0].transcript;
+        msgError.style.display = "none";
+    };
+
+    recognition.onerror = (e) => {
+        msgError.style.display = "block";
+        msgError.className = "text-danger small mt-1 ps-2";
+        if (e.error === 'not-allowed') {
+            msgError.textContent = "Microphone permission required.";
+        } else {
+            msgError.textContent = "Speech recognition error: " + e.error;
+        }
+    };
+
+    recognition.onend = () => {
+        isListening = false;
+        btnSpeech.classList.replace("btn-danger", "btn-light");
+        btnSpeech.setAttribute("aria-label", "Start speech to text");
+        btnSpeech.title = "Start speech to text";
+        if (msgError.textContent === "Listening...") {
+            msgError.style.display = "none";
+        }
+    };
+
+    btnSpeech.onclick = () => {
+        if (isListening) {
+            recognition.stop();
+        } else {
+            recognition.start();
+        }
+    };
+} else {
+    btnSpeech.disabled = true;
+    btnSpeech.title = "Speech recognition is not supported in this browser";
+    btnSpeech.onclick = () => {
+        msgError.style.display = "block";
+        msgError.className = "text-danger small mt-1 ps-2";
+        msgError.textContent = "Speech recognition is not supported in this browser.";
+    };
+}
+
+// Text-to-Speech logic
+btnTts.onclick = () => {
+    // Stop any ongoing speech
+    if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+    }
+    
+    // Find the latest received message (bubble-in)
+    const receivedBubbles = chatHistory.querySelectorAll(".bubble-in p");
+    
+    if (receivedBubbles.length > 0) {
+        const lastMessageText = receivedBubbles[receivedBubbles.length - 1].textContent;
+        const utterance = new SpeechSynthesisUtterance(lastMessageText);
+        window.speechSynthesis.speak(utterance);
+    } else {
+        msgError.style.display = "block";
+        msgError.className = "text-danger small mt-1 ps-2";
+        msgError.textContent = "No received message to read.";
+        setTimeout(() => { msgError.style.display = "none"; }, 3000);
+    }
+};
 
 /* ── 3-dot dropdown toggle ─────────────────────────────────────────────── */
 const menuToggle=document.getElementById("chat-menu-toggle");
@@ -313,20 +403,35 @@ document.getElementById("report-submit").addEventListener("click",async()=>{
   const btn=document.getElementById("report-submit"); btn.disabled=true; btn.innerHTML='<i class="bi bi-hourglass-split me-1"></i>Submitting...';
   try{
     const res=await fetch("/chat/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({partner_id:PARTNER_ID,reason})});
-    const data=await res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch(err) {
+      reportFeedback.style.display="block";
+      reportFeedback.className="small mt-2 text-danger";
+      reportFeedback.textContent="Unable to submit the report right now. Please try again.";
+      return;
+    }
+    
     reportFeedback.style.display="block";
     if(res.ok){
       reportFeedback.className="small mt-2 text-success";
-      reportFeedback.textContent=data.message||"Report submitted.";
+      reportFeedback.textContent=data.message||"Report submitted successfully. Our team will review it.";
       setTimeout(()=>reportModal.classList.remove("show"),1500);
     } else {
       reportFeedback.className="small mt-2 text-danger";
-      reportFeedback.textContent=data.error||"Failed to submit report.";
+      if(res.status === 401) {
+          reportFeedback.textContent="Authentication error. Please log in.";
+      } else if (res.status >= 500) {
+          reportFeedback.textContent="Server error. Unable to submit the report right now. Please try again.";
+      } else {
+          reportFeedback.textContent=data.error||"Failed to submit report.";
+      }
     }
   }catch(e){
     reportFeedback.style.display="block";
     reportFeedback.className="small mt-2 text-danger";
-    reportFeedback.textContent="Network error. Try again.";
+    reportFeedback.textContent="No network. Please check your connection.";
   }finally{ btn.disabled=false; btn.innerHTML='<i class="bi bi-flag-fill me-1"></i>Submit Report'; }
 });
 
@@ -348,20 +453,21 @@ document.getElementById("delete-confirm").addEventListener("click",async()=>{
   }catch(e){console.error(e);}
 });
 
-/* ── Online / Offline status (real-time via Socket.IO) ─────────────────── */
-const statusDot=document.getElementById("status-dot");
-const statusText=document.getElementById("status-text");
-socket.on("user_status",data=>{
-  if(data.user_id===PARTNER_ID){
-    if(data.online){
-      statusDot.className="status-dot online";
-      statusText.textContent="Online";
-    }else{
-      statusDot.className="status-dot offline";
-      statusText.textContent="Offline";
-    }
-  }
-});
+/* ── Online / Offline status ── */
+setInterval(async () => {
+    try {
+        const res = await fetch("/api/user/online/" + PARTNER_ID);
+        if (res.ok) {
+            const data = await res.json();
+            const statusEl = document.getElementById("partner-status");
+            if (data.online) {
+                statusEl.innerHTML = '<span class="text-success"><i class="bi bi-circle-fill" style="font-size: 8px;"></i> Online</span>';
+            } else {
+                statusEl.innerHTML = '<span class="text-secondary"><i class="bi bi-circle" style="font-size: 8px;"></i> Offline</span>';
+            }
+        }
+    } catch (e) {}
+}, 10000);
 </script>
 {% endif %}
 {% endblock %}

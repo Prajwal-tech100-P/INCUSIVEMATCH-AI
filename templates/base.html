@@ -16,16 +16,16 @@
 <body data-authenticated="{{ 'true' if current_user.is_authenticated else 'false' }}" data-user-id="{{ current_user.id if current_user.is_authenticated else '' }}">
     <a href="#main-content" class="visually-hidden-focusable">Skip to main content</a>
 
-    <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm" style="background: linear-gradient(90deg, #6366f1, #312e81);">
+    <nav class="navbar navbar-expand-lg navbar-light bg-white sticky-top shadow-sm py-3">
         <div class="container">
-            <a class="navbar-brand fw-bold fs-5" href="/">
-                <i class="bi bi-heart-pulse-fill me-2"></i>Inclusive Match AI
+            <a class="navbar-brand fw-bold fs-5 text-dark d-flex align-items-center" href="/">
+                <i class="bi bi-heart-pulse-fill text-primary me-2"></i>InclusiveMatch AI
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto align-items-lg-center">
+                <ul class="navbar-nav ms-auto align-items-lg-center desktop-nav-links">
                     {% if current_user.is_authenticated %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('main.dashboard') }}"><i class="bi bi-compass me-1"></i>Discover</a>
@@ -39,11 +39,9 @@
                         <li class="nav-item dropdown">
                             <a class="nav-link position-relative" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="Notifications">
                                 <i class="bi bi-bell-fill"></i>
-                                {% if unread_notifications is defined and unread_notifications > 0 %}
-                                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:.6rem;">{{ unread_notifications }}</span>
-                                {% endif %}
+                                <span id="notificationBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger {% if not unread_notifications or unread_notifications == 0 %}d-none{% endif %}" style="font-size:.6rem;">{{ unread_notifications|default(0) }}</span>
                             </a>
-                            <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 rounded-4 p-2" style="min-width:320px;">
+                            <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 rounded-4 p-2" style="min-width:320px;" id="notificationList">
                                 <li class="px-2 py-1 fw-bold">Notifications</li>
                                 {% if notifications is defined and notifications %}
                                     {% for notification in notifications[:5] %}
@@ -80,9 +78,9 @@
                             </ul>
                         </li>
                     {% else %}
-                        <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
-                            <a class="btn btn-outline-light me-2 rounded-pill" href="{{ url_for('auth.login') }}">Log In</a>
-                            <a class="btn btn-light text-primary fw-semibold rounded-pill" href="{{ url_for('auth.register') }}">Sign Up</a>
+                        <li class="nav-item ms-lg-2 mt-2 mt-lg-0 d-flex gap-2">
+                            <a class="btn btn-outline-secondary rounded-pill px-4" href="{{ url_for('auth.login') }}">Login</a>
+                            <a class="btn btn-primary rounded-pill px-4" href="{{ url_for('auth.register') }}">Sign Up</a>
                         </li>
                     {% endif %}
                 </ul>
@@ -111,6 +109,28 @@
             <span class="text-muted small">© 2026 Inclusive Match AI — Accessible communication for everyone.</span>
         </div>
     </footer>
+
+    <!-- Mobile Bottom Navigation -->
+    {% if current_user.is_authenticated %}
+    <nav class="mobile-bottom-nav">
+        <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}">
+            <i class="bi bi-compass"></i>
+            <span>Discover</span>
+        </a>
+        <a href="{{ url_for('chat.chat_home') }}" class="{% if request.endpoint and request.endpoint.startswith('chat.') %}active{% endif %}">
+            <i class="bi bi-chat-dots"></i>
+            <span>Messages</span>
+        </a>
+        <a href="{{ url_for('community.home') }}" class="{% if request.endpoint and request.endpoint.startswith('community.') %}active{% endif %}">
+            <i class="bi bi-people"></i>
+            <span>Community</span>
+        </a>
+        <a href="{{ url_for('profile.my_profile') }}" class="{% if request.endpoint and request.endpoint.startswith('profile.') %}active{% endif %}">
+            <i class="bi bi-person"></i>
+            <span>Profile</span>
+        </a>
+    </nav>
+    {% endif %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>

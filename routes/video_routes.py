@@ -100,6 +100,26 @@ def call_user(data):
     return {"ok": True, "call_id": call_id, "message": "Calling the user."}
 
 
+@socketio.on("cancel_call")
+def cancel_call(data):
+    if not current_user.is_authenticated:
+        return {"ok": False, "message": "Please log in again."}
+
+    data = data or {}
+    partner_id = str(data.get("partner_id", "")).strip()
+    call_id = str(data.get("call_id", "")).strip()
+    
+    if not partner_id or not call_id:
+        return {"ok": False}
+        
+    socketio.emit(
+        "call_cancelled",
+        {"call_id": call_id, "caller_id": str(current_user.id)},
+        room=f"user:{partner_id}"
+    )
+    return {"ok": True}
+
+
 @socketio.on("accept_call")
 def accept_call(data):
     if not current_user.is_authenticated:

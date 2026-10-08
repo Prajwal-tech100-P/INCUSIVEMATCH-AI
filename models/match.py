@@ -1,5 +1,15 @@
 from bson import ObjectId
 from extensions import mongo
+import os
+import sys
+
+# Add ai_modules to path so we can import recommender
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'ai_modules'))
+try:
+    from match_recommender import MatchRecommender
+    ai_recommender = MatchRecommender()
+except ImportError:
+    ai_recommender = None
 
 class Match:
     @staticmethod
@@ -40,50 +50,81 @@ class Match:
 
     @staticmethod
     def get_discover_candidates(user_id, comm_pref=None):
+        import logging
         user = mongo.db.users.find_one({"_id": Match._oid(user_id)})
         if not user: return []
+        
         excluded = set(user.get("liked", []) + user.get("disliked", []) + [user_id])
+        # Include blocked users if the application supports it
+        excluded.update(user.get("blocked", []))
+        
         valid_oids = []
         for x in excluded:
             oid = Match._oid(x)
             if oid: valid_oids.append(oid)
+            
+        total_users = mongo.db.users.count_documents({})
         
-        # Base query
-        query = {"_id": {"$nin": valid_oids}, "role": "user", "is_active": True}
+        # Base query: only filter out admins and explicitly inactive users.
+        query = {
+            "_id": {"$nin": valid_oids}, 
+            "role": {"$in": ["user", None]},
+            "is_active": {"$ne": False}
+        }
         if comm_pref: query["comm_pref"] = comm_pref
         
-        # User's filtering preferences
-        u_pref_gender = user.get("pref_gender", "Any")
-        if u_pref_gender != "Any":
-            query["gender"] = u_pref_gender
-            
-        u_pref_min_age = user.get("pref_min_age", 18)
-        u_pref_max_age = user.get("pref_max_age", 99)
-        query["age"] = {"$gte": u_pref_min_age, "$lte": u_pref_max_age}
-
         candidates = list(mongo.db.users.find(query))
+        logging.info(f"DISCOVER DEBUG: Current user: {user_id}")
+        logging.info(f"DISCOVER DEBUG: Total users in DB: {total_users}")
+        logging.info(f"DISCOVER DEBUG: Candidates before filters (from DB): {len(candidates)}")
         
         filtered_candidates = []
         u_age = user.get("age", 18)
         u_gender = user.get("gender", "Not Specified")
-        mine = set(user.get("interests", []))
+        u_pref_gender = user.get("pref_gender", "Any")
+        u_pref_min_age = user.get("pref_min_age", 18)
+        u_pref_max_age = user.get("pref_max_age", 99)
         
+        # Apply STRICT filters based on user's preferences before scoring
         for c in candidates:
-            # Candidate's filtering preferences (Reverse matching)
-            c_pref_gender = c.get("pref_gender", "Any")
-            if c_pref_gender != "Any" and c_pref_gender != u_gender:
+            c_age = c.get("age", 18)
+            c_gender = c.get("gender", "Not Specified")
+            
+            # Strict age filter
+            if c_age < u_pref_min_age or c_age > u_pref_max_age:
                 continue
                 
-            c_pref_min_age = c.get("pref_min_age", 18)
-            c_pref_max_age = c.get("pref_max_age", 99)
-            if not (c_pref_min_age <= u_age <= c_pref_max_age):
+            # Strict gender filter
+            if u_pref_gender != "Any" and u_pref_gender != c_gender:
                 continue
-
-            shared = len(mine & set(c.get("interests", [])))
-            c["_match_score"] = min(100, shared * 15 + (10 if c.get("comm_pref") == user.get("comm_pref") else 0))
+                
             filtered_candidates.append(c)
+
+        if ai_recommender:
+            # Use AI for ranking (it sets the '_match_score' key)
+            filtered_candidates = ai_recommender.rank_candidates(user, filtered_candidates)
+        else:
+            # Fallback scoring if AI recommender is not available
+            mine_interests = set(user.get("interests", []))
+            for c in filtered_candidates:
+                score = 0
+                shared = len(mine_interests & set(c.get("interests", [])))
+                score += min(45, shared * 15)
+                
+                # Comm prefs list intersection
+                u_prefs = user.get("comm_prefs", [])
+                c_prefs = c.get("comm_prefs", [])
+                if set(u_prefs) & set(c_prefs):
+                    score += 10
+                    
+                score += 30 # Base score for passing strict filters
+                c["_match_score"] = min(100, score)
+                
+            filtered_candidates.sort(key=lambda x: x["_match_score"], reverse=True)
             
-        return sorted(filtered_candidates, key=lambda x: x["_match_score"], reverse=True)
+        logging.info(f"DISCOVER DEBUG: Final Discover users: {len(filtered_candidates)}")
+        
+        return filtered_candidates
 
     @staticmethod
     def get_mutual_matches(user_id):

@@ -1,595 +1,742 @@
 {% extends "base.html" %}
 
-{% block title %}My Profile - Inclusive Match AI{% endblock %}
+{% block title %}Profile - Inclusive Match AI{% endblock %}
 
 {% block extra_head %}
 <style>
-/* Multi-step Wizard Styles */
-.wizard-container {
-    max-width: 800px;
-    margin: 0 auto;
-    background: #fff;
-    border-radius: 1rem;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-    overflow: hidden;
-}
+    .profile-container {
+        max-width: 900px;
+        margin: 0 auto;
+        background: #fff;
+        border-radius: 1rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+        overflow: hidden;
+        padding: 2rem;
+    }
+    
+    .profile-header {
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+        margin-bottom: 2rem;
+        padding-bottom: 2rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .profile-pic-container {
+        position: relative;
+        width: 150px;
+        height: 150px;
+        flex-shrink: 0;
+    }
+    
+    .profile-pic {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 50%;
+        border: 4px solid #e2e8f0;
+    }
+    
+    .profile-pic-edit {
+        position: absolute;
+        bottom: 5px;
+        right: 5px;
+        background: #4f46e5;
+        color: white;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
+    }
+    .profile-pic-edit:hover {
+        transform: scale(1.1);
+    }
+    
+    .verified-badge {
+        color: #10b981;
+        font-size: 1.2rem;
+        margin-left: 0.5rem;
+    }
 
-.wizard-header {
-    background: linear-gradient(135deg, #6366f1, #4f46e5);
-    padding: 2rem;
-    color: white;
-}
-
-.stepper {
-    display: flex;
-    justify-content: space-between;
-    position: relative;
-    margin-bottom: 2rem;
-}
-
-.stepper::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: rgba(255,255,255,0.2);
-    transform: translateY(-50%);
-    z-index: 1;
-}
-
-.step-item {
-    position: relative;
-    z-index: 2;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.step-circle {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    transition: all 0.3s ease;
-    border: 2px solid transparent;
-}
-
-.step-item.active .step-circle {
-    background: #fff;
-    color: #4f46e5;
-    box-shadow: 0 0 0 4px rgba(255,255,255,0.2);
-}
-
-.step-item.completed .step-circle {
-    background: #22c55e;
-    color: #fff;
-    border-color: #fff;
-}
-
-.step-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    opacity: 0.7;
-}
-
-.step-item.active .step-label,
-.step-item.completed .step-label {
-    opacity: 1;
-}
-
-.wizard-body {
-    padding: 2rem;
-    min-height: 400px;
-}
-
-.wizard-step {
-    display: none;
-    animation: fadeIn 0.4s ease;
-}
-
-.wizard-step.active {
-    display: block;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.wizard-footer {
-    padding: 1.5rem 2rem;
-    background: #f8fafc;
-    border-top: 1px solid #e2e8f0;
-    display: flex;
-    justify-content: space-between;
-}
-
-/* Specific Step Styles */
-.profile-pic-container {
-    position: relative;
-    width: 150px;
-    height: 150px;
-    margin: 0 auto;
-}
-
-.profile-pic {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: 50%;
-    border: 4px solid #e2e8f0;
-}
-
-.profile-pic-edit {
-    position: absolute;
-    bottom: 5px;
-    right: 5px;
-    background: #4f46e5;
-    color: white;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    transition: transform 0.2s;
-}
-
-.profile-pic-edit:hover {
-    transform: scale(1.1);
-}
-
-/* Face Scan UI */
-.face-scan-container {
-    width: 100%;
-    max-width: 400px;
-    margin: 0 auto;
-    position: relative;
-    border-radius: 50%;
-    overflow: hidden;
-    aspect-ratio: 1;
-    background: #000;
-    border: 8px solid #e2e8f0;
-}
-
-#camera-feed {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transform: scaleX(-1);
-}
-
-.scan-overlay {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    border: 4px solid transparent;
-    transition: all 0.5s ease;
-}
-
-.scan-overlay.scanning {
-    border-color: #3b82f6;
-    animation: pulse 1.5s infinite;
-}
-
-.scan-overlay.success {
-    border-color: #22c55e;
-    background: rgba(34, 197, 94, 0.2);
-}
-
-@keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-    70% { box-shadow: 0 0 0 20px rgba(59, 130, 246, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
-}
-
-.verified-badge {
-    color: #10b981;
-    font-size: 1.2rem;
-    margin-left: 0.5rem;
-}
+    .section-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        color: #1e293b;
+        border-bottom: 2px solid #f1f5f9;
+        padding-bottom: 0.5rem;
+    }
+    
+    .checkbox-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 0.5rem;
+    }
+    
+    .interest-category {
+        margin-bottom: 1.5rem;
+    }
+    .interest-category h6 {
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 0.75rem;
+    }
+    
+    .display-field {
+        margin-bottom: 1rem;
+    }
+    .display-field-label {
+        font-size: 0.875rem;
+        color: #64748b;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .display-field-value {
+        font-size: 1.1rem;
+        color: #0f172a;
+    }
+    
+    .badge-interest {
+        background: #e0e7ff;
+        color: #4f46e5;
+        font-weight: 500;
+        padding: 0.4em 0.8em;
+        margin: 0.2rem;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container py-5">
+    <div class="profile-container">
+        
+        {% if edit_mode %}
+        
+<div class="progress-wrapper mb-4" id="wizard-progress-wrapper">
+    <div class="d-flex justify-content-between mb-2 small text-muted fw-bold d-none d-md-flex">
+        <span class="step-lbl" id="lbl-1">Basic</span>
+        <span class="step-lbl" id="lbl-2">About</span>
+        <span class="step-lbl" id="lbl-3">Communication</span>
+        <span class="step-lbl" id="lbl-4">Goal</span>
+        <span class="step-lbl" id="lbl-5">Preferences</span>
+        <span class="step-lbl" id="lbl-6">Verification</span>
+    </div>
+    <div class="text-center mb-2 small fw-bold d-md-none" id="mobile-step-lbl">Step 1: Basic</div>
+    <div class="progress" style="height: 8px; border-radius: 4px;">
+        <div class="progress-bar bg-primary" id="wizard-progress" role="progressbar" style="width: 16%; transition: width 0.3s;" aria-valuenow="16" aria-valuemin="0" aria-valuemax="100"></div>
+    </div>
+</div>
+
+<form id="profile-form" action="{{ url_for('profile.edit_profile') }}" method="POST" enctype="multipart/form-data">
     
-    <div class="wizard-container">
-        <!-- Header & Stepper -->
-        <div class="wizard-header">
-            <h3 class="mb-4 text-center fw-bold">Build Your Profile</h3>
-            <div class="stepper">
-                <div class="step-item active" data-step="1">
-                    <div class="step-circle">1</div>
-                    <div class="step-label">Basic</div>
+    <!-- STEP 1: Basic Information -->
+    <div class="wizard-step" id="step-1">
+        <h4 class="section-title mb-4">1. Basic Information</h4>
+        <div class="row mb-4">
+            <div class="col-md-3 text-center">
+                <div class="profile-pic-container mx-auto">
+                    <img src="{{ url_for('static', filename='uploads/' + user.profile_photo) }}" 
+                         id="preview-img" class="profile-pic" alt="Profile Picture"
+                         onerror="this.src='https://ui-avatars.com/api/?name={{ user.first_name | urlencode }}&background=6366f1&color=fff&size=150'">
+                    <label for="profile_pic" class="profile-pic-edit" title="Change Photo">
+                        <i class="bi bi-camera-fill"></i>
+                    </label>
+                    <input type="file" name="profile_pic" id="profile_pic" class="d-none" accept="image/*">
                 </div>
-                <div class="step-item" data-step="2">
-                    <div class="step-circle">2</div>
-                    <div class="step-label">Location</div>
+            </div>
+            <div class="col-md-9">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">First Name *</label>
+                        <input type="text" name="first_name" id="val-first-name" class="form-control" value="{{ user.first_name }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Surname *</label>
+                        <input type="text" name="surname" id="val-surname" class="form-control" value="{{ user.surname }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">Age *</label>
+                        <input type="number" name="age" id="val-age" class="form-control" value="{{ user.age }}" min="18" max="120" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">Gender *</label>
+                        <select name="gender" id="val-gender" class="form-select" required>
+                            <option value="Male" {% if user.gender == 'Male' %}selected{% endif %}>Male</option>
+                            <option value="Female" {% if user.gender == 'Female' %}selected{% endif %}>Female</option>
+                            <option value="Non-binary" {% if user.gender == 'Non-binary' %}selected{% endif %}>Non-binary</option>
+                            <option value="Other" {% if user.gender == 'Other' %}selected{% endif %}>Other</option>
+                            <option value="Prefer not to say" {% if user.gender == 'Prefer not to say' %}selected{% endif %}>Prefer not to say</option>
+                        </select>
+                    </div>
+                    <div class="col-12 mt-4">
+                        <h6 class="fw-bold">Location</h6>
+                        <div class="mb-3">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="location_mode" id="loc_current" value="current" {% if user.location.mode == 'current' %}checked{% endif %}>
+                                <label class="form-check-label" for="loc_current">Use Current Location</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="location_mode" id="loc_manual" value="manual" {% if user.location.mode != 'current' %}checked{% endif %}>
+                                <label class="form-check-label" for="loc_manual">Enter Location Manually</label>
+                            </div>
+                        </div>
+
+                        <div id="location_current_wrapper" class="mb-3 p-3 bg-light rounded" {% if user.location.mode != 'current' %}style="display:none;"{% endif %}>
+                            <button type="button" id="btn-get-location" class="btn btn-outline-primary mb-2">
+                                <i class="bi bi-geo-alt-fill me-2"></i> Detect My Location
+                            </button>
+                            <div id="location-status" class="small mt-2 text-muted"></div>
+                            
+                            <input type="hidden" name="latitude" id="lat" value="{{ user.location.latitude or '' }}">
+                            <input type="hidden" name="longitude" id="lon" value="{{ user.location.longitude or '' }}">
+                            <input type="hidden" name="city" id="city" value="{{ user.location.city or '' }}">
+                            <input type="hidden" name="state" id="state" value="{{ user.location.state or '' }}">
+                            <input type="hidden" name="country" id="country" value="{{ user.location.country or '' }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Location Name (Displayed on profile) *</label>
+                            <input type="text" name="location_display" id="val-location" class="form-control" value="{{ user.location.display_name }}" placeholder="e.g. Bengaluru, Karnataka, India">
+                            <div class="form-text">For your privacy, we only show this text on your profile, not your exact coordinates.</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="step-item" data-step="3">
-                    <div class="step-circle">3</div>
-                    <div class="step-label">Details</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STEP 2: About You -->
+    <div class="wizard-step d-none" id="step-2">
+        <h4 class="section-title mb-4">2. About You</h4>
+        <div class="row">
+            <div class="col-12">
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Bio</label>
+                    <textarea name="bio" class="form-control" rows="3" placeholder="Tell others a bit about yourself...">{{ user.bio }}</textarea>
                 </div>
-                <div class="step-item" data-step="4">
-                    <div class="step-circle">4</div>
-                    <div class="step-label">Match Prefs</div>
+                
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Marital Status *</label>
+                    <select name="marital_status" id="val-marital" class="form-select w-50" required>
+                        <option value="Single" {% if user.marital_status == 'Single' %}selected{% endif %}>Single</option>
+                        <option value="Divorced" {% if user.marital_status == 'Divorced' %}selected{% endif %}>Divorced</option>
+                        <option value="Widowed" {% if user.marital_status == 'Widowed' %}selected{% endif %}>Widowed</option>
+                        <option value="Separated" {% if user.marital_status == 'Separated' %}selected{% endif %}>Separated</option>
+                        <option value="Prefer not to say" {% if user.marital_status == 'Prefer not to say' %}selected{% endif %}>Prefer not to say</option>
+                    </select>
                 </div>
-                <div class="step-item" data-step="5">
-                    <div class="step-circle">5</div>
-                    <div class="step-label">Verify</div>
+
+                <label class="form-label fw-semibold mb-3">Interests & Hobbies</label>
+                {% for cat, cat_interests in interests_cats.items() %}
+                <div class="interest-category">
+                    <h6>{{ cat }}</h6>
+                    <div class="checkbox-grid">
+                        {% for interest in cat_interests %}
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="interests" value="{{ interest }}" id="int_{{ interest|replace(' ', '') }}" {% if interest in user.interests %}checked{% endif %}>
+                            <label class="form-check-label" for="int_{{ interest|replace(' ', '') }}">{{ interest }}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- STEP 3: Communication -->
+    <div class="wizard-step d-none" id="step-3">
+        <h4 class="section-title mb-4">3. Communication</h4>
+        <div class="row">
+            <div class="col-12">
+                <label class="form-label fw-semibold">How do you prefer to communicate? *</label>
+                <div class="form-text mb-3">Select at least one communication preference.</div>
+                <div class="row g-3">
+                    {% set comm_opts = ['Text Chat', 'Sign Language', 'Voice', 'Video Call', 'Mixed / Multiple'] %}
+                    {% for opt in comm_opts %}
+                    <div class="col-md-6">
+                        <div class="form-check p-3 border rounded bg-light">
+                            <input class="form-check-input ms-1 me-2 val-comm" type="checkbox" name="communication_preferences" value="{{ opt }}" id="comm_{{ loop.index }}" {% if opt in user.communication_preferences %}checked{% endif %}>
+                            <label class="form-check-label fw-medium w-100" for="comm_{{ loop.index }}">{{ opt }}</label>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STEP 4: Relationship Goal -->
+    <div class="wizard-step d-none" id="step-4">
+        <h4 class="section-title mb-4">4. Relationship Goal</h4>
+        <div class="row">
+            <div class="col-12">
+                <label class="form-label fw-semibold">What are you looking for on this platform? *</label>
+                <select name="relationship_goal" id="val-goal" class="form-select form-select-lg mt-2">
+                    <option value="" disabled {% if not user.relationship_goal %}selected{% endif %}>Select a goal...</option>
+                    <option value="Friendship" {% if user.relationship_goal == 'Friendship' %}selected{% endif %}>Friendship</option>
+                    <option value="Casual Dating" {% if user.relationship_goal == 'Casual Dating' %}selected{% endif %}>Casual Dating</option>
+                    <option value="Serious Relationship" {% if user.relationship_goal == 'Serious Relationship' %}selected{% endif %}>Serious Relationship</option>
+                    <option value="Long-Term Relationship" {% if user.relationship_goal == 'Long-Term Relationship' %}selected{% endif %}>Long-Term Relationship</option>
+                    <option value="Marriage" {% if user.relationship_goal == 'Marriage' %}selected{% endif %}>Marriage</option>
+                    <option value="Open to Options" {% if user.relationship_goal == 'Open to Options' %}selected{% endif %}>Open to Options</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- STEP 5: Matching Preferences -->
+    <div class="wizard-step d-none" id="step-5">
+        <h4 class="section-title mb-4">5. Matching Preferences</h4>
+        <div class="row g-4">
+            <div class="col-md-6">
+                <label class="form-label fw-semibold mb-2">Preferred Age Range *</label>
+                <div class="input-group">
+                    <span class="input-group-text">Min</span>
+                    <input type="number" name="pref_min_age" id="pref_min_age" class="form-control" value="{{ user.matching_preferences.min_age }}" min="18" max="120" required>
+                    <span class="input-group-text">Max</span>
+                    <input type="number" name="pref_max_age" id="pref_max_age" class="form-control" value="{{ user.matching_preferences.max_age }}" min="18" max="120" required>
+                </div>
+                <div id="age-error" class="text-danger small mt-1 d-none">Minimum age cannot be greater than maximum age.</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-semibold mb-2">Preferred Gender *</label>
+                <div class="form-text mb-2">Select at least one.</div>
+                <div class="checkbox-grid">
+                    {% set gender_opts = ['Male', 'Female', 'Non-binary', 'Other', 'Any'] %}
+                    {% for opt in gender_opts %}
+                    <div class="form-check">
+                        <input class="form-check-input val-pref-gender" type="checkbox" name="preferred_genders" value="{{ opt }}" id="pref_gen_{{ loop.index }}" {% if opt in user.matching_preferences.preferred_genders %}checked{% endif %}>
+                        <label class="form-check-label" for="pref_gen_{{ loop.index }}">{{ opt }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STEP 6: Verification -->
+    <div class="wizard-step d-none" id="step-6">
+        <h4 class="section-title mb-4">6. Profile Verification</h4>
+        <div class="row">
+            <div class="col-md-8 mx-auto text-center">
+                <div class="card border-0 bg-light shadow-sm p-4">
+                    <h5 class="fw-bold mb-3">Verify your identity</h5>
+                    <p class="text-muted mb-4">We use a live camera check to verify that you match your profile photo. This helps keep our community safe.</p>
+                    
+                    <div class="mb-4">
+                        Status: 
+                        <span id="verification-status-badge">
+                        {% if user.face_verified %}
+                            <strong class="text-success fs-5"><i class="bi bi-patch-check-fill"></i> VERIFIED ✓</strong>
+                        {% else %}
+                            <strong class="text-warning fs-5">NOT VERIFIED</strong>
+                        {% endif %}
+                        </span>
+                    </div>
+
+                    <div id="camera-container" class="d-none mb-3 text-center">
+                        <video id="verify-video" autoplay playsinline style="width: 100%; max-width: 320px; border-radius: 10px; border: 2px solid #4f46e5;"></video>
+                        <canvas id="verify-canvas" class="d-none"></canvas>
+                    </div>
+
+                    <div id="verify-error" class="alert alert-danger d-none small"></div>
+                    <div id="verify-success" class="alert alert-success d-none small"></div>
+
+                    <button type="button" id="btn-start-verify" class="btn btn-primary px-4 py-2">
+                        <i class="bi bi-camera-video-fill me-2"></i> Start Verification
+                    </button>
+                    
+                    <div id="verify-loading" class="d-none mt-3">
+                        <div class="spinner-border text-primary spinner-border-sm" role="status"></div>
+                        <span class="ms-2 fw-bold text-primary">VERIFYING...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between mt-5 pt-3 border-top">
+        <button type="button" class="btn btn-outline-secondary px-4 d-none" id="btn-prev"><i class="bi bi-arrow-left"></i> Back</button>
+        <button type="button" class="btn btn-primary px-5 ms-auto" id="btn-next">Next <i class="bi bi-arrow-right"></i></button>
+        <button type="submit" class="btn btn-success px-5 ms-auto d-none" id="btn-save"><i class="bi bi-check-circle me-1"></i> Save Profile</button>
+    </div>
+</form>
+
+        {% else %}
+        
+        <!-- DISPLAY MODE (Other users viewing this profile) -->
+        <div class="profile-header">
+            <div class="profile-pic-container">
+                <img src="{{ url_for('static', filename='uploads/' + user.profile_photo) }}" 
+                     class="profile-pic" alt="Profile Picture"
+                     onerror="this.src='https://ui-avatars.com/api/?name={{ user.first_name | urlencode }}&background=6366f1&color=fff&size=150'">
+            </div>
+            <div>
+                <h2 class="mb-1 fw-bold">
+                    {{ user.first_name }} {{ user.surname }}, {{ user.age }}
+                    {% if user.face_verified %}
+                        <i class="bi bi-patch-check-fill verified-badge" title="Verified"></i>
+                    {% endif %}
+                </h2>
+                <h5 class="text-muted mb-2">{{ user.gender }}</h5>
+                {% if user.location.display_name %}
+                <div class="text-secondary"><i class="bi bi-geo-alt-fill text-danger me-1"></i> {{ user.location.display_name }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-7">
+                {% if user.bio %}
+                <div class="mb-4">
+                    <div class="display-field-label mb-2">About</div>
+                    <div class="display-field-value">{{ user.bio }}</div>
+                </div>
+                {% endif %}
+
+                {% if user.interests %}
+                <div class="mb-4">
+                    <div class="display-field-label mb-2">Interests</div>
+                    <div>
+                        {% for interest in user.interests %}
+                        <span class="badge badge-interest"><i class="bi bi-check2"></i> {{ interest }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="col-md-5">
+                <div class="p-4 bg-light rounded-3">
+                    <div class="display-field">
+                        <div class="display-field-label">Communication</div>
+                        <div class="display-field-value">
+                            {% if user.communication_preferences %}
+                                {{ user.communication_preferences | join(', ') }}
+                            {% else %}
+                                Not specified
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="display-field">
+                        <div class="display-field-label">Relationship Goal</div>
+                        <div class="display-field-value">{{ user.relationship_goal }}</div>
+                    </div>
+
+                    <div class="display-field">
+                        <div class="display-field-label">Looking For</div>
+                        <div class="display-field-value">
+                            {% if user.matching_preferences.preferred_genders %}
+                                {{ user.matching_preferences.preferred_genders | join(', ') }}
+                            {% else %}
+                                Any
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="display-field mb-0">
+                        <div class="display-field-label">Age Preference</div>
+                        <div class="display-field-value">{{ user.matching_preferences.min_age }} – {{ user.matching_preferences.max_age }}</div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <form id="profile-form" action="{{ url_for('profile.edit_profile') }}" method="POST" enctype="multipart/form-data">
-            
-            <div class="wizard-body">
-                
-                <!-- STEP 1: Basic Info -->
-                <div class="wizard-step active" id="step-1">
-                    <h4 class="mb-4 fw-bold">Basic Information</h4>
-                    
-                    <div class="text-center mb-4">
-                        <div class="profile-pic-container">
-                            <img src="{{ url_for('static', filename='uploads/' + user.profile_pic) }}" 
-                                 id="preview-img" class="profile-pic" alt="Profile Picture"
-                                 onerror="this.src='https://ui-avatars.com/api/?name={{ user.name | urlencode }}&background=6366f1&color=fff&size=150'">
-                            <label for="profile_pic" class="profile-pic-edit" title="Change Photo">
-                                <i class="bi bi-camera-fill"></i>
-                            </label>
-                            <input type="file" name="profile_pic" id="profile_pic" class="d-none" accept="image/*">
-                        </div>
-                    </div>
+        {% if current_user.id == user.id %}
+        <div class="mt-4 text-center">
+            <a href="{{ url_for('profile.edit_profile') }}" class="btn btn-outline-primary px-4">Edit Profile</a>
+        </div>
+        {% endif %}
+        
+        {% endif %}
 
-                    <div class="row g-3">
-                        <div class="col-md-12">
-                            <label class="form-label fw-semibold">Name (From Account)</label>
-                            <input type="text" class="form-control" value="{{ user.name }}" disabled>
-                            {% if user.is_verified %}
-                                <div class="mt-2 text-success fw-bold"><i class="bi bi-patch-check-fill"></i> Profile Verified</div>
-                            {% endif %}
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Age</label>
-                            <input type="number" name="age" class="form-control" value="{{ user.age }}" min="18" max="120" required>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Gender</label>
-                            <select name="gender" class="form-select" required>
-                                <option value="Man" {% if user.gender == 'Man' %}selected{% endif %}>Man</option>
-                                <option value="Woman" {% if user.gender == 'Woman' %}selected{% endif %}>Woman</option>
-                                <option value="Non-binary" {% if user.gender == 'Non-binary' %}selected{% endif %}>Non-binary</option>
-                                <option value="Other" {% if user.gender == 'Other' %}selected{% endif %}>Other</option>
-                                <option value="Not Specified" {% if user.gender == 'Not Specified' %}selected{% endif %}>Prefer not to say</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- STEP 2: Location -->
-                <div class="wizard-step" id="step-2">
-                    <h4 class="mb-4 fw-bold">Where are you located?</h4>
-                    <p class="text-muted mb-4">Sharing your location helps us find matches near you.</p>
-
-                    <div class="mb-4 text-center">
-                        <button type="button" id="btn-get-location" class="btn btn-outline-primary rounded-pill px-4 py-2">
-                            <i class="bi bi-geo-alt-fill me-2"></i> Use Current Location
-                        </button>
-                        <div id="location-status" class="small mt-2 text-muted"></div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Or enter manually:</label>
-                        <input type="text" name="location" id="location-input" class="form-control" 
-                               value="{{ user.location }}" placeholder="e.g. London, UK">
-                    </div>
-                </div>
-
-                <!-- STEP 3: Details -->
-                <div class="wizard-step" id="step-3">
-                    <h4 class="mb-4 fw-bold">About You</h4>
-                    
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Bio</label>
-                        <textarea name="bio" class="form-control" rows="3" placeholder="Tell potential matches a little about yourself...">{{ user.bio }}</textarea>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Interests</label>
-                        <select name="interests" class="form-select" multiple style="height: 120px;">
-                            {% for interest in interests %}
-                            <option value="{{ interest }}" {% if interest in user.interests %}selected{% endif %}>{{ interest }}</option>
-                            {% endfor %}
-                        </select>
-                        <div class="form-text">Hold Ctrl/Cmd to select multiple.</div>
-                    </div>
-
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Preferred Communication</label>
-                            <select name="comm_pref" class="form-select">
-                                <option value="text" {% if user.comm_pref == 'text' %}selected{% endif %}>Text / Chat</option>
-                                <option value="sign" {% if user.comm_pref == 'sign' %}selected{% endif %}>Sign Language Video</option>
-                                <option value="voice" {% if user.comm_pref == 'voice' %}selected{% endif %}>Voice / Video Call</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Relationship Goal</label>
-                            <select name="relationship_goal" class="form-select">
-                                <option value="Friendship" {% if user.relationship_goal == 'Friendship' %}selected{% endif %}>Friendship</option>
-                                <option value="Dating" {% if user.relationship_goal == 'Dating' %}selected{% endif %}>Dating</option>
-                                <option value="Networking" {% if user.relationship_goal == 'Networking' %}selected{% endif %}>Networking</option>
-                                <option value="Not Sure Yet" {% if user.relationship_goal == 'Not Sure Yet' %}selected{% endif %}>Not sure yet</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- STEP 4: Matching Preferences -->
-                <div class="wizard-step" id="step-4">
-                    <h4 class="mb-4 fw-bold">Who are you looking for?</h4>
-                    <p class="text-muted mb-4">Set your preferences to improve your Discover feed.</p>
-
-                    <div class="mb-4">
-                        <label class="form-label fw-semibold">Preferred Gender</label>
-                        <select name="pref_gender" class="form-select">
-                            <option value="Any" {% if user.pref_gender == 'Any' %}selected{% endif %}>Open to everyone</option>
-                            <option value="Man" {% if user.pref_gender == 'Man' %}selected{% endif %}>Men</option>
-                            <option value="Woman" {% if user.pref_gender == 'Woman' %}selected{% endif %}>Women</option>
-                            <option value="Non-binary" {% if user.pref_gender == 'Non-binary' %}selected{% endif %}>Non-binary</option>
-                        </select>
-                    </div>
-
-                    <div class="row g-3 align-items-center">
-                        <div class="col-12"><label class="form-label fw-semibold mb-0">Age Range</label></div>
-                        <div class="col-md-5">
-                            <div class="input-group">
-                                <span class="input-group-text">Min</span>
-                                <input type="number" name="pref_min_age" class="form-control" value="{{ user.pref_min_age }}" min="18" max="120">
-                            </div>
-                        </div>
-                        <div class="col-md-2 text-center text-muted">to</div>
-                        <div class="col-md-5">
-                            <div class="input-group">
-                                <span class="input-group-text">Max</span>
-                                <input type="number" name="pref_max_age" class="form-control" value="{{ user.pref_max_age }}" min="18" max="120">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- STEP 5: Verification -->
-                <div class="wizard-step" id="step-5">
-                    <div class="text-center">
-                        {% if user.is_verified %}
-                            <div class="mb-4">
-                                <i class="bi bi-patch-check-fill text-success" style="font-size: 5rem;"></i>
-                            </div>
-                            <h4 class="fw-bold text-success">Profile Verified</h4>
-                            <p class="text-muted">Your identity has been verified. You're all set!</p>
-                        {% else %}
-                            <h4 class="mb-2 fw-bold">Verify Your Identity</h4>
-                            <p class="text-muted mb-4">Complete a quick face scan to get a verified badge and build trust.</p>
-
-                            <div class="face-scan-container mb-4" id="scan-container">
-                                <video id="camera-feed" autoplay playsinline muted></video>
-                                <div class="scan-overlay" id="scan-overlay"></div>
-                                
-                                <div id="camera-placeholder" class="position-absolute inset-0 d-flex flex-column align-items-center justify-content-center bg-light w-100 h-100" style="top:0; left:0;">
-                                    <i class="bi bi-camera text-muted" style="font-size: 3rem;"></i>
-                                    <span class="text-muted mt-2">Camera disabled</span>
-                                </div>
-                            </div>
-
-                            <div id="verify-controls">
-                                <button type="button" id="btn-start-camera" class="btn btn-outline-primary mb-2">Enable Camera</button>
-                                <button type="button" id="btn-scan" class="btn btn-primary d-none mb-2">
-                                    <i class="bi bi-person-bounding-box me-2"></i> Start Scan
-                                </button>
-                            </div>
-                            
-                            <div id="verify-status" class="mt-2 fw-bold"></div>
-                        {% endif %}
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- Footer Controls -->
-            <div class="wizard-footer">
-                <button type="button" class="btn btn-outline-secondary px-4" id="btn-prev" style="display: none;">Back</button>
-                <div class="ms-auto">
-                    <!-- Added a skip button specifically for step 5 if they don't want to verify -->
-                    <button type="button" class="btn btn-light px-4 me-2" id="btn-skip" style="display: none;">Skip</button>
-                    <button type="button" class="btn btn-primary px-5" id="btn-next">Next</button>
-                    <button type="submit" class="btn btn-success px-5" id="btn-submit" style="display: none;">Save Profile</button>
-                </div>
-            </div>
-        </form>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
+{% if edit_mode %}
+
 <script>
 document.addEventListener("DOMContentLoaded", function() {
+    // ---------------------------
+    // WIZARD LOGIC
+    // ---------------------------
     let currentStep = 1;
-    const totalSteps = 5;
-    
-    const nextBtn = document.getElementById('btn-next');
-    const prevBtn = document.getElementById('btn-prev');
-    const skipBtn = document.getElementById('btn-skip');
-    const submitBtn = document.getElementById('btn-submit');
-    
-    function updateWizard() {
-        // Update steps visibility
-        document.querySelectorAll('.wizard-step').forEach(el => el.classList.remove('active'));
-        document.getElementById(`step-${currentStep}`).classList.add('active');
-        
-        // Update stepper UI
-        document.querySelectorAll('.step-item').forEach(el => {
-            const stepNum = parseInt(el.getAttribute('data-step'));
-            el.classList.remove('active', 'completed');
-            if (stepNum === currentStep) {
-                el.classList.add('active');
-            } else if (stepNum < currentStep) {
-                el.classList.add('completed');
+    const totalSteps = 6;
+    const form = document.getElementById('profile-form');
+    const btnNext = document.getElementById('btn-next');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnSave = document.getElementById('btn-save');
+    const progressBar = document.getElementById('wizard-progress');
+    const mobileStepLbl = document.getElementById('mobile-step-lbl');
+
+    function updateWizardUI() {
+        // Hide all steps
+        for(let i=1; i<=totalSteps; i++){
+            const el = document.getElementById('step-'+i);
+            if(el) el.classList.add('d-none');
+            
+            const lbl = document.getElementById('lbl-'+i);
+            if(lbl) {
+                if(i < currentStep) lbl.className = 'step-lbl text-success';
+                else if (i === currentStep) lbl.className = 'step-lbl text-primary text-decoration-underline';
+                else lbl.className = 'step-lbl text-muted';
             }
-        });
+        }
+        // Show current step
+        document.getElementById('step-'+currentStep).classList.remove('d-none');
         
-        // Update buttons
-        prevBtn.style.display = currentStep > 1 ? 'block' : 'none';
+        // Progress bar
+        const pct = Math.round((currentStep / totalSteps) * 100);
+        progressBar.style.width = pct + '%';
         
-        if (currentStep === totalSteps) {
-            nextBtn.style.display = 'none';
-            submitBtn.style.display = 'block';
-            skipBtn.style.display = 'none'; // Not showing skip on last step, just Save
-        } else if (currentStep === 5) { 
-            // In case we want to show skip on verify step before the end
+        // Mobile label
+        const labels = ['Basic', 'About', 'Communication', 'Goal', 'Preferences', 'Verification'];
+        if(mobileStepLbl) mobileStepLbl.textContent = 'Step ' + currentStep + ': ' + labels[currentStep-1];
+
+        // Buttons
+        if(currentStep === 1) {
+            btnPrev.classList.add('d-none');
         } else {
-            nextBtn.style.display = 'block';
-            submitBtn.style.display = 'none';
-            skipBtn.style.display = 'none';
+            btnPrev.classList.remove('d-none');
+        }
+
+        if(currentStep === totalSteps) {
+            btnNext.classList.add('d-none');
+            btnSave.classList.remove('d-none');
+        } else {
+            btnNext.classList.remove('d-none');
+            btnSave.classList.add('d-none');
         }
     }
 
-    nextBtn.addEventListener('click', () => {
-        // Optional: Add form validation logic here before allowing next
-        if (currentStep < totalSteps) {
-            currentStep++;
-            updateWizard();
+    function validateStep(step) {
+        let valid = true;
+        let msg = "";
+        if(step === 1) {
+            if(!document.getElementById('val-first-name').value.trim()) valid = false;
+            if(!document.getElementById('val-surname').value.trim()) valid = false;
+            if(!document.getElementById('val-age').value) valid = false;
+            if(!document.getElementById('val-gender').value) valid = false;
+            if(!document.getElementById('val-location').value.trim()) valid = false;
+            if(!valid) msg = "Please fill in all required basic information fields.";
         }
+        else if(step === 2) {
+            if(!document.getElementById('val-marital').value) { valid = false; msg = "Please select your marital status."; }
+        }
+        else if(step === 3) {
+            const comms = document.querySelectorAll('.val-comm:checked');
+            if(comms.length === 0) { valid = false; msg = "Please select at least one communication preference."; }
+        }
+        else if(step === 4) {
+            if(!document.getElementById('val-goal').value) { valid = false; msg = "Please select your relationship goal."; }
+        }
+        else if(step === 5) {
+            const minA = parseInt(document.getElementById('pref_min_age').value);
+            const maxA = parseInt(document.getElementById('pref_max_age').value);
+            if(isNaN(minA) || isNaN(maxA) || minA > maxA) {
+                valid = false; msg = "Please enter a valid age range (min <= max).";
+                document.getElementById('age-error').classList.remove('d-none');
+            } else {
+                document.getElementById('age-error').classList.add('d-none');
+            }
+            const prefs = document.querySelectorAll('.val-pref-gender:checked');
+            if(prefs.length === 0) { valid = false; msg = "Please select at least one preferred gender."; }
+        }
+        
+        if(!valid && msg) {
+            alert(msg);
+        }
+        return valid;
+    }
+
+    async function saveProgressBackground() {
+        const formData = new FormData(form);
+        try {
+            await fetch(form.action, { method: 'POST', body: formData });
+        } catch(e) {
+            console.warn("Background save failed", e);
+        }
+    }
+
+    btnNext.addEventListener('click', () => {
+        if(!validateStep(currentStep)) return;
+        saveProgressBackground();
+        currentStep++;
+        updateWizardUI();
     });
 
-    prevBtn.addEventListener('click', () => {
-        if (currentStep > 1) {
-            currentStep--;
-            updateWizard();
-        }
+    btnPrev.addEventListener('click', () => {
+        currentStep--;
+        updateWizardUI();
     });
 
-    // Profile Pic Preview
+    // ---------------------------
+    // EXISTING LOGIC (Photo, Location)
+    // ---------------------------
     const picInput = document.getElementById('profile_pic');
     const picPreview = document.getElementById('preview-img');
-    picInput.addEventListener('change', function() {
-        if (this.files && this.files[0]) {
-            const reader = new FileReader();
-            reader.onload = e => picPreview.src = e.target.result;
-            reader.readAsDataURL(this.files[0]);
-        }
-    });
-
-    // Geolocation for Step 2
-    const btnGeo = document.getElementById('btn-get-location');
-    const locInput = document.getElementById('location-input');
-    const locStatus = document.getElementById('location-status');
-
-    btnGeo.addEventListener('click', () => {
-        if (!navigator.geolocation) {
-            locStatus.textContent = 'Geolocation is not supported by your browser.';
-            return;
-        }
-        
-        locStatus.innerHTML = '<i class="bi bi-hourglass-split"></i> Locating...';
-        btnGeo.disabled = true;
-
-        navigator.geolocation.getCurrentPosition(
-            async (position) => {
-                const lat = position.coords.latitude;
-                const lon = position.coords.longitude;
-                try {
-                    // Reverse geocoding using Nominatim (free, no API key required for low volume)
-                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
-                    const data = await res.json();
-                    
-                    let city = data.address.city || data.address.town || data.address.village || "";
-                    let country = data.address.country || "";
-                    
-                    if (city && country) {
-                        locInput.value = `${city}, ${country}`;
-                    } else {
-                        locInput.value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`; // fallback
-                    }
-                    locStatus.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Location found!</span>';
-                } catch (e) {
-                    locInput.value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-                    locStatus.innerHTML = '<span class="text-warning">Could not get city name, using coordinates.</span>';
-                }
-                btnGeo.disabled = false;
-            },
-            (error) => {
-                locStatus.innerHTML = '<span class="text-danger">Unable to retrieve your location.</span>';
-                btnGeo.disabled = false;
+    if(picInput) {
+        picInput.addEventListener('change', function() {
+            if (this.files && this.files[0]) {
+                const reader = new FileReader();
+                reader.onload = e => picPreview.src = e.target.result;
+                reader.readAsDataURL(this.files[0]);
             }
-        );
+        });
+    }
+
+    const locRadios = document.querySelectorAll('input[name="location_mode"]');
+    const locCurrentWrapper = document.getElementById('location_current_wrapper');
+    const displayInput = document.getElementById('val-location');
+    locRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            if(e.target.value === 'current') {
+                locCurrentWrapper.style.display = 'block';
+                displayInput.readOnly = true;
+            } else {
+                locCurrentWrapper.style.display = 'none';
+                displayInput.readOnly = false;
+            }
+        });
     });
 
-    // Face Scan Verification (Step 5)
-    const btnStartCamera = document.getElementById('btn-start-camera');
-    const btnScan = document.getElementById('btn-scan');
-    const videoElement = document.getElementById('camera-feed');
-    const placeholder = document.getElementById('camera-placeholder');
-    const scanOverlay = document.getElementById('scan-overlay');
-    const verifyStatus = document.getElementById('verify-status');
+    const btnGeo = document.getElementById('btn-get-location');
+    const locStatus = document.getElementById('location-status');
+    const latInput = document.getElementById('lat');
+    const lonInput = document.getElementById('lon');
+    const cityInput = document.getElementById('city');
+    const stateInput = document.getElementById('state');
+    const countryInput = document.getElementById('country');
+    if(btnGeo) {
+        btnGeo.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                locStatus.innerHTML = '<span class="text-danger">Geolocation is not supported by your browser.</span>';
+                return;
+            }
+            locStatus.innerHTML = '<i class="bi bi-hourglass-split"></i> Requesting location access...';
+            btnGeo.disabled = true;
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    latInput.value = lat;
+                    lonInput.value = lon;
+                    try {
+                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+                        const data = await res.json();
+                        let city = data.address.city || data.address.town || data.address.village || "";
+                        let state = data.address.state || "";
+                        let country = data.address.country || "";
+                        cityInput.value = city; stateInput.value = state; countryInput.value = country;
+                        let displayParts = [];
+                        if(city) displayParts.push(city);
+                        if(state) displayParts.push(state);
+                        if(country) displayParts.push(country);
+                        if(displayParts.length > 0) displayInput.value = displayParts.join(', ');
+                        else displayInput.value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                        locStatus.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Location retrieved successfully!</span>';
+                    } catch (e) {
+                        displayInput.value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                        locStatus.innerHTML = '<span class="text-warning">Could not get city name, using coordinates.</span>';
+                    }
+                    btnGeo.disabled = false;
+                },
+                (error) => {
+                    let msg = "Unable to retrieve your location.";
+                    if(error.code === 1) msg = "Location permission denied. Please enter manually.";
+                    locStatus.innerHTML = `<span class="text-danger">${msg}</span>`;
+                    btnGeo.disabled = false;
+                    document.getElementById('loc_manual').click();
+                }
+            );
+        });
+    }
+
+    // ---------------------------
+    // VERIFICATION LOGIC
+    // ---------------------------
+    const btnVerify = document.getElementById('btn-start-verify');
+    const camContainer = document.getElementById('camera-container');
+    const video = document.getElementById('verify-video');
+    const canvas = document.getElementById('verify-canvas');
+    const verifyLoading = document.getElementById('verify-loading');
+    const errBox = document.getElementById('verify-error');
+    const succBox = document.getElementById('verify-success');
+    const statusBadge = document.getElementById('verification-status-badge');
     let stream = null;
 
-    if (btnStartCamera) {
-        btnStartCamera.addEventListener('click', async () => {
+    btnVerify.addEventListener('click', async () => {
+        errBox.classList.add('d-none');
+        succBox.classList.add('d-none');
+        
+        if(!stream) {
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                videoElement.srcObject = stream;
-                placeholder.classList.add('d-none');
-                btnStartCamera.classList.add('d-none');
-                btnScan.classList.remove('d-none');
-            } catch (err) {
-                console.error("Camera error:", err);
-                verifyStatus.innerHTML = '<span class="text-danger">Camera access denied or unavailable.</span>';
+                video.srcObject = stream;
+                camContainer.classList.remove('d-none');
+                btnVerify.innerHTML = '<i class="bi bi-camera-fill me-2"></i> Capture & Verify';
+                btnVerify.classList.replace('btn-primary', 'btn-warning');
+            } catch(e) {
+                errBox.textContent = "Camera access denied or unavailable.";
+                errBox.classList.remove('d-none');
             }
-        });
-    }
-
-    if (btnScan) {
-        btnScan.addEventListener('click', async () => {
-            btnScan.disabled = true;
-            scanOverlay.classList.add('scanning');
-            verifyStatus.textContent = 'Scanning face geometry...';
+        } else {
+            // Capture frame
+            btnVerify.disabled = true;
+            verifyLoading.classList.remove('d-none');
             
-            // Simulate processing delay
-            setTimeout(async () => {
-                scanOverlay.classList.remove('scanning');
-                scanOverlay.classList.add('success');
-                verifyStatus.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Verification successful!</span>';
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+
+            try {
+                const res = await fetch("{{ url_for('profile.verify_profile') }}", {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ image: imageData })
+                });
+                const data = await res.json();
                 
-                // Stop camera stream
-                if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
+                if(data.success) {
+                    succBox.textContent = data.message;
+                    succBox.classList.remove('d-none');
+                    statusBadge.innerHTML = '<strong class="text-success fs-5"><i class="bi bi-patch-check-fill"></i> VERIFIED ✓</strong>';
+                    
+                    // Stop camera
+                    stream.getTracks().forEach(t => t.stop());
+                    stream = null;
+                    camContainer.classList.add('d-none');
+                    btnVerify.classList.add('d-none');
+                } else {
+                    errBox.textContent = data.message || "Verification failed.";
+                    errBox.classList.remove('d-none');
                 }
-                
-                // Send verify request to backend
-                try {
-                    await fetch('/profile/verify', { method: 'POST' });
-                    // Will show Verified badge on next reload
-                } catch(e) {
-                    console.error("Failed to update verification status on server");
-                }
-            }, 3000);
-        });
-    }
-    
-    // Initial setup
-    updateWizard();
+            } catch(e) {
+                errBox.textContent = "Network error during verification.";
+                errBox.classList.remove('d-none');
+            }
+            
+            btnVerify.disabled = false;
+            verifyLoading.classList.add('d-none');
+        }
+    });
+
+    // Initialize UI
+    updateWizardUI();
 });
 </script>
+
+{% endif %}
 {% endblock %}

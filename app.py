@@ -34,6 +34,41 @@ def create_app(config_class=Config):
     def load_user(user_id):
         return UserModel.get_by_id(user_id)
 
+    @app.before_request
+    def check_maintenance():
+        from flask import request, redirect, url_for, jsonify
+        from flask_login import current_user
+        
+        # Define allowed endpoints during maintenance
+        allowed_endpoints = [
+            'static', 
+            'auth.login', 
+            'auth.logout', 
+            'main.maintenance', 
+            'health_check'
+        ]
+        
+        if request.endpoint in allowed_endpoints:
+            return
+
+        # Fetch settings from MongoDB
+        try:
+            settings = mongo.db.app_settings.find_one({"_id": "app_settings"})
+        except Exception:
+            settings = None
+            
+        if settings and settings.get("maintenance_mode"):
+            # Admins are exempt from maintenance mode
+            if current_user.is_authenticated and getattr(current_user, 'role', '') == 'admin':
+                return
+                
+            # Block Socket.IO and APIs directly with a JSON error
+            if request.path.startswith('/socket.io/') or request.path.startswith('/api/'):
+                return jsonify({"error": "Maintenance mode active"}), 503
+                
+            # Redirect normal users to the maintenance page
+            return redirect(url_for('main.maintenance'))
+
     @app.after_request
     def add_security_headers(response):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")

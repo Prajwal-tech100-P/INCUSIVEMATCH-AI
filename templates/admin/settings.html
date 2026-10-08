@@ -7,14 +7,90 @@
         <a href="{{ url_for('admin.dashboard') }}" class="btn btn-light rounded-pill">Dashboard</a>
     </div>
     <div class="card border-0 shadow-sm rounded-4 p-4" style="max-width:700px;">
-        <form method="post">
-            <div class="form-check form-switch mb-4">
-                <input class="form-check-input" type="checkbox" role="switch" id="maintenance_mode" name="maintenance_mode" {% if settings.get('maintenance_mode') %}checked{% endif %}>
-                <label class="form-check-label fw-semibold" for="maintenance_mode">Maintenance mode</label>
-                <div class="form-text">Stores the platform maintenance flag for future deployment controls. It does not automatically block users.</div>
+        <form method="post" id="settings-form">
+            <div class="mb-4">
+                <div class="d-flex align-items-center mb-2">
+                    <h5 class="mb-0 me-3">Platform Status:</h5>
+                    {% if settings.get('maintenance_mode') %}
+                        <span class="badge bg-warning text-dark fs-6 rounded-pill px-3 py-2">Maintenance Mode: ON</span>
+                    {% else %}
+                        <span class="badge bg-success fs-6 rounded-pill px-3 py-2">Maintenance Mode: OFF</span>
+                    {% endif %}
+                </div>
             </div>
-            <button class="btn btn-primary rounded-pill px-4" type="submit"><i class="bi bi-save me-1"></i>Save Settings</button>
+
+            <div class="form-check form-switch mb-4">
+                <input class="form-check-input" type="checkbox" role="switch" id="maintenance_mode" name="maintenance_mode" {% if settings.get('maintenance_mode') %}checked{% endif %} style="width: 3em; height: 1.5em; cursor: pointer;">
+                <label class="form-check-label fw-semibold ms-2 mt-1 fs-5" for="maintenance_mode" style="cursor: pointer;">Enable Maintenance Mode</label>
+                <div class="form-text mt-2 fs-6">Temporarily restricts normal users from accessing the platform while administrators can continue managing the system.</div>
+            </div>
+            
+            <button class="btn btn-primary rounded-pill px-4" type="button" id="btn-save"><i class="bi bi-save me-1"></i>Save Settings</button>
         </form>
     </div>
 </div>
+
+<!-- Confirmation Modal -->
+<div class="modal fade" id="maintenanceConfirmModal" tabindex="-1" aria-labelledby="maintenanceConfirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" id="maintenanceConfirmModalLabel">Confirm Action</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body fs-5" id="maintenanceConfirmBody">
+        <!-- Text injected by JS -->
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn rounded-pill px-4" id="btn-confirm-submit">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const btnSave = document.getElementById('btn-save');
+    const form = document.getElementById('settings-form');
+    const maintenanceToggle = document.getElementById('maintenance_mode');
+    
+    // Read the initial state from the DOM to avoid IDE syntax errors with Jinja tags
+    const initialMaintenanceState = maintenanceToggle.hasAttribute('checked');
+    
+    // Bootstrap Modal setup
+    const modalEl = document.getElementById('maintenanceConfirmModal');
+    const confirmModal = new bootstrap.Modal(modalEl);
+    const modalBody = document.getElementById('maintenanceConfirmBody');
+    const btnConfirmSubmit = document.getElementById('btn-confirm-submit');
+    
+    btnSave.addEventListener('click', function() {
+        const isCurrentlyChecked = maintenanceToggle.checked;
+        
+        // If state hasn't changed, just submit directly
+        if (isCurrentlyChecked === initialMaintenanceState) {
+            form.submit();
+            return;
+        }
+
+        if (isCurrentlyChecked) {
+            modalBody.innerHTML = "<strong>Enable maintenance mode?</strong><br><br>Normal users will temporarily be unable to access InclusiveMatch AI. Administrators will still have access.";
+            btnConfirmSubmit.textContent = "Enable Maintenance";
+            btnConfirmSubmit.className = "btn btn-warning rounded-pill px-4 fw-bold";
+        } else {
+            modalBody.innerHTML = "<strong>Disable maintenance mode?</strong><br><br>Normal users will regain access to InclusiveMatch AI.";
+            btnConfirmSubmit.textContent = "Disable Maintenance";
+            btnConfirmSubmit.className = "btn btn-success rounded-pill px-4 fw-bold";
+        }
+        
+        confirmModal.show();
+    });
+    
+    btnConfirmSubmit.addEventListener('click', function() {
+        form.submit();
+    });
+});
+</script>
 {% endblock %}
