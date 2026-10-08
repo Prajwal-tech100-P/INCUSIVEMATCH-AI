@@ -143,7 +143,7 @@ def community_message(data):
     result = moderator.analyze_message(text)
     if not result["is_safe"]:
         socket_user._community_last_error = result["reason"]
-        socketio.emit("community_message_error", {"message": f"Message blocked: {result['reason']}"}, to=f"user:{socket_user.id}")
+        socketio.emit("community_message_error", {"message": f"Message blocked: {result['reason']}"}, room=f"user:{socket_user.id}")
         return
     msg = Community.create_message(cid, socket_user.id, socket_user.name, text)
     stamp = msg["timestamp"].strftime("%I:%M %p")
@@ -153,7 +153,7 @@ def community_message(data):
         "sender_name": socket_user.name,
         "text": text,
         "timestamp": stamp,
-    }, to=f"community:{cid}")
+    }, room=f"community:{cid}")
 
 @socketio.on("join_community_user_room")
 def join_community_user_room(data):
@@ -194,7 +194,7 @@ def join_community_call(data):
     join_room(room)
     members[str(socket_user.id)] = (str(socket_user.id), socket_user.name)
     emit("community_call_members", {"members": existing})
-    emit("community_call_user_joined", {"user_id": str(socket_user.id), "name": socket_user.name}, to=room, include_self=False)
+    emit("community_call_user_joined", {"user_id": str(socket_user.id), "name": socket_user.name}, room=room, include_self=False)
 
 @socketio.on("community_call_signal")
 def community_call_signal(data):
@@ -215,7 +215,7 @@ def community_call_signal(data):
         "candidate": data.get("candidate"),
     }
     # User-room delivery avoids requiring the browser to know Socket.IO sids.
-    socketio.emit("community_call_signal", payload, to=f"user:{target}")
+    socketio.emit("community_call_signal", payload, room=f"user:{target}")
 
 @socketio.on("community_call_user_room")
 def community_call_user_room(data):
@@ -236,6 +236,6 @@ def leave_community_call(data):
     if str(socket_user.id) in members:
         members.pop(str(socket_user.id), None)
     leave_room(room)
-    emit("community_call_user_left", {"user_id": str(socket_user.id)}, to=room)
+    emit("community_call_user_left", {"user_id": str(socket_user.id)}, room=room)
     if not members:
         _community_call_members.pop(room, None)
