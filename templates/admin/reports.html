@@ -9,17 +9,45 @@
     <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
         <div class="table-responsive">
             <table class="table align-middle mb-0">
-                <thead><tr><th>Reporter</th><th>Reported User</th><th>Reason</th><th>Date</th></tr></thead>
+                <thead><tr><th>Reporter</th><th>Reported User</th><th>Reason</th><th>Date</th><th>Status</th><th>Action Taken</th><th>Actions</th></tr></thead>
                 <tbody>
                 {% for report in reports %}
                     <tr>
                         <td>{{ report.get('reporter_name', report.get('reporter_id', 'Unknown')) }}</td>
                         <td>{{ report.get('reported_name', report.get('reported_id', 'Unknown')) }}</td>
                         <td>{{ report.get('reason', 'Not specified') }}</td>
-                        <td>{{ report.get('created_at', '') }}</td>
+                        <td>{{ report.get('formatted_date', report.get('created_at', '')) }}</td>
+                        <td>
+                            <span class="badge bg-{{ 'warning' if report.get('status', 'pending') == 'pending' else 'success' if report.get('status') == 'resolved' else 'secondary' }}">
+                                {{ report.get('status', 'pending') | upper }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="text-muted small">{{ report.get('action_taken', '-') }}</span>
+                        </td>
+                        <td>
+                            <form action="{{ url_for('admin.update_report_status', report_id=report._id) }}" method="POST" class="d-inline">
+                                <div class="input-group input-group-sm flex-nowrap" style="min-width: 250px;">
+                                    <select name="status" class="form-select" onchange="if(this.value==='resolved'){this.nextElementSibling.style.display='inline-block';this.nextElementSibling.nextElementSibling.style.display='inline-block';}else{this.form.submit();}">
+                                        <option value="pending" {% if report.get('status', 'pending') == 'pending' %}selected{% endif %}>Pending</option>
+                                        <option value="reviewed" {% if report.get('status') == 'reviewed' %}selected{% endif %}>Reviewed</option>
+                                        <option value="resolved" {% if report.get('status') == 'resolved' %}selected{% endif %}>Resolved</option>
+                                        <option value="dismissed" {% if report.get('status') == 'dismissed' %}selected{% endif %}>Dismissed</option>
+                                    </select>
+                                    <select name="action_taken" class="form-select" style="display: {% if report.get('status') == 'resolved' %}none{% else %}none{% endif %};">
+                                        <option value="" disabled selected>Select Action</option>
+                                        <option value="Warning Issued">Warning Issued</option>
+                                        <option value="User Blocked for 1 Week">User Blocked for 1 Week</option>
+                                        <option value="Message Removed">Message Removed</option>
+                                        <option value="No Violation / No Action">No Violation</option>
+                                    </select>
+                                    <button type="submit" class="btn btn-primary" style="display: {% if report.get('status') == 'resolved' %}none{% else %}none{% endif %};">Save</button>
+                                </div>
+                            </form>
+                        </td>
                     </tr>
                 {% else %}
-                    <tr><td colspan="4" class="text-center py-5 text-muted"><i class="bi bi-shield-check fs-1 d-block mb-2"></i>No reports found. The platform is currently clear.</td></tr>
+                    <tr><td colspan="7" class="text-center py-5 text-muted"><i class="bi bi-shield-check fs-1 d-block mb-2"></i>No reports found. The platform is currently clear.</td></tr>
                 {% endfor %}
                 </tbody>
             </table>

@@ -41,3 +41,8 @@ def mark_notification_read(notification_id):
 def mark_all_notifications_read():
     Notification.mark_all_read(current_user.id)
     return jsonify(status="ok")
+
+
+@main_bp.route('/maintenance')
+def maintenance():
+    return render_template('maintenance.html')

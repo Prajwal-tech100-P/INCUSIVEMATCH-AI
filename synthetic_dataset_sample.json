@@ -1,0 +1,234 @@
+[
+    {
+        "_id": "0",
+        "age": 49,
+        "gender": "Female",
+        "relationship_goal": "Marriage",
+        "communication_preferences": [
+            "Text Chat"
+        ],
+        "interests": [
+            "Art",
+            "Travelling"
+        ],
+        "matching_preferences": {
+            "min_age": 19,
+            "max_age": 50,
+            "preferred_genders": [
+                "Male",
+                "Any"
+            ]
+        }
+    },
+    {
+        "_id": "1",
+        "age": 51,
+        "gender": "Female",
+        "relationship_goal": "Serious Relationship",
+        "communication_preferences": [
+            "Video Call"
+        ],
+        "interests": [
+            "Music",
+            "Art"
+        ],
+        "matching_preferences": {
+            "min_age": 19,
+            "max_age": 64,
+            "preferred_genders": [
+                "Other",
+                "Any"
+            ]
+        }
+    },
+    {
+        "_id": "2",
+        "age": 32,
+        "gender": "Non-binary",
+        "relationship_goal": "Serious Relationship",
+        "communication_preferences": [
+            "Sign Language",
+            "Video Call"
+        ],
+        "interests": [
+            "Technology",
+            "Sports",
+            "Cricket"
+        ],
+        "matching_preferences": {
+            "min_age": 30,
+            "max_age": 58,
+            "preferred_genders": [
+                "Other",
+                "Any"
+            ]
+        }
+    },
+    {
+        "_id": "3",
+        "age": 43,
+        "gender": "Non-binary",
+        "relationship_goal": "Marriage",
+        "communication_preferences": [
+            "Sign Language"
+        ],
+        "interests": [
+            "Cricket",
+            "Travelling",
+            "Music"
+        ],
+        "matching_preferences": {
+            "min_age": 24,
+            "max_age": 50,
+            "preferred_genders": [
+                "Male",
+                "Any"
+            ]
+        }
+    },
+    {
+        "_id": "4",
+        "age": 19,
+        "gender": "Other",
+        "relationship_goal": "Marriage",
+        "communication_preferences": [
+            "Sign Language",
+            "Video Call"
+        ],
+        "interests": [
+            "Travelling",
+            "Technology"
+        ],
+        "matching_preferences": {
+            "min_age": 25,
+            "max_age": 60,
+            "preferred_genders": [
+                "Female",
+                "Any"
+            ]
+        }
+    },
+    {
+        "_id": "5",
+        "age": 65,
+        "gender": "Male",
+        "relationship_goal": "Long-Term Relationship",
+        "communication_preferences": [
+            "Sign Language",
+            "Text Chat"
+        ],
+        "interests": [
+            "Art",
+            "Reading",
+            "Cricket",
+            "Travelling",
+            "Sports"
+        ],
+        "matching_preferences": {
+            "min_age": 20,
+            "max_age": 61,
+            "preferred_genders": [
+                "Female",
+                "Any"
+            ]
+        }
+    },
+    {
+        "_id": "6",
+        "age": 23,
+        "gender": "Female",
+        "relationship_goal": "Marriage",
+        "communication_preferences": [
+            "Voice",
+            "Sign Language",
+            "Video Call"
+        ],
+        "interests": [
+            "Music",
+            "Cricket",
+            "Travelling",
+            "Reading"
+        ],
+        "matching_preferences": {
+            "min_age": 27,
+            "max_age": 36,
+            "preferred_genders": [
+                "Male",
+                "Any"
+            ]
+        }
+    },
+    {
+        "_id": "7",
+        "age": 51,
+        "gender": "Non-binary",
+        "relationship_goal": "Marriage",
+        "communication_preferences": [
+            "Video Call",
+            "Text Chat"
+        ],
+        "interests": [
+            "Travelling",
+            "Sports",
+            "Reading",
+            "Movies",
+            "Cricket",
+            "Music"
+        ],
+        "matching_preferences": {
+            "min_age": 25,
+            "max_age": 47,
+            "preferred_genders": [
+                "Male",
+                "Any"
+            ]
+        }
+    },
+    {
+        "_id": "8",
+        "age": 58,
+        "gender": "Male",
+        "relationship_goal": "Long-Term Relationship",
+        "communication_preferences": [
+            "Video Call"
+        ],
+        "interests": [
+            "Art",
+            "Sports",
+            "Music",
+            "Reading",
+            "Cricket",
+            "Travelling"
+        ],
+        "matching_preferences": {
+            "min_age": 22,
+            "max_age": 64,
+            "preferred_genders": [
+                "Female",
+                "Any"
+            ]
+        }
+    },
+    {
+        "_id": "9",
+        "age": 18,
+        "gender": "Other",
+        "relationship_goal": "Casual Dating",
+        "communication_preferences": [
+            "Voice",
+            "Video Call"
+        ],
+        "interests": [
+            "Music",
+            "Technology"
+        ],
+        "matching_preferences": {
+            "min_age": 28,
+            "max_age": 35,
+            "preferred_genders": [
+                "Male",
+                "Any"
+            ]
+        }
+    }
+]

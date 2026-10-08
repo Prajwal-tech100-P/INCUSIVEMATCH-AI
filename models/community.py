@@ -2,7 +2,7 @@ from datetime import datetime
 from bson import ObjectId
 from extensions import mongo
 
-MAX_MEMBERS = 5
+MAX_MEMBERS = 10
 
 def _oid(value):
     try:
@@ -144,11 +144,50 @@ class Community:
 
     @staticmethod
     def report(community_id, reporter_id, reported_user_id, reason):
-        mongo.db.community_reports.insert_one({
+        # Prevent duplicates
+        existing = mongo.db.reports.find_one({
+            "reporter_id": str(reporter_id),
+            "reported_id": str(reported_user_id),
+            "status": "pending"
+        })
+        if existing:
+            return False, "Report already submitted."
+
+        from models.user import UserModel
+        reporter = UserModel.get_by_id(reporter_id)
+        reported = UserModel.get_by_id(reported_user_id)
+
+        mongo.db.reports.insert_one({
             "community_id": str(community_id),
             "reporter_id": str(reporter_id),
-            "reported_user_id": str(reported_user_id),
+            "reporter_name": reporter.name if reporter else "Unknown",
+            "reported_id": str(reported_user_id),
+            "reported_name": reported.name if reported else "Unknown",
             "reason": reason.strip()[:500] or "Community interaction report",
-            "status": "open",
+            "source": "community",
+            "status": "pending",
             "created_at": datetime.utcnow(),
         })
+
+        try:
+            from models.notification import Notification
+            from extensions import socketio
+            admins = list(mongo.db.users.find({"role": "admin"}, {"_id": 1}))
+            title = "New Community Report"
+            msg_body = f"{reporter.name if reporter else 'Unknown'} reported {reported.name if reported else 'Unknown'} in community."
+            for admin in admins:
+                admin_id = str(admin["_id"])
+                Notification.create(
+                    user_id=admin_id,
+                    notification_type="community_report",
+                    title=title,
+                    message=msg_body,
+                )
+                socketio.emit("admin_report", {
+                    "title": title,
+                    "message": msg_body,
+                }, to=f"user:{admin_id}")
+        except Exception:
+            pass
+
+        return True, "Report submitted successfully."

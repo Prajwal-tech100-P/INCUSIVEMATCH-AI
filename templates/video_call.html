@@ -7,9 +7,9 @@
     <a href="{{ url_for('chat.chat_with', partner_id=partner.id) }}" class="btn btn-light rounded-pill">Back to Chat</a>
   </div>
 
-  <div class="row g-3">
-    <div class="col-lg-8">
-      <div class="card bg-dark border-0 rounded-4 overflow-hidden shadow-sm">
+  <div class="row g-3 video-call-container">
+    <div class="col-lg-8" style="flex: 1; display: flex; flex-direction: column;">
+      <div class="card bg-dark border-0 rounded-4 overflow-hidden shadow-sm flex-grow-1">
         <div class="position-relative" style="aspect-ratio:16/9; background:#111;">
           <video id="remote" autoplay playsinline class="w-100 h-100" style="object-fit:cover"></video>
           <div id="remotePlaceholder" class="position-absolute top-50 start-50 translate-middle text-center text-white-50">
@@ -18,7 +18,7 @@
           <video id="local" autoplay muted playsinline class="position-absolute bottom-0 end-0 m-3 rounded-3" style="width:28%;max-height:30%;object-fit:cover;border:2px solid white;background:#222"></video>
           <div id="status" class="position-absolute top-0 start-0 m-3 badge bg-secondary">Ready to call</div>
         </div>
-        <div class="p-3 d-flex flex-wrap gap-2 align-items-center">
+        <div class="p-3 d-flex flex-wrap gap-2 align-items-center video-controls">
           <button id="start" class="btn btn-primary rounded-pill"><i class="bi bi-camera-video me-1"></i> Start Camera &amp; Mic</button>
           <button id="mute" class="btn btn-light rounded-pill" disabled><i class="bi bi-mic me-1"></i> Mute</button>
           <button id="camera" class="btn btn-light rounded-pill" disabled><i class="bi bi-camera-video me-1"></i> Camera Off</button>

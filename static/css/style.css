@@ -169,3 +169,91 @@ a:focus, button:focus, input:focus, select:focus, textarea:focus {
     .incoming-call-card { padding: 28px 18px 20px; }
     .incoming-call-actions { flex-direction: column-reverse; }
 }
+
+/* --------------------------------------
+   RESPONSIVE LAYOUT (Mobile / Android)
+   -------------------------------------- */
+@media (max-width: 768px) {
+    /* Hide the desktop navbar links if we are using bottom nav */
+    .desktop-nav-links { display: none !important; }
+    
+    /* Make the top navbar compact */
+    .navbar { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    .navbar-brand { font-size: 1.25rem !important; }
+
+    /* Bottom Navigation Bar for Mobile */
+    .mobile-bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border-top: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-around;
+        padding: 0.5rem 0;
+        z-index: 1050;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+    }
+    .mobile-bottom-nav a {
+        color: #64748b;
+        text-decoration: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-size: 0.7rem;
+        font-weight: 600;
+        gap: 4px;
+        transition: color 0.2s;
+    }
+    .mobile-bottom-nav a.active, .mobile-bottom-nav a:hover {
+        color: var(--primary-color);
+    }
+    .mobile-bottom-nav i {
+        font-size: 1.4rem;
+    }
+
+    /* Add padding to body to prevent content from being hidden behind bottom nav */
+    body { padding-bottom: 70px; }
+    .footer { display: none; }
+
+    /* Chat Layout Adjustments */
+    .chat-container { 
+        /* Subtract top nav (~70), bottom nav (~70), and py-3 padding (32) */
+        height: calc(100vh - 172px) !important; 
+        min-height: unset !important; 
+        border-radius: 0 !important; 
+    }
+    
+    /* Hide bottom nav and expand chat when keyboard is open (detect via input focus) */
+    body:has(input:focus) .mobile-bottom-nav {
+        display: none !important;
+    }
+    body:has(input:focus) .chat-container {
+        /* Expand to fill the space where bottom nav was */
+        height: calc(100vh - 102px) !important;
+    }
+
+    .chat-sidebar { display: none; } /* On mobile, we might toggle this or separate the views */
+    .chat-sidebar.mobile-active { display: flex !important; width: 100%; height: 100%; }
+    .chat-main-window { display: flex; width: 100%; }
+    .chat-main-window.mobile-hidden { display: none !important; }
+    
+    /* Video Call Mobile Adjustments */
+    .video-call-container { padding: 0 !important; height: calc(100vh - 70px); display: flex; flex-direction: column; }
+    #remote { border-radius: 0 !important; }
+    #local { width: 100px !important; bottom: 80px !important; right: 10px !important; }
+    .video-controls { position: absolute; bottom: 10px; left: 0; right: 0; justify-content: center; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 20px; margin: 0 10px; }
+    
+    /* General Mobile UI */
+    .container { padding-left: 1rem; padding-right: 1rem; }
+    .card { border-radius: 12px !important; }
+    .btn { padding: 0.6rem 1rem; }
+}
+
+/* Desktop classes */
+.mobile-bottom-nav { display: none; }
+@media (min-width: 769px) {
+    .mobile-bottom-nav { display: none !important; }
+    .desktop-nav-links { display: flex; }
+}

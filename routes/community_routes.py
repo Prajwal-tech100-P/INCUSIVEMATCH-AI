@@ -96,8 +96,11 @@ def report(community_id):
         return jsonify(error="Invalid report target."), 400
     if not Community.is_member(community_id, reported):
         return jsonify(error="User is not a member of this community."), 400
-    Community.report(community_id, current_user.id, reported, reason)
-    flash("Report submitted to moderators.", "success")
+    ok, msg = Community.report(community_id, current_user.id, reported, reason)
+    if ok:
+        flash(msg, "success")
+    else:
+        flash(msg, "warning")
     return redirect(url_for("community.view", community_id=community_id))
 
 @community_bp.route("/community/<community_id>/block", methods=["POST"])
@@ -140,7 +143,7 @@ def community_message(data):
     result = moderator.analyze_message(text)
     if not result["is_safe"]:
         socket_user._community_last_error = result["reason"]
-        socketio.emit("community_message_error", {"message": f"Message blocked: {result['reason']}"}, room=f"user:{socket_user.id}")
+        socketio.emit("community_message_error", {"message": f"Message blocked: {result['reason']}"}, to=f"user:{socket_user.id}")
         return
     msg = Community.create_message(cid, socket_user.id, socket_user.name, text)
     stamp = msg["timestamp"].strftime("%I:%M %p")
@@ -150,7 +153,7 @@ def community_message(data):
         "sender_name": socket_user.name,
         "text": text,
         "timestamp": stamp,
-    }, room=f"community:{cid}")
+    }, to=f"community:{cid}")
 
 @socketio.on("join_community_user_room")
 def join_community_user_room(data):
@@ -173,7 +176,7 @@ def community_call(community_id):
 
 @socketio.on("join_community_call")
 def join_community_call(data):
-    from flask_socketio import join_room
+    from flask_socketio import join_room, emit
     from flask_login import current_user as socket_user
     if not socket_user.is_authenticated:
         return
@@ -185,13 +188,13 @@ def join_community_call(data):
     sid = getattr(request, "sid", None)
     members = _community_call_members.setdefault(room, {})
     if len(members) >= MAX_MEMBERS and str(socket_user.id) not in members:
-        emit("community_call_error", {"message": "Community video call is full (maximum 5 participants)."})
+        emit("community_call_error", {"message": f"Community video call is full (maximum {MAX_MEMBERS} participants)."})
         return
     existing = [{"user_id": uid, "name": name} for uid, name in members.values()]
     join_room(room)
     members[str(socket_user.id)] = (str(socket_user.id), socket_user.name)
     emit("community_call_members", {"members": existing})
-    emit("community_call_user_joined", {"user_id": str(socket_user.id), "name": socket_user.name}, room=room, include_self=False)
+    emit("community_call_user_joined", {"user_id": str(socket_user.id), "name": socket_user.name}, to=room, include_self=False)
 
 @socketio.on("community_call_signal")
 def community_call_signal(data):
@@ -212,7 +215,7 @@ def community_call_signal(data):
         "candidate": data.get("candidate"),
     }
     # User-room delivery avoids requiring the browser to know Socket.IO sids.
-    socketio.emit("community_call_signal", payload, room=f"user:{target}")
+    socketio.emit("community_call_signal", payload, to=f"user:{target}")
 
 @socketio.on("community_call_user_room")
 def community_call_user_room(data):
@@ -223,7 +226,7 @@ def community_call_user_room(data):
 
 @socketio.on("leave_community_call")
 def leave_community_call(data):
-    from flask_socketio import leave_room
+    from flask_socketio import leave_room, emit
     from flask_login import current_user as socket_user
     if not socket_user.is_authenticated:
         return
@@ -233,6 +236,6 @@ def leave_community_call(data):
     if str(socket_user.id) in members:
         members.pop(str(socket_user.id), None)
     leave_room(room)
-    emit("community_call_user_left", {"user_id": str(socket_user.id)}, room=room)
+    emit("community_call_user_left", {"user_id": str(socket_user.id)}, to=room)
     if not members:
         _community_call_members.pop(room, None)

@@ -41,25 +41,21 @@ class Message:
 
 
 class ChatReport:
-    """Stores user reports from the chat interface."""
+    """Stores user reports from the chat interface in the main reports collection."""
 
     @staticmethod
     def create(reporter_id, reported_id, reason=""):
-        mongo.db.chat_reports.insert_one({
-            "reporter_id": str(reporter_id),
-            "reported_id": str(reported_id),
-            "reason": (reason.strip()[:500]) or "Reported from chat",
-            "timestamp": datetime.utcnow(),
-            "status": "pending",
-        })
+        # Deprecated: creation is now handled directly in routes to populate full names.
+        pass
 
     @staticmethod
     def already_reported(reporter_id, reported_id):
-        return mongo.db.chat_reports.find_one({
+        return mongo.db.reports.find_one({
             "reporter_id": str(reporter_id),
             "reported_id": str(reported_id),
             "status": "pending",
         }) is not None
+
 
 
 class OnlineTracker:
