@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -21,6 +22,7 @@
             margin: 0;
             color: #2b2d42;
         }
+
         .maintenance-card {
             background: white;
             padding: 3rem;
@@ -30,48 +32,65 @@
             max-width: 500px;
             width: 90%;
         }
+
         .icon-container {
             font-size: 5rem;
             color: #4f46e5;
             margin-bottom: 1rem;
             animation: pulse 2s infinite;
         }
+
         @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.05);
+            }
+
+            100% {
+                transform: scale(1);
+            }
         }
+
         h1 {
             font-weight: 700;
             margin-bottom: 1rem;
             color: #1e293b;
         }
+
         p {
             font-size: 1.1rem;
             color: #64748b;
             margin-bottom: 2rem;
             line-height: 1.6;
         }
+
         .admin-login {
             font-size: 0.9rem;
             color: #94a3b8;
             text-decoration: none;
             transition: color 0.3s ease;
         }
+
         .admin-login:hover {
             color: #4f46e5;
         }
     </style>
 </head>
+
 <body>
     <div class="maintenance-card">
         <div class="icon-container">
             <i class="bi bi-tools"></i>
         </div>
         <h1>Maintenance in Progress</h1>
-        <p>Sorry, InclusiveMatch AI is currently under maintenance. We are making things better for you. Please try again later.</p>
-        
+        <p>Sorry, InclusiveMatch AI is currently under maintenance. We are making things better for you. Please try
+            again later.</p>
+
         <a href="{{ url_for('auth.login') }}" class="admin-login">Administrator Login</a>
     </div>
 </body>
+
 </html>
