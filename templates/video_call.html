@@ -3,59 +3,135 @@
 {% block content %}
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <div><h3 class="fw-bold mb-0">Video &amp; Audio Call</h3><small class="text-muted">with {{ partner.name }}</small></div>
-    <a href="{{ url_for('chat.chat_with', partner_id=partner.id) }}" class="btn btn-light rounded-pill">Back to Chat</a>
+    <div>
+      <h3 class="fw-bold mb-0">Video &amp; Audio Call</h3>
+      <small class="text-muted">with {{ partner.name }}</small>
+    </div>
+    <a href="{{ url_for('chat.chat_with', partner_id=partner.id) }}" class="btn btn-light rounded-pill">
+      <i class="bi bi-chat-dots me-1"></i> Back to Chat
+    </a>
   </div>
 
   <div class="row g-3 video-call-container">
+    <!-- Main Video Stage -->
     <div class="col-lg-8" style="flex: 1; display: flex; flex-direction: column;">
       <div class="card bg-dark border-0 rounded-4 overflow-hidden shadow-sm flex-grow-1">
-        <div class="position-relative" style="aspect-ratio:16/9; background:#111;">
-          <video id="remote" autoplay playsinline class="w-100 h-100" style="object-fit:cover"></video>
+        <div class="position-relative" style="aspect-ratio:16/9; background:#0f172a;">
+          <!-- Remote Video Feed -->
+          <video id="remoteVideo" autoplay playsinline class="w-100 h-100" style="object-fit:cover"></video>
+
+          <!-- Remote Placeholder -->
           <div id="remotePlaceholder" class="position-absolute top-50 start-50 translate-middle text-center text-white-50">
-            <i class="bi bi-camera-video fs-1"></i><div class="mt-2">Waiting for {{ partner.name }}…</div>
+            <i class="bi bi-camera-video fs-1"></i>
+            <div class="mt-2">Waiting for {{ partner.name }}…</div>
           </div>
-          <video id="local" autoplay muted playsinline class="position-absolute bottom-0 end-0 m-3 rounded-3" style="width:28%;max-height:30%;object-fit:cover;border:2px solid white;background:#222"></video>
-          <div id="status" class="position-absolute top-0 start-0 m-3 badge bg-secondary">Ready to call</div>
+
+          <!-- Unmute banner if autoplay blocked -->
+          <button id="unmuteRemoteBtn" class="btn btn-warning btn-sm rounded-pill position-absolute top-0 end-0 m-3 shadow d-none" style="z-index:20;">
+            <i class="bi bi-volume-up-fill me-1"></i> Click to Unmute Audio
+          </button>
+
+          <!-- Local Pip Video Feed -->
+          <video id="localVideo" autoplay muted playsinline class="position-absolute bottom-0 end-0 m-3 rounded-3 shadow" style="width:28%;max-height:30%;object-fit:cover;border:2px solid rgba(255,255,255,0.8);background:#1e293b; z-index:15;"></video>
+
+          <!-- Status Badge -->
+          <div id="status" class="position-absolute top-0 start-0 m-3 badge bg-secondary" style="z-index:15;">Ready to call</div>
+
+          <!-- Live On-Screen Closed Caption Banner -->
+          <div id="live-caption-banner" class="position-absolute bottom-0 start-50 translate-middle-x mb-4 px-4 py-2 rounded-pill text-white text-center fw-bold shadow-lg d-none" style="background: rgba(15, 23, 42, 0.90); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.25); z-index: 25; max-width: 85%; font-size: 1.15rem; letter-spacing: 0.3px;">
+            <span id="caption-speaker" class="badge bg-primary me-2">🤟 Sign AI</span>
+            <span id="caption-text">Listening for signs...</span>
+          </div>
         </div>
-        <div class="p-3 d-flex flex-wrap gap-2 align-items-center video-controls">
+
+        <!-- Video Call Controls -->
+        <div class="p-3 d-flex flex-wrap gap-2 align-items-center video-controls bg-dark border-top border-secondary border-opacity-25">
           <button id="start" class="btn btn-primary rounded-pill"><i class="bi bi-camera-video me-1"></i> Start Camera &amp; Mic</button>
           <button id="mute" class="btn btn-light rounded-pill" disabled><i class="bi bi-mic me-1"></i> Mute</button>
           <button id="camera" class="btn btn-light rounded-pill" disabled><i class="bi bi-camera-video me-1"></i> Camera Off</button>
-          <button id="hangup" class="btn btn-danger rounded-pill"><i class="bi bi-telephone-x me-1"></i> End Call</button>
+          <button id="toggle-sign-ai" class="btn btn-success rounded-pill"><i class="bi bi-hand-index-thumb me-1"></i> Sign AI: ON</button>
+          <button id="toggle-cc" class="btn btn-light rounded-pill"><i class="bi bi-badge-cc me-1"></i> Captions: ON</button>
+          <button id="hangup" class="btn btn-danger rounded-pill ms-auto"><i class="bi bi-telephone-x me-1"></i> End Call</button>
         </div>
         <div id="permissionHelp" class="px-3 pb-3 small text-warning d-none"></div>
       </div>
     </div>
 
+    <!-- Sign Language & Accessibility Studio Side Panel -->
     <div class="col-lg-4">
-      <div class="card border-0 shadow-sm rounded-4 p-3 h-100">
-        <h5 class="fw-bold">🤟 Sign → Text</h5>
-        <p class="small text-muted">WebRTC carries the live audio/video. OpenCV decodes frames, MediaPipe extracts hand landmarks, and a trained classifier produces the sign text.</p>
-        <div class="alert alert-info small">GRU analyzes a short sequence of hand landmarks and smooths predictions to reduce one-frame mistakes. A trained model is required; confidence is not guaranteed accuracy.</div>
-        <div class="form-check form-switch mb-2">
-          <input class="form-check-input" type="checkbox" id="speak-sign" checked>
-          <label class="form-check-label small" for="speak-sign">🔊 Speak recognized sign</label>
+      <div class="card border-0 shadow-sm rounded-4 p-3 h-100 d-flex flex-column">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <h5 class="fw-bold mb-0 text-primary"><i class="bi bi-hand-index-thumb me-1"></i> Sign-to-Text AI</h5>
+          <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small" id="sign-status-pill">
+            <i class="bi bi-circle-fill me-1" style="font-size:7px;"></i> Active
+          </span>
         </div>
-        <div id="sign-output" class="p-3 bg-light rounded-3">Waiting for the other user…</div>
+        <div class="small text-muted mb-3 d-flex align-items-center gap-1">
+          <i class="bi bi-cpu"></i> GCN-Transformer · 29 Indian Sign Language Signs
+        </div>
+
+        <!-- Translation Mode Settings -->
+        <div class="bg-light p-2 rounded-3 mb-3 border">
+          <label class="form-label small fw-semibold text-muted mb-1">Recognition Source</label>
+          <select id="sign-source" class="form-select form-select-sm mb-2">
+            <option value="auto" selected>Auto (Translate Both Users)</option>
+            <option value="local">Translate My Signs (Local Camera)</option>
+            <option value="remote">Translate Partner's Signs (Remote Video)</option>
+          </select>
+          <div class="form-check form-switch mb-1">
+            <input class="form-check-input" type="checkbox" id="speak-sign" checked>
+            <label class="form-check-label small" for="speak-sign">🔊 Speak recognized signs (TTS)</label>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="broadcast-captions" checked>
+            <label class="form-check-label small" for="broadcast-captions">💬 Send my live captions to {{ partner.name }}</label>
+          </div>
+        </div>
+
+        <!-- Live Detected Sign Output -->
+        <label class="small fw-semibold text-muted mb-1">Current Detection</label>
+        <div id="sign-output" class="p-3 bg-light rounded-3 border fw-semibold text-center mb-3">
+          Waiting for hands in camera view…
+        </div>
+
+        <!-- Rolling Live Transcript History -->
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <label class="small fw-semibold text-muted mb-0">Call Transcript Log</label>
+          <button id="btn-clear-transcript" class="btn btn-sm btn-link text-decoration-none text-muted p-0" style="font-size:0.75rem;">Clear Log</button>
+        </div>
+        <div id="transcript-container" class="border rounded-3 p-2 bg-light flex-grow-1 overflow-auto" style="min-height: 140px; max-height: 220px;">
+          <div id="transcript-empty" class="text-muted small text-center py-4">
+            <i class="bi bi-chat-square-dots d-block mb-1 fs-5"></i>
+            Live sign transcripts will appear here...
+          </div>
+          <ul id="transcript-list" class="list-unstyled mb-0 small"></ul>
+        </div>
       </div>
     </div>
   </div>
 </div>
 {% endblock %}
+
 {% block extra_scripts %}
+<script id="webrtc-ice-servers" type="application/json">{{ webrtc_ice_servers | tojson }}</script>
 <script>
-// Socket.IO is loaded by base.html. This page adds only call-specific logic.
+// WebRTC and Sign Recognition configuration
+const ICE_SERVERS = JSON.parse(document.getElementById("webrtc-ice-servers")?.textContent || "[]");
 const socket = io({ transports: ["websocket", "polling"] });
 const PARTNER_ID = "{{ partner.id }}";
+const PARTNER_NAME = "{{ partner.name|e }}";
 const MY_ID = "{{ current_user.id }}";
+const MY_NAME = "{{ current_user.name|e }}";
+
 const callParams = new URLSearchParams(window.location.search);
 const INCOMING_CALL = callParams.get("incoming") === "1";
 const OUTGOING_CALL = callParams.get("outgoing") === "1";
 const AUTO_START = INCOMING_CALL || OUTGOING_CALL;
-const localVideo = document.getElementById("local");
-const remoteVideo = document.getElementById("remote");
+
+const localVideo = document.getElementById("localVideo") || document.getElementById("local");
+const remoteVideo = document.getElementById("remoteVideo") || document.getElementById("remote");
 const remotePlaceholder = document.getElementById("remotePlaceholder");
+const unmuteRemoteBtn = document.getElementById("unmuteRemoteBtn");
 const statusEl = document.getElementById("status");
 const permissionHelp = document.getElementById("permissionHelp");
 const startBtn = document.getElementById("start");
@@ -63,46 +139,113 @@ const muteBtn = document.getElementById("mute");
 const cameraBtn = document.getElementById("camera");
 const hangupBtn = document.getElementById("hangup");
 
+if (unmuteRemoteBtn) {
+  unmuteRemoteBtn.onclick = () => {
+    if (remoteVideo) remoteVideo.muted = false;
+    unmuteRemoteBtn.classList.add("d-none");
+  };
+}
+
+// Sign recognition elements
+const toggleSignAiBtn = document.getElementById("toggle-sign-ai");
+const toggleCcBtn = document.getElementById("toggle-cc");
+const signStatusPill = document.getElementById("sign-status-pill");
+const signSourceSelect = document.getElementById("sign-source");
+const signOutput = document.getElementById("sign-output");
+const speakSign = document.getElementById("speak-sign");
+const broadcastCaptions = document.getElementById("broadcast-captions");
+const liveCaptionBanner = document.getElementById("live-caption-banner");
+const captionSpeaker = document.getElementById("caption-speaker");
+const captionText = document.getElementById("caption-text");
+const transcriptList = document.getElementById("transcript-list");
+const transcriptEmpty = document.getElementById("transcript-empty");
+const btnClearTranscript = document.getElementById("btn-clear-transcript");
+
 let pc = null;
 let stream = null;
 let peerPresent = false;
 let remoteUserId = null;
 let makingOffer = false;
-let ignoreOffer = false;
 let pendingCandidates = [];
 let ended = false;
+
+// Sign recognition runtime state
+let signAiEnabled = true;
+let ccEnabled = true;
+let signBusy = false;
+let lastSpoken = "";
+let lastSpokenAt = 0;
+let captionHideTimeout = null;
 
 function setStatus(text) { statusEl.textContent = text; }
 function showPermissionHelp(text) { permissionHelp.textContent = text; permissionHelp.classList.remove("d-none"); }
 function hidePermissionHelp() { permissionHelp.classList.add("d-none"); }
 
 function isInitiator() {
-  // Deterministic initiator: only one side creates the initial offer.
   return String(MY_ID) < String(PARTNER_ID);
 }
 
 function createPeer() {
   if (pc) return pc;
-  pc = new RTCPeerConnection({
-    iceServers: {{ webrtc_ice_servers | tojson }}
-  });
+  pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
   pc.onicecandidate = event => {
     if (event.candidate) {
-      socket.emit("signal", { partner_id: PARTNER_ID, type: "candidate", candidate: event.candidate });
+      const candidatePayload = event.candidate.toJSON ? event.candidate.toJSON() : {
+        candidate: event.candidate.candidate,
+        sdpMid: event.candidate.sdpMid,
+        sdpMLineIndex: event.candidate.sdpMLineIndex
+      };
+      socket.emit("signal", {
+        partner_id: PARTNER_ID,
+        type: "candidate",
+        candidate: candidatePayload
+      });
     }
   };
 
-  pc.ontrack = event => {
+  pc.ontrack = async (event) => {
+    console.log("[WebRTC] Remote track received:", event.track.kind);
+    if (!remoteVideo) return;
+
     if (event.streams && event.streams[0]) {
       remoteVideo.srcObject = event.streams[0];
-      remotePlaceholder.classList.add("d-none");
+    } else {
+      if (!remoteVideo.srcObject) {
+        remoteVideo.srcObject = new MediaStream();
+      }
+      const remoteStream = remoteVideo.srcObject;
+      if (!remoteStream.getTracks().some(track => track.id === event.track.id)) {
+        remoteStream.addTrack(event.track);
+      }
+    }
+
+    if (remotePlaceholder) remotePlaceholder.classList.add("d-none");
+
+    event.track.onunmute = () => {
+      console.log("[WebRTC] Remote track unmuted:", event.track.kind);
+      if (remotePlaceholder) remotePlaceholder.classList.add("d-none");
       remoteVideo.play().catch(() => {});
+    };
+
+    try {
+      await remoteVideo.play();
+    } catch (error) {
+      console.warn("[WebRTC] Remote video playback requires user interaction:", error);
+      // Fallback: browser blocked unmuted autoplay. Play muted and offer unmute button.
+      try {
+        remoteVideo.muted = true;
+        await remoteVideo.play();
+        if (unmuteRemoteBtn) unmuteRemoteBtn.classList.remove("d-none");
+      } catch (err2) {
+        console.error("[WebRTC] Remote video playback failed completely:", err2);
+      }
     }
   };
 
   pc.onconnectionstatechange = () => {
     const state = pc.connectionState;
+    console.log("[WebRTC] connectionState:", state);
     if (state === "connected") setStatus("Connected");
     else if (state === "connecting") setStatus("Connecting…");
     else if (state === "disconnected") setStatus("Connection interrupted");
@@ -111,11 +254,12 @@ function createPeer() {
   };
 
   pc.oniceconnectionstatechange = () => {
-    if (pc.iceConnectionState === "failed") setStatus("Network connection failed");
-  };
-
-  pc.onnegotiationneeded = async () => {
-    // Initial negotiation is controlled explicitly to avoid offer glare.
+    console.log("[WebRTC] iceConnectionState:", pc.iceConnectionState);
+    if (pc.iceConnectionState === "failed") {
+      setStatus("Network connection failed");
+    } else if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+      setStatus("Connected");
+    }
   };
 
   return pc;
@@ -125,7 +269,11 @@ function addLocalTracks() {
   if (!stream) return;
   const peer = createPeer();
   for (const track of stream.getTracks()) {
-    if (!peer.getSenders().some(sender => sender.track && sender.track.kind === track.kind)) {
+    const senders = peer.getSenders();
+    const existing = senders.find(s => s.track && s.track.kind === track.kind);
+    if (existing) {
+      existing.replaceTrack(track).catch(err => console.warn("replaceTrack error:", err));
+    } else {
       peer.addTrack(track, stream);
     }
   }
@@ -137,7 +285,7 @@ async function ensureMedia() {
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     setStatus("Camera/mic unavailable");
-    showPermissionHelp("Your browser does not expose camera/microphone access here. Open the app on localhost for local development, or use the deployed HTTPS address. For mobile testing, use the deployed HTTPS address rather than a local IP certificate.");
+    showPermissionHelp("Your browser does not expose camera/microphone access here. Use localhost or HTTPS.");
     return false;
   }
 
@@ -146,40 +294,39 @@ async function ensureMedia() {
       video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
-    localVideo.srcObject = stream;
-    localVideo.play().catch(() => {});
+    if (localVideo) {
+      localVideo.srcObject = stream;
+      localVideo.play().catch(() => {});
+    }
     createPeer();
     addLocalTracks();
     muteBtn.disabled = false;
     cameraBtn.disabled = false;
     startBtn.textContent = "Camera & Mic Ready";
-    setStatus(peerPresent ? "Ready — connecting…" : "Waiting for {{ partner.name }}…");
+    setStatus(peerPresent ? "Ready — connecting…" : `Waiting for ${PARTNER_NAME}…`);
+
+    if (peerPresent && isInitiator()) {
+      await makeOffer();
+    }
     return true;
   } catch (error) {
     console.error("getUserMedia error:", error);
     setStatus("Camera/microphone blocked");
-    const reason = error && error.name ? error.name : "Unknown error";
-    if (reason === "NotAllowedError" || reason === "PermissionDeniedError") {
-      showPermissionHelp("Camera/microphone permission is blocked. In your browser, click the camera/lock icon beside the address bar → allow Camera and Microphone → reload this page. Also check Windows Settings → Privacy & security → Camera/Microphone.");
-    } else if (reason === "NotFoundError") {
-      showPermissionHelp("No camera or microphone was found. Connect a device and check Windows camera/microphone settings.");
-    } else if (reason === "NotReadableError") {
-      showPermissionHelp("Another application may be using the camera or microphone. Close Zoom, Teams, Camera, OBS, etc., then try again.");
-    } else {
-      showPermissionHelp("Browser could not access the camera/microphone (" + reason + "). Check browser permissions and use localhost/127.0.0.1 or HTTPS.");
-    }
+    showPermissionHelp("Please allow camera and microphone permissions in your browser.");
     return false;
   }
 }
 
 async function makeOffer() {
-  if (!peerPresent || !stream || !pc || makingOffer || !isInitiator()) return;
-  if (pc.signalingState !== "stable") return;
+  if (!peerPresent || !stream || makingOffer || !isInitiator()) return;
+  const peer = createPeer();
+  if (peer.signalingState !== "stable") return;
   makingOffer = true;
   try {
-    const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-    await pc.setLocalDescription(offer);
-    socket.emit("signal", { partner_id: PARTNER_ID, type: "offer", sdp: pc.localDescription });
+    addLocalTracks();
+    const offer = await peer.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+    await peer.setLocalDescription(offer);
+    socket.emit("signal", { partner_id: PARTNER_ID, type: "offer", sdp: peer.localDescription });
     setStatus("Calling…");
   } catch (error) {
     console.error("Offer error:", error);
@@ -190,35 +337,41 @@ async function makeOffer() {
 }
 
 async function flushCandidates() {
-  if (!pc || !pc.remoteDescription) return;
-  while (pendingCandidates.length) {
-    try { await pc.addIceCandidate(pendingCandidates.shift()); }
-    catch (error) { console.warn("ICE candidate error:", error); }
+  if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) return;
+  while (pendingCandidates.length > 0) {
+    const cand = pendingCandidates.shift();
+    if (!cand) continue;
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(cand));
+    } catch (error) {
+      console.warn("ICE candidate error:", error);
+    }
   }
 }
+
+// -------------------------------------------------------------------------
+// Socket Events
+// -------------------------------------------------------------------------
 
 socket.on("connect", async () => {
   setStatus(AUTO_START ? "Starting camera & mic…" : "Ready — waiting for both users");
   socket.emit("join_call", { partner_id: PARTNER_ID });
-
-  // Both caller and accepted recipient start their local media automatically.
-  // The browser will ask for permission the first time.
-  if (AUTO_START) {
-    await ensureMedia();
-  }
+  if (AUTO_START) await ensureMedia();
 });
 
 socket.on("call_ready", async data => {
   const announcedUserId = data && data.user_id ? String(data.user_id) : null;
-
-  // join_call also sends the event back to the user who joined. Do not treat
-  // our own event as evidence that a second browser is present.
   if (!announcedUserId || announcedUserId === String(MY_ID)) return;
-
   peerPresent = true;
   remoteUserId = announcedUserId;
-  setStatus(stream ? "Both users ready — connecting…" : "Your match is ready. Start Camera & Mic.");
-  if (stream && isInitiator()) await makeOffer();
+
+  // Mutual peer-presence acknowledgement to prevent offer deadlocks
+  socket.emit("signal", { partner_id: PARTNER_ID, type: "peer_present" });
+
+  setStatus(stream ? "Both users ready — connecting…" : `Your match is ready. Start Camera & Mic.`);
+  if (stream && isInitiator()) {
+    await makeOffer();
+  }
 });
 
 socket.on("call_error", data => {
@@ -229,26 +382,42 @@ socket.on("signal", async data => {
   if (!data || !data.type || String(data.from) === String(MY_ID)) return;
   peerPresent = true;
   remoteUserId = String(data.from);
+
+  if (data.type === "peer_present" || data.type === "ready") {
+    setStatus(stream ? "Connecting to partner…" : `Your match is ready. Start Camera & Mic.`);
+    if (stream && isInitiator()) {
+      await makeOffer();
+    }
+    return;
+  }
+
   if (!(await ensureMedia())) return;
+  const peer = createPeer();
 
   try {
     if (data.type === "offer") {
-      // Only the deterministic non-initiator accepts the initial offer.
-      if (isInitiator()) return;
-      await pc.setRemoteDescription(data.sdp);
+      addLocalTracks();
+      await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
       await flushCandidates();
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socket.emit("signal", { partner_id: PARTNER_ID, type: "answer", sdp: pc.localDescription });
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+      socket.emit("signal", { partner_id: PARTNER_ID, type: "answer", sdp: peer.localDescription });
       setStatus("Connecting…");
     } else if (data.type === "answer") {
-      if (!isInitiator()) return;
-      await pc.setRemoteDescription(data.sdp);
+      if (!isInitiator() && peer.signalingState === "stable") return;
+      await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
       await flushCandidates();
       setStatus("Connected");
     } else if (data.type === "candidate") {
-      if (pc.remoteDescription) await pc.addIceCandidate(data.candidate);
-      else pendingCandidates.push(data.candidate);
+      if (peer && peer.remoteDescription && peer.remoteDescription.type) {
+        try {
+          await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } catch (e) {
+          console.warn("Failed to add ICE candidate:", e);
+        }
+      } else {
+        pendingCandidates.push(data.candidate);
+      }
     }
   } catch (error) {
     console.error("Signaling error:", error);
@@ -259,12 +428,25 @@ socket.on("signal", async data => {
 socket.on("peer_left", () => {
   peerPresent = false;
   remoteUserId = null;
-  remoteVideo.srcObject = null;
-  remotePlaceholder.classList.remove("d-none");
+  if (remoteVideo) remoteVideo.srcObject = null;
+  if (remotePlaceholder) remotePlaceholder.classList.remove("d-none");
   if (pc) { pc.close(); pc = null; }
   pendingCandidates = [];
   setStatus("The other user left the call.");
 });
+
+// Partner relayed sign caption
+socket.on("sign_caption", data => {
+  if (!data || !data.text) return;
+  const speaker = data.speaker || PARTNER_NAME;
+  displayCaption(speaker, data.text, data.confidence);
+  appendTranscript(speaker, data.text, data.confidence);
+  speakRecognizedSign(data.text);
+});
+
+// -------------------------------------------------------------------------
+// Call Controls & Lifecycle
+// -------------------------------------------------------------------------
 
 startBtn.onclick = async () => {
   const ok = await ensureMedia();
@@ -287,18 +469,208 @@ cameraBtn.onclick = () => {
   cameraBtn.innerHTML = track.enabled ? '<i class="bi bi-camera-video me-1"></i> Camera Off' : '<i class="bi bi-camera-video-off me-1"></i> Camera On';
 };
 
-hangupBtn.onclick = () => {
+toggleSignAiBtn.onclick = () => {
+  signAiEnabled = !signAiEnabled;
+  if (signAiEnabled) {
+    toggleSignAiBtn.className = "btn btn-success rounded-pill";
+    toggleSignAiBtn.innerHTML = '<i class="bi bi-hand-index-thumb me-1"></i> Sign AI: ON';
+    signStatusPill.className = "badge bg-success-subtle text-success border border-success-subtle rounded-pill small";
+    signStatusPill.innerHTML = '<i class="bi bi-circle-fill me-1" style="font-size:7px;"></i> Active';
+    signOutput.textContent = "Listening for signs…";
+  } else {
+    toggleSignAiBtn.className = "btn btn-outline-secondary rounded-pill";
+    toggleSignAiBtn.innerHTML = '<i class="bi bi-hand-index-thumb me-1"></i> Sign AI: OFF';
+    signStatusPill.className = "badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill small";
+    signStatusPill.innerHTML = '<i class="bi bi-pause-circle me-1" style="font-size:7px;"></i> Paused';
+    signOutput.textContent = "Sign recognition paused.";
+    liveCaptionBanner.classList.add("d-none");
+  }
+};
+
+toggleCcBtn.onclick = () => {
+  ccEnabled = !ccEnabled;
+  if (ccEnabled) {
+    toggleCcBtn.className = "btn btn-light rounded-pill";
+    toggleCcBtn.innerHTML = '<i class="bi bi-badge-cc me-1"></i> Captions: ON';
+  } else {
+    toggleCcBtn.className = "btn btn-outline-secondary rounded-pill";
+    toggleCcBtn.innerHTML = '<i class="bi bi-badge-cc me-1"></i> Captions: OFF';
+    liveCaptionBanner.classList.add("d-none");
+  }
+};
+
+function cleanupCall() {
   if (ended) return;
   ended = true;
-  if (stream) stream.getTracks().forEach(track => track.stop());
-  if (pc) pc.close();
+  if (stream) {
+    stream.getTracks().forEach(track => {
+      try { track.stop(); } catch (e) {}
+    });
+    stream = null;
+  }
+  if (pc) {
+    try { pc.close(); } catch (e) {}
+    pc = null;
+  }
+  if (remoteVideo) remoteVideo.srcObject = null;
+  if (localVideo) localVideo.srcObject = null;
+  pendingCandidates = [];
+  peerPresent = false;
+}
+
+hangupBtn.onclick = () => {
+  cleanupCall();
   socket.emit("leave_call", { partner_id: PARTNER_ID });
   location.href = "{{ url_for('chat.chat_with', partner_id=partner.id) }}";
 };
 
 window.addEventListener("beforeunload", () => {
-  if (!ended) socket.emit("leave_call", { partner_id: PARTNER_ID });
+  cleanupCall();
+  socket.emit("leave_call", { partner_id: PARTNER_ID });
 });
 
-// Sign recognition: analyze the PARTNER'S received video, so each user sees\n// text for the other person's signs. The server runs MediaPipe + GRU over a\n// rolling sequence rather than making a decision from a single frame.\nconst signOutput = document.getElementById("sign-output");\nconst speakSign = document.getElementById("speak-sign");\nlet signBusy = false;\nlet lastSpoken = "";\nlet lastSpokenAt = 0;\n\nfunction speakRecognizedSign(text) {\n  if (!speakSign.checked || !window.speechSynthesis || !text || text === "UNCERTAIN") return;\n  const now = Date.now();\n  // Avoid repeatedly speaking the same prediction while the user holds a sign.\n  if (text === lastSpoken && now - lastSpokenAt < 3500) return;\n  lastSpoken = text;\n  lastSpokenAt = now;\n  window.speechSynthesis.cancel();\n  const utterance = new SpeechSynthesisUtterance(text);\n  utterance.rate = 0.95;\n  window.speechSynthesis.speak(utterance);\n}\n\nasync function recognizePartnerFrame() {\n  if (signBusy || !remoteVideo.srcObject || remoteVideo.readyState < 2 || remoteVideo.videoWidth < 2) return;\n  signBusy = true;\n  const canvas = document.createElement("canvas");\n  // 640px wide is enough for hand landmarks and keeps mobile uploads small.\n  const width = Math.min(remoteVideo.videoWidth, 640);\n  const height = Math.round(width * remoteVideo.videoHeight / remoteVideo.videoWidth);\n  canvas.width = width;\n  canvas.height = height;\n  canvas.getContext("2d", { willReadFrequently: true }).drawImage(remoteVideo, 0, 0, width, height);\n  canvas.toBlob(async blob => {\n    try {\n      if (!blob) return;\n      const fd = new FormData();\n      fd.append("frame", blob, "partner-frame.jpg");\n      const response = await fetch("{{ url_for('video.recognize_sign') }}", { method: "POST", body: fd, credentials: "same-origin" });\n      if (!response.ok) return;\n      const result = await response.json();\n      if (result.text) {\n        const confidence = Number(result.confidence || 0).toFixed(1);\n        signOutput.textContent = `${result.text} — ${confidence}% confidence`;\n        if (result.text !== "UNCERTAIN") speakRecognizedSign(result.text);\n      } else if (result.message) {\n        signOutput.textContent = result.message;\n      }\n    } catch (error) {\n      console.warn("Sign recognition request failed:", error);\n    } finally {\n      signBusy = false;\n    }\n  }, "image/jpeg", 0.70);\n}\n\n// Five requests/second gives the GRU enough temporal information while\n// keeping the browser responsive. The model itself needs 24 frames first.\nsetInterval(recognizePartnerFrame, 200);\n</script>
+// -------------------------------------------------------------------------
+// Sign Recognition & Real-Time Captions Pipeline
+// -------------------------------------------------------------------------
+
+function speakRecognizedSign(text) {
+  if (!speakSign || !speakSign.checked || !window.speechSynthesis || !text || text === "UNCERTAIN") return;
+  const now = Date.now();
+  if (text === lastSpoken && now - lastSpokenAt < 3500) return;
+  lastSpoken = text;
+  lastSpokenAt = now;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 0.95;
+  window.speechSynthesis.speak(utterance);
+}
+
+function displayCaption(speaker, text, confidence) {
+  if (!ccEnabled) return;
+  captionSpeaker.textContent = speaker;
+  captionText.textContent = `${text} (${Number(confidence || 0).toFixed(1)}%)`;
+  liveCaptionBanner.classList.remove("d-none");
+
+  if (captionHideTimeout) clearTimeout(captionHideTimeout);
+  captionHideTimeout = setTimeout(() => {
+    liveCaptionBanner.classList.add("d-none");
+  }, 4000);
+}
+
+function appendTranscript(speaker, text, confidence) {
+  if (transcriptEmpty) transcriptEmpty.style.display = "none";
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const li = document.createElement("li");
+  li.className = "mb-2 pb-1 border-bottom border-light";
+  const isMe = (speaker === "You" || speaker === MY_NAME);
+  const badgeColor = isMe ? "bg-primary" : "bg-info text-dark";
+
+  li.innerHTML = `
+    <div class="d-flex justify-content-between align-items-center mb-1">
+      <span class="badge ${badgeColor} rounded-pill" style="font-size:0.7rem;">${speaker}</span>
+      <span class="text-muted" style="font-size:0.7rem;">${timeStr}</span>
+    </div>
+    <div class="fw-semibold text-dark">${text} <span class="text-muted fw-normal" style="font-size:0.75rem;">(${Number(confidence || 0).toFixed(1)}%)</span></div>
+  `;
+
+  transcriptList.appendChild(li);
+  const container = document.getElementById("transcript-container");
+  container.scrollTop = container.scrollHeight;
+}
+
+if (btnClearTranscript) {
+  btnClearTranscript.onclick = () => {
+    transcriptList.innerHTML = "";
+    if (transcriptEmpty) transcriptEmpty.style.display = "block";
+  };
+}
+
+async function runSignRecognition() {
+  if (!signAiEnabled || signBusy) return;
+
+  const mode = signSourceSelect.value;
+  let targetVideo = null;
+  let isLocalSource = false;
+
+  if (mode === "local") {
+    targetVideo = localVideo;
+    isLocalSource = true;
+  } else if (mode === "remote") {
+    targetVideo = remoteVideo;
+    isLocalSource = false;
+  } else {
+    // Mode is auto: prefer remote video if active, otherwise local video
+    if (remoteVideo && remoteVideo.srcObject && remoteVideo.readyState >= 2 && remoteVideo.videoWidth >= 2) {
+      targetVideo = remoteVideo;
+      isLocalSource = false;
+    } else if (localVideo && localVideo.srcObject && localVideo.readyState >= 2 && localVideo.videoWidth >= 2) {
+      targetVideo = localVideo;
+      isLocalSource = true;
+    }
+  }
+
+  if (!targetVideo || targetVideo.readyState < 2 || targetVideo.videoWidth < 2) return;
+  signBusy = true;
+
+  try {
+    const canvas = document.createElement("canvas");
+    const width = Math.min(targetVideo.videoWidth, 480);
+    const height = Math.round(width * targetVideo.videoHeight / targetVideo.videoWidth);
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(targetVideo, 0, 0, width, height);
+
+    canvas.toBlob(async blob => {
+      try {
+        if (!blob) return;
+        const fd = new FormData();
+        fd.append("frame", blob, "video-call-frame.jpg");
+        const res = await fetch("{{ url_for('video.recognize_sign') }}", {
+          method: "POST",
+          body: fd,
+          credentials: "same-origin"
+        });
+        if (!res.ok) return;
+        const result = await res.json();
+
+        if (result.text && result.text !== "UNCERTAIN") {
+          const conf = Number(result.confidence || 0).toFixed(1);
+          const speakerName = isLocalSource ? "You" : PARTNER_NAME;
+
+          signOutput.innerHTML = `<span class="badge bg-primary me-1">${speakerName}</span> <strong class="text-dark">${result.text}</strong> <span class="text-muted small">(${conf}%)</span>`;
+          displayCaption(speakerName, result.text, conf);
+          appendTranscript(speakerName, result.text, conf);
+          speakRecognizedSign(result.text);
+
+          // Broadcast to partner if we recognized local signs
+          if (isLocalSource && broadcastCaptions && broadcastCaptions.checked) {
+            socket.emit("sign_caption", {
+              partner_id: PARTNER_ID,
+              text: result.text,
+              confidence: result.confidence
+            });
+          }
+        } else if (result.text === "UNCERTAIN") {
+          const conf = Number(result.confidence || 0).toFixed(1);
+          signOutput.textContent = `Uncertain sign (${conf}%) — please continue signing`;
+        } else if (result.message) {
+          signOutput.textContent = result.message;
+        }
+      } catch (err) {
+        console.warn("Sign recognition frame error:", err);
+      } finally {
+        signBusy = false;
+      }
+    }, "image/jpeg", 0.65);
+  } catch (e) {
+    signBusy = false;
+  }
+}
+
+// 200ms recognition interval gives high responsiveness
+setInterval(runSignRecognition, 200);
+</script>
 {% endblock %}

@@ -3,12 +3,22 @@ from extensions import mongo
 import os
 import sys
 
-# Add ai_modules to path so we can import recommender
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'ai_modules'))
+# Add ai_modules to path for optional standalone execution
+_ai_dir = os.path.join(os.path.dirname(__file__), '..', 'ai_modules')
+if _ai_dir not in sys.path:
+    sys.path.append(_ai_dir)
+
 try:
-    from match_recommender import MatchRecommender
+    from ai_modules.match_recommender import MatchRecommender
     ai_recommender = MatchRecommender()
 except ImportError:
+    try:
+        import importlib
+        _mod = importlib.import_module("match_recommender")
+        ai_recommender = getattr(_mod, "MatchRecommender")()
+    except Exception:
+        ai_recommender = None
+except Exception:
     ai_recommender = None
 
 class Match:
@@ -49,12 +59,21 @@ class Match:
         return Match.is_mutual(user_a_id, user_b_id)
 
     @staticmethod
-    def get_discover_candidates(user_id, comm_pref=None):
+    def get_discover_candidates(
+        user_id,
+        comm_pref=None,
+        filter_gender=None,
+        filter_min_age=None,
+        filter_max_age=None,
+        filter_interest=None,
+        online_only=False,
+        require_shared_interests=True
+    ):
         import logging
         user = mongo.db.users.find_one({"_id": Match._oid(user_id)})
         if not user: return []
         
-        excluded = set(user.get("liked", []) + user.get("disliked", []) + [user_id])
+        excluded = set(user.get("liked", []) + user.get("disliked", []) + [str(user_id)])
         # Include blocked users if the application supports it
         excluded.update(user.get("blocked", []))
         
@@ -71,7 +90,13 @@ class Match:
             "role": {"$in": ["user", None]},
             "is_active": {"$ne": False}
         }
-        if comm_pref: query["comm_pref"] = comm_pref
+        if comm_pref and str(comm_pref).strip().lower() not in {"any", "all", ""}:
+            c_term = str(comm_pref).strip().lower()
+            query["$or"] = [
+                {"communication_preferences": {"$regex": f"^{c_term}", "$options": "i"}},
+                {"comm_prefs": {"$regex": f"^{c_term}", "$options": "i"}},
+                {"comm_pref": {"$regex": f"^{c_term}", "$options": "i"}}
+            ]
         
         candidates = list(mongo.db.users.find(query))
         logging.info(f"DISCOVER DEBUG: Current user: {user_id}")
@@ -79,48 +104,142 @@ class Match:
         logging.info(f"DISCOVER DEBUG: Candidates before filters (from DB): {len(candidates)}")
         
         filtered_candidates = []
-        u_age = user.get("age", 18)
-        u_gender = user.get("gender", "Not Specified")
-        u_pref_gender = user.get("pref_gender", "Any")
-        u_pref_min_age = user.get("pref_min_age", 18)
-        u_pref_max_age = user.get("pref_max_age", 99)
-        
-        # Apply STRICT filters based on user's preferences before scoring
+        u_gender = str(user.get("gender", "Not Specified")).strip()
+        u_interests = set(str(i).strip().lower() for i in user.get("interests", []) if i and str(i).strip())
+
+        # Extract matching preferences supporting nested matching_preferences and legacy flat fields
+        mp = user.get("matching_preferences")
+        if not isinstance(mp, dict):
+            mp = {}
+
+        if filter_min_age is not None:
+            u_pref_min_age = int(filter_min_age)
+        else:
+            raw_min_age = mp.get("min_age")
+            if raw_min_age is None:
+                raw_min_age = user.get("pref_min_age", 18)
+            try:
+                u_pref_min_age = int(raw_min_age) if raw_min_age is not None else 18
+            except (ValueError, TypeError):
+                u_pref_min_age = 18
+
+        if filter_max_age is not None:
+            u_pref_max_age = int(filter_max_age)
+        else:
+            raw_max_age = mp.get("max_age")
+            if raw_max_age is None:
+                raw_max_age = user.get("pref_max_age", 99)
+            try:
+                u_pref_max_age = int(raw_max_age) if raw_max_age is not None else 99
+            except (ValueError, TypeError):
+                u_pref_max_age = 99
+
+        # Gender filtering:
+        if filter_gender and str(filter_gender).strip().lower() not in {"all", "any", ""}:
+            pref_genders_normalized = {str(filter_gender).strip().lower()}
+            allow_any_gender = False
+        else:
+            raw_pref_genders = mp.get("preferred_genders")
+            if raw_pref_genders is None:
+                legacy_pref = user.get("pref_gender")
+                if legacy_pref:
+                    raw_pref_genders = [legacy_pref]
+                else:
+                    raw_pref_genders = ["Any"]
+            elif isinstance(raw_pref_genders, str):
+                raw_pref_genders = [raw_pref_genders]
+            elif not isinstance(raw_pref_genders, (list, tuple, set)):
+                raw_pref_genders = ["Any"]
+
+            pref_genders_normalized = {
+                str(g).strip().lower() for g in raw_pref_genders if g and str(g).strip()
+            }
+            allow_any_gender = (
+                not pref_genders_normalized
+                or "any" in pref_genders_normalized
+            )
+
+        is_online_checker = None
+        if online_only:
+            from models.message import OnlineTracker
+            is_online_checker = OnlineTracker.is_online
+
+        # Apply STRICT filters based on user's preferences, gender, and interests
         for c in candidates:
-            c_age = c.get("age", 18)
-            c_gender = c.get("gender", "Not Specified")
-            
+            # Safe candidate age extraction
+            try:
+                c_age = int(c.get("age", 18)) if c.get("age") is not None else 18
+            except (ValueError, TypeError):
+                c_age = 18
+
+            # Normalized candidate gender
+            c_gender = str(c.get("gender", "")).strip().lower()
+
             # Strict age filter
             if c_age < u_pref_min_age or c_age > u_pref_max_age:
                 continue
-                
-            # Strict gender filter
-            if u_pref_gender != "Any" and u_pref_gender != c_gender:
+
+            # 1. Strict Gender Filter: Candidate gender must match user's preferred gender
+            if not allow_any_gender and c_gender not in pref_genders_normalized:
                 continue
-                
+
+            # 2. Bidirectional Gender Filter: Candidate's preference must accept user's gender
+            c_mp = c.get("matching_preferences") or {}
+            c_pref_raw = c_mp.get("preferred_genders") or [c.get("pref_gender", "Any")]
+            if isinstance(c_pref_raw, str):
+                c_pref_raw = [c_pref_raw]
+            c_pref_norm = {str(g).strip().lower() for g in c_pref_raw if g and str(g).strip()}
+            if c_pref_norm and "any" not in c_pref_norm and u_gender.lower() not in {"not specified", ""}:
+                if u_gender.lower() not in c_pref_norm:
+                    continue
+
+            # 3. Interests Filter:
+            c_interests_raw = c.get("interests", []) or []
+            c_interests = set(str(i).strip().lower() for i in c_interests_raw if i and str(i).strip())
+            shared_interests = u_interests & c_interests
+
+            # Explicit interest filter (from user search / dropdown)
+            if filter_interest and str(filter_interest).strip():
+                f_int = str(filter_interest).strip().lower()
+                if f_int not in c_interests:
+                    continue
+
+            # Candidate must match based on interest: require at least 1 shared interest
+            # if current user has configured interests on their profile
+            if require_shared_interests and len(u_interests) > 0:
+                if len(shared_interests) == 0:
+                    continue
+
+            # Attach shared interests information to candidate dict for UI display
+            c["_shared_interests"] = [
+                i for i in c_interests_raw
+                if str(i).strip().lower() in shared_interests
+            ]
+            c["_shared_interests_count"] = len(shared_interests)
+
+            # 4. Online-only filter:
+            if online_only and is_online_checker:
+                if not is_online_checker(str(c["_id"])):
+                    continue
+
             filtered_candidates.append(c)
 
         if ai_recommender:
-            # Use AI for ranking (it sets the '_match_score' key)
+            # Use AI / calibrated recommender for ranking (it sets the '_match_score' key)
             filtered_candidates = ai_recommender.rank_candidates(user, filtered_candidates)
         else:
-            # Fallback scoring if AI recommender is not available
-            mine_interests = set(user.get("interests", []))
-            for c in filtered_candidates:
-                score = 0
-                shared = len(mine_interests & set(c.get("interests", [])))
-                score += min(45, shared * 15)
-                
-                # Comm prefs list intersection
-                u_prefs = user.get("comm_prefs", [])
-                c_prefs = c.get("comm_prefs", [])
-                if set(u_prefs) & set(c_prefs):
-                    score += 10
-                    
-                score += 30 # Base score for passing strict filters
-                c["_match_score"] = min(100, score)
-                
-            filtered_candidates.sort(key=lambda x: x["_match_score"], reverse=True)
+            try:
+                from ai_modules.match_recommender import MatchRecommender
+                for c in filtered_candidates:
+                    c["_match_score"] = MatchRecommender.compute_compatibility_score(user, c)
+            except Exception:
+                mine_interests = set(str(i).strip().lower() for i in user.get("interests", []) if i)
+                for c in filtered_candidates:
+                    c_interests = set(str(i).strip().lower() for i in c.get("interests", []) if i)
+                    union = mine_interests | c_interests
+                    jaccard = (len(mine_interests & c_interests) / len(union)) if union else 0.0
+                    c["_match_score"] = int(round(jaccard * 100))
+            filtered_candidates.sort(key=lambda x: x.get("_match_score", 0), reverse=True)
             
         logging.info(f"DISCOVER DEBUG: Final Discover users: {len(filtered_candidates)}")
         

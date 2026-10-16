@@ -86,7 +86,7 @@
                         {% for item in inbox %}
                         <a href="{{ url_for('chat.chat_with', partner_id=item.partner.id) }}"
                            class="d-flex align-items-center p-3 text-decoration-none text-dark contact-item {% if active_partner and active_partner.id == item.partner.id %}active{% endif %}">
-                            <img src="{{ url_for('static', filename='uploads/' + item.partner.profile_pic) }}"
+                            <img src="{{ item.partner.avatar_url }}"
                                  onerror="this.src='https://ui-avatars.com/api/?name={{ item.partner.name | urlencode }}&background=6366f1&color=fff&size=40'"
                                  class="rounded-circle me-3 flex-shrink-0" width="42" height="42" style="object-fit:cover;" alt="">
                             <div class="overflow-hidden">
@@ -114,11 +114,11 @@
                     <div class="d-flex align-items-center">
                         <a href="{{ url_for('chat.chat_home') }}" class="btn btn-sm btn-light me-2 d-md-none rounded-circle"><i class="bi bi-chevron-left"></i></a>
                         <a href="{{ url_for('profile.view_profile', user_id=active_partner.id) }}" class="d-flex align-items-center text-decoration-none text-dark">
-                            <img src="{{ url_for('static', filename='uploads/' + active_partner.profile_pic) }}"
+                            <img src="{{ active_partner.avatar_url }}"
                                  onerror="this.src='https://ui-avatars.com/api/?name={{ active_partner.name | urlencode }}&background=6366f1&color=fff&size=40'"
                                  class="rounded-circle me-2" width="40" height="40" style="object-fit:cover;" alt="">
                             <div>
-                                <p class="mb-0 fw-bold">{{ active_partner.name }}</p>
+                                <p class="mb-0 fw-bold d-flex align-items-center">{{ active_partner.name }}{% if active_partner.face_verified %}<i class="bi bi-patch-check-fill text-primary ms-1" title="Verified Profile" style="font-size: 0.85rem;"></i>{% endif %}</p>
                                 <p class="mb-0 text-muted" style="font-size:.75rem;" id="partner-status">
                                     {% if is_partner_online %}
                                         <span class="text-success"><i class="bi bi-circle-fill" style="font-size: 8px;"></i> Online</span>
@@ -130,6 +130,11 @@
                         </a>
                     </div>
                     <div class="d-flex gap-2 align-items-center">
+                        <button type="button" class="btn btn-light btn-sm rounded-pill" id="toggle-sound-btn"
+                            title="Message notification sound" aria-label="Toggle message notification sound">
+                            <i class="bi bi-volume-up" id="toggle-sound-icon"></i>
+                        </button>
+
                         <button type="button" class="btn btn-light btn-sm rounded-pill js-start-call"
                             data-partner-id="{{ active_partner.id }}" data-partner-name="{{ active_partner.name|e }}"
                             title="Start Video Call" aria-label="Start video call with {{ active_partner.name|e }}">
@@ -155,10 +160,13 @@
                 </div>
 
                 <!-- Sign-to-Text Video -->
-                <div id="video-container" class="mx-3 mt-2">
-                    <video id="webcam-feed" autoplay playsinline></video>
-                    <div id="sign-text-overlay">Recognizing...</div>
-                    <button id="close-camera" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 rounded-circle" style="width:28px;height:28px;line-height:1;"><i class="bi bi-x"></i></button>
+                <div id="video-container" class="mx-3 mt-2 shadow-sm position-relative" style="display:none; max-height:260px; max-width:440px; margin:0 auto; background:#0f172a; border-radius:12px; overflow:hidden;">
+                    <video id="webcam-feed" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover;"></video>
+                    <div id="sign-text-overlay" class="d-flex align-items-center gap-2" style="cursor:pointer;" title="Click to insert sign into message">
+                        <span id="sign-text-label">Position hands in camera view...</span>
+                        <span id="sign-text-badge" class="badge bg-primary d-none"><i class="bi bi-plus-circle me-1"></i>Insert</span>
+                    </div>
+                    <button id="close-camera" class="btn btn-sm btn-dark position-absolute top-0 end-0 m-2 rounded-circle" style="width:28px;height:28px;padding:0;z-index:10;line-height:1;" title="Close camera"><i class="bi bi-x fs-6"></i></button>
                 </div>
 
                 <!-- Chat History -->
@@ -183,13 +191,16 @@
                 <!-- Input Area -->
                 <div class="p-3 border-top bg-white">
                     <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-light rounded-circle p-2 flex-shrink-0" id="btn-camera" title="Open Sign Language Camera" aria-label="Open Sign Language Camera">
+                            <i class="bi bi-camera-video"></i>
+                        </button>
                         <button type="button" class="btn btn-light rounded-circle p-2 flex-shrink-0" id="btn-speech" title="Start speech to text" aria-label="Start speech to text">
                             <i class="bi bi-mic"></i>
                         </button>
                         <button type="button" class="btn btn-light rounded-circle p-2 flex-shrink-0" id="btn-tts" title="Read last message aloud" aria-label="Read last message aloud">
                             <i class="bi bi-volume-up"></i>
                         </button>
-                        <input type="text" id="msg-input" class="form-control bg-light rounded-pill border-0 px-4" placeholder="Type a message..." aria-label="Type a message">
+                        <input type="text" id="msg-input" class="form-control bg-light rounded-pill border-0 px-4" placeholder="Type a message or sign with camera..." aria-label="Type a message">
                         <button type="button" id="btn-send" class="btn btn-primary rounded-circle p-2 flex-shrink-0" style="width:44px;height:44px;" aria-label="Send message">
                             <i class="bi bi-send-fill"></i>
                         </button>
@@ -250,6 +261,34 @@
 {% if active_partner %}
 <script>
 const PARTNER_ID="{{ active_partner.id }}", CURRENT_ID="{{ current_user_id }}";
+window.ACTIVE_CHAT_PARTNER_ID = PARTNER_ID;
+
+const toggleSoundBtn = document.getElementById("toggle-sound-btn");
+const toggleSoundIcon = document.getElementById("toggle-sound-icon");
+
+function updateSoundToggleUI() {
+    const isEnabled = localStorage.getItem("inclusive_msg_sound_enabled") !== "false";
+    if (toggleSoundIcon) {
+        toggleSoundIcon.className = isEnabled ? "bi bi-volume-up text-primary" : "bi bi-volume-mute text-secondary";
+    }
+    if (toggleSoundBtn) {
+        toggleSoundBtn.title = isEnabled ? "Message sounds: ON (Click to mute)" : "Message sounds: MUTED (Click to unmute)";
+    }
+}
+
+if (toggleSoundBtn) {
+    toggleSoundBtn.onclick = () => {
+        const isCurrentlyEnabled = localStorage.getItem("inclusive_msg_sound_enabled") !== "false";
+        localStorage.setItem("inclusive_msg_sound_enabled", isCurrentlyEnabled ? "false" : "true");
+        updateSoundToggleUI();
+    };
+    updateSoundToggleUI();
+}
+
+window.addEventListener("beforeunload", () => {
+    window.ACTIVE_CHAT_PARTNER_ID = null;
+});
+
 const chatHistory=document.getElementById("chat-history"), msgInput=document.getElementById("msg-input"), msgError=document.getElementById("msg-error");
 chatHistory.scrollTop=chatHistory.scrollHeight;
 const socket=io();
@@ -452,6 +491,135 @@ document.getElementById("delete-confirm").addEventListener("click",async()=>{
     }
   }catch(e){console.error(e);}
 });
+
+/* ── Sign Language Live Camera Recognition ────────────────────────────── */
+const btnCamera = document.getElementById("btn-camera");
+const closeCamera = document.getElementById("close-camera");
+const videoContainer = document.getElementById("video-container");
+const webcamFeed = document.getElementById("webcam-feed");
+const signOverlay = document.getElementById("sign-text-overlay");
+const signLabel = document.getElementById("sign-text-label");
+const signBadge = document.getElementById("sign-text-badge");
+
+let cameraStream = null;
+let signIntervalId = null;
+let isRecognizing = false;
+let currentRecognizedSign = "";
+
+async function startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        msgError.style.display = "block";
+        msgError.className = "text-danger small mt-1 ps-2";
+        msgError.textContent = "Camera access is not supported by your browser.";
+        return;
+    }
+    try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: false
+        });
+        webcamFeed.srcObject = cameraStream;
+        videoContainer.style.display = "block";
+        if (btnCamera) {
+            btnCamera.classList.replace("btn-light", "btn-primary");
+        }
+        signLabel.textContent = "Detecting hand signs...";
+        signBadge.classList.add("d-none");
+        
+        // Start live frame recognition loop (every 200ms)
+        signIntervalId = setInterval(captureAndRecognizeFrame, 200);
+    } catch (err) {
+        console.error("Camera access failed:", err);
+        msgError.style.display = "block";
+        msgError.className = "text-danger small mt-1 ps-2";
+        msgError.textContent = "Could not access camera. Please allow camera permissions.";
+        setTimeout(() => { msgError.style.display = "none"; }, 4000);
+    }
+}
+
+function stopCamera() {
+    if (signIntervalId) {
+        clearInterval(signIntervalId);
+        signIntervalId = null;
+    }
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
+    }
+    webcamFeed.srcObject = null;
+    videoContainer.style.display = "none";
+    if (btnCamera) {
+        btnCamera.classList.replace("btn-primary", "btn-light");
+    }
+}
+
+if (btnCamera) {
+    btnCamera.onclick = () => {
+        if (cameraStream) {
+            stopCamera();
+        } else {
+            startCamera();
+        }
+    };
+}
+
+if (closeCamera) {
+    closeCamera.onclick = () => stopCamera();
+}
+
+async function captureAndRecognizeFrame() {
+    if (isRecognizing || !cameraStream || webcamFeed.readyState < 2 || webcamFeed.videoWidth < 2) return;
+    isRecognizing = true;
+    
+    try {
+        const canvas = document.createElement("canvas");
+        const width = Math.min(webcamFeed.videoWidth, 480);
+        const height = Math.round(width * webcamFeed.videoHeight / webcamFeed.videoWidth);
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(webcamFeed, 0, 0, width, height);
+
+        canvas.toBlob(async blob => {
+            try {
+                if (!blob) return;
+                const fd = new FormData();
+                fd.append("frame", blob, "chat-frame.jpg");
+                const res = await fetch("{{ url_for('video.recognize_sign') }}", {
+                    method: "POST",
+                    body: fd,
+                    credentials: "same-origin"
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.text && data.text !== "UNCERTAIN") {
+                    currentRecognizedSign = data.text;
+                    signLabel.textContent = `${data.text} (${data.confidence}%)`;
+                    signBadge.classList.remove("d-none");
+                } else if (data.message) {
+                    signLabel.textContent = data.message;
+                    signBadge.classList.add("d-none");
+                }
+            } catch (err) {
+                console.warn("Sign recognition request error:", err);
+            } finally {
+                isRecognizing = false;
+            }
+        }, "image/jpeg", 0.65);
+    } catch (e) {
+        isRecognizing = false;
+    }
+}
+
+if (signOverlay) {
+    signOverlay.onclick = () => {
+        if (currentRecognizedSign) {
+            const curVal = msgInput.value.trim();
+            msgInput.value = curVal ? `${curVal} ${currentRecognizedSign}` : currentRecognizedSign;
+            msgInput.focus();
+        }
+    };
+}
 
 /* ── Online / Offline status ── */
 setInterval(async () => {

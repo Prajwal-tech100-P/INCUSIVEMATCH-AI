@@ -80,11 +80,17 @@ def send_message():
         mongo.db.users.update_one({"_id": ObjectId(current_user.id)}, {"$set": updates})
         return jsonify(error=f"Warning {new_count}/5: Your message contains potentially harmful language. Please use respectful language."), 400
         
-    Message.create(current_user.id, receiver_id, text)
-    socketio.emit("new_message", {"sender_id":current_user.id,"receiver_id":receiver_id,
-                                   "sender_name":current_user.name,"text":text},
-                  room=f"user:{receiver_id}")
-    return jsonify(status="sent")
+    msg_id = Message.create(current_user.id, receiver_id, text)
+    sender_avatar = getattr(current_user, "avatar_url", "/static/uploads/default.png")
+    socketio.emit("new_message", {
+        "message_id": str(msg_id) if msg_id else "",
+        "sender_id": current_user.id,
+        "receiver_id": receiver_id,
+        "sender_name": current_user.name,
+        "sender_avatar": sender_avatar,
+        "text": text,
+    }, to=f"user:{receiver_id}")
+    return jsonify(status="sent", message_id=str(msg_id) if msg_id else "")
 
 # ── Delete chat ────────────────────────────────────────────────────────────
 
@@ -166,7 +172,7 @@ def _notify_admins_of_report(reporter_name, reported_name, reason):
             socketio.emit("admin_report", {
                 "title": title,
                 "message": message,
-            }, room=f"user:{admin_id}")
+            }, to=f"user:{admin_id}")
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
@@ -203,6 +209,7 @@ def pending_call():
         call_id=invitation["call_id"],
         caller_id=invitation["caller_id"],
         caller_name=caller.name,
+        caller_avatar=getattr(caller, "avatar_url", "/static/uploads/default.png"),
         expires_at=invitation["expires_at"],
     )
 

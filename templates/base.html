@@ -65,7 +65,7 @@
                         {% endif %}
                         <li class="nav-item dropdown ms-lg-2">
                             <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
-                                <img src="{{ url_for('static', filename='uploads/' + current_user.profile_pic) }}"
+                                <img src="{{ current_user.avatar_url }}"
                                      onerror="this.src='https://ui-avatars.com/api/?name={{ current_user.name | urlencode }}&background=6366f1&color=fff'"
                                      class="rounded-circle me-2" width="30" height="30" style="object-fit:cover;" alt="Profile">
                                 {{ current_user.name }}

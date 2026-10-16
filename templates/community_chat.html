@@ -100,7 +100,7 @@
           <h5 class="fw-bold mb-3"><i class="bi bi-people me-2 text-primary"></i>Members</h5>
           {% for member in members %}
           <div class="d-flex align-items-center gap-2 mb-3">
-            <img src="{{ url_for('static', filename='uploads/' + (member.profile_pic or 'default.png')) }}"
+            <img src="{{ member.avatar_url }}"
               data-fallback="https://ui-avatars.com/api/?name={{ (member.name or 'User') | urlencode }}&amp;background=6366f1&amp;color=fff&amp;size=40"
               onerror="this.onerror=null; this.src=this.getAttribute('data-fallback');" width="40" height="40"
               class="rounded-circle" style="object-fit:cover;">

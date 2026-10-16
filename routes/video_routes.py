@@ -93,9 +93,10 @@ def call_user(data):
             "call_id": call_id,
             "caller_id": str(current_user.id),
             "caller_name": current_user.name,
+            "caller_avatar": getattr(current_user, "avatar_url", "/static/uploads/default.png"),
             "message": f"{current_user.name} is calling you.",
         },
-        room=f"user:{partner_id}",
+        to=f"user:{partner_id}",
     )
     return {"ok": True, "call_id": call_id, "message": "Calling the user."}
 
@@ -115,7 +116,7 @@ def cancel_call(data):
     socketio.emit(
         "call_cancelled",
         {"call_id": call_id, "caller_id": str(current_user.id)},
-        room=f"user:{partner_id}"
+        to=f"user:{partner_id}"
     )
     return {"ok": True}
 
@@ -139,7 +140,7 @@ def accept_call(data):
     socketio.emit(
         "call_accepted",
         {"user_id": str(current_user.id), "user_name": current_user.name, "call_id": call_id},
-        room=f"user:{caller_id}",
+        to=f"user:{caller_id}",
     )
     return {"ok": True, "message": "Call accepted."}
 
@@ -164,7 +165,7 @@ def decline_call(data):
     socketio.emit(
         "call_declined",
         {"user_id": str(current_user.id), "user_name": current_user.name, "call_id": call_id},
-        room=f"user:{caller_id}",
+        to=f"user:{caller_id}",
     )
     return {"ok": True, "message": "Call declined."}
 
@@ -178,7 +179,7 @@ def join_call(data):
         emit("call_error", {"message": "You can only call an active mutual match."})
         return
     join_room(room)
-    emit("call_ready", {"user_id": str(current_user.id)}, room=room)
+    emit("call_ready", {"user_id": str(current_user.id)}, to=room)
 
 
 @socketio.on("signal")
@@ -187,7 +188,7 @@ def signal(data):
         return
     data = data or {}
     signal_type = data.get("type")
-    if signal_type not in {"offer", "answer", "candidate"}:
+    if signal_type not in {"offer", "answer", "candidate", "peer_present", "ready"}:
         return
 
     room = _authorized_call(data)
@@ -205,7 +206,7 @@ def signal(data):
             "sdp": sdp,
             "from": str(current_user.id),
         }
-    else:
+    elif signal_type == "candidate":
         candidate = data.get("candidate")
         if not isinstance(candidate, dict):
             return
@@ -216,8 +217,14 @@ def signal(data):
             "candidate": candidate,
             "from": str(current_user.id),
         }
+    else:
+        # peer_present / ready negotiation pings
+        payload = {
+            "type": signal_type,
+            "from": str(current_user.id),
+        }
 
-    emit("signal", payload, room=room, include_self=False)
+    emit("signal", payload, to=room, include_self=False)
 
 
 @socketio.on("leave_call")
@@ -227,4 +234,30 @@ def leave_call(data):
     room = _authorized_call(data)
     if room:
         leave_room(room)
-        emit("peer_left", {"user_id": str(current_user.id)}, room=room, include_self=False)
+        emit("peer_left", {"user_id": str(current_user.id)}, to=room, include_self=False)
+
+
+@socketio.on("sign_caption")
+def sign_caption(data):
+    """Relay real-time recognized sign captions to the other participant in the call."""
+    if not current_user.is_authenticated:
+        return
+    data = data or {}
+    room = _authorized_call(data)
+    if not room:
+        return
+    text = str(data.get("text", "")).strip()[:100]
+    confidence = float(data.get("confidence", 0.0))
+    if text:
+        emit(
+            "sign_caption",
+            {
+                "speaker": current_user.name,
+                "user_id": str(current_user.id),
+                "text": text,
+                "confidence": confidence,
+            },
+            to=room,
+            include_self=False,
+        )
+

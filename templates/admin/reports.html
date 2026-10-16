@@ -34,14 +34,14 @@
                                         <option value="resolved" {% if report.get('status') == 'resolved' %}selected{% endif %}>Resolved</option>
                                         <option value="dismissed" {% if report.get('status') == 'dismissed' %}selected{% endif %}>Dismissed</option>
                                     </select>
-                                    <select name="action_taken" class="form-select" style="display: {% if report.get('status') == 'resolved' %}none{% else %}none{% endif %};">
+                                    <select name="action_taken" class="form-select" style="display: none;">
                                         <option value="" disabled selected>Select Action</option>
                                         <option value="Warning Issued">Warning Issued</option>
                                         <option value="User Blocked for 1 Week">User Blocked for 1 Week</option>
                                         <option value="Message Removed">Message Removed</option>
                                         <option value="No Violation / No Action">No Violation</option>
                                     </select>
-                                    <button type="submit" class="btn btn-primary" style="display: {% if report.get('status') == 'resolved' %}none{% else %}none{% endif %};">Save</button>
+                                    <button type="submit" class="btn btn-primary" style="display: none;">Save</button>
                                 </div>
                             </form>
                         </td>

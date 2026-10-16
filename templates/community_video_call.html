@@ -9,10 +9,14 @@
   <div class="card bg-dark border-0 rounded-4 shadow-sm p-3">
     <div id="call-grid" class="row g-2"></div>
     <div id="status" class="text-white-50 small mt-2">Joining community call…</div>
+    <div id="community-sign-caption" class="alert alert-dark text-center fw-bold py-2 mt-2 mb-0 d-none" style="background: rgba(15,23,42,0.92); border: 1px solid rgba(255,255,255,0.25); border-radius: 30px;">
+      <span class="badge bg-primary me-2">🤟 Sign AI</span><span id="community-sign-text"></span>
+    </div>
     <div class="d-flex flex-wrap gap-2 mt-3">
-      <button id="start" class="btn btn-primary rounded-pill"><i class="bi bi-camera-video me-1"></i> Start Camera & Mic</button>
+      <button id="start" class="btn btn-primary rounded-pill"><i class="bi bi-camera-video me-1"></i> Start Camera &amp; Mic</button>
       <button id="mute" class="btn btn-light rounded-pill" disabled>Mute</button>
       <button id="camera" class="btn btn-light rounded-pill" disabled>Camera Off</button>
+      <button id="toggle-community-sign" class="btn btn-outline-light rounded-pill"><i class="bi bi-hand-index-thumb me-1"></i> Sign AI: ON</button>
       <button id="hangup" class="btn btn-danger rounded-pill">Leave Call</button>
     </div>
     <div id="permissionHelp" class="small text-warning mt-2"></div>
@@ -23,8 +27,20 @@
 </div>
 {% endblock %}
 {% block extra_scripts %}
+<script id="call-config" type="application/json">
+{
+  "iceServers": {{ webrtc_ice_servers | tojson }},
+  "communityId": {{ community._id | string | tojson }},
+  "myId": {{ current_user.id | string | tojson }},
+  "myName": {{ current_user.name | tojson }}
+}
+</script>
 <script>
-const COMMUNITY_ID="{{ community._id }}", MY_ID="{{ current_user.id }}", MY_NAME={{ current_user.name|tojson }};
+const CALL_CONFIG = JSON.parse(document.getElementById("call-config")?.textContent || "{}");
+const ICE_SERVERS = CALL_CONFIG.iceServers || [];
+const COMMUNITY_ID = CALL_CONFIG.communityId || "";
+const MY_ID = CALL_CONFIG.myId || "";
+const MY_NAME = CALL_CONFIG.myName || "";
 const socket=io({transports:["websocket","polling"]});
 const grid=document.getElementById("call-grid"), statusEl=document.getElementById("status"), startBtn=document.getElementById("start"), muteBtn=document.getElementById("mute"), cameraBtn=document.getElementById("camera"), hangupBtn=document.getElementById("hangup");
 let stream=null, peers={}, peerNames={}, ended=false;
@@ -39,7 +55,7 @@ function removeCard(id){const el=document.getElementById("peer-"+id);if(el)el.re
 function isInitiator(remoteId){return String(MY_ID)<String(remoteId);}
 function makePeer(remoteId, remoteName){
   if(peers[remoteId]) return peers[remoteId];
-  const pc=new RTCPeerConnection({iceServers:{{ webrtc_ice_servers | tojson }}});
+  const pc=new RTCPeerConnection({iceServers: ICE_SERVERS});
   peers[remoteId]=pc; peerNames[remoteId]=remoteName||"Member";
   if(stream) stream.getTracks().forEach(t=>pc.addTrack(t,stream));
   pc.onicecandidate=e=>{if(e.candidate)socket.emit("community_call_signal",{community_id:COMMUNITY_ID,target_id:remoteId,type:"candidate",candidate:e.candidate});};
@@ -86,6 +102,63 @@ socket.on("community_call_error",data=>setStatus(data.message||"Community call u
 startBtn.onclick=async()=>{if(await ensureMedia()){for(const id of Object.keys(peers))if(isInitiator(id))await offerTo(id,peerNames[id]);setStatus("Camera & microphone ready.");}};
 muteBtn.onclick=()=>{const t=stream&&stream.getAudioTracks()[0];if(t){t.enabled=!t.enabled;muteBtn.textContent=t.enabled?"Mute":"Unmute";}};
 cameraBtn.onclick=()=>{const t=stream&&stream.getVideoTracks()[0];if(t){t.enabled=!t.enabled;cameraBtn.textContent=t.enabled?"Camera Off":"Camera On";}};
+
+let commSignEnabled = true;
+let commSignBusy = false;
+const toggleCommSignBtn = document.getElementById("toggle-community-sign");
+const commSignCaption = document.getElementById("community-sign-caption");
+const commSignText = document.getElementById("community-sign-text");
+
+toggleCommSignBtn.onclick = () => {
+  commSignEnabled = !commSignEnabled;
+  if (commSignEnabled) {
+    toggleCommSignBtn.className = "btn btn-outline-light rounded-pill";
+    toggleCommSignBtn.innerHTML = '<i class="bi bi-hand-index-thumb me-1"></i> Sign AI: ON';
+  } else {
+    toggleCommSignBtn.className = "btn btn-outline-secondary rounded-pill";
+    toggleCommSignBtn.innerHTML = '<i class="bi bi-hand-index-thumb me-1"></i> Sign AI: OFF';
+    commSignCaption.classList.add("d-none");
+  }
+};
+
+async function captureCommunitySignFrame() {
+  if (!commSignEnabled || commSignBusy || !stream) return;
+  const myVideoCard = document.getElementById("peer-" + MY_ID);
+  const myVideo = myVideoCard ? myVideoCard.querySelector("video") : null;
+  if (!myVideo || myVideo.readyState < 2 || myVideo.videoWidth < 2) return;
+
+  commSignBusy = true;
+  try {
+    const canvas = document.createElement("canvas");
+    const width = Math.min(myVideo.videoWidth, 480);
+    const height = Math.round(width * myVideo.videoHeight / myVideo.videoWidth);
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d", { willReadFrequently: true }).drawImage(myVideo, 0, 0, width, height);
+
+    canvas.toBlob(async blob => {
+      try {
+        if (!blob) return;
+        const fd = new FormData();
+        fd.append("frame", blob, "comm-sign-frame.jpg");
+        const res = await fetch("{{ url_for('video.recognize_sign') }}", { method: "POST", body: fd, credentials: "same-origin" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.text && data.text !== "UNCERTAIN") {
+          commSignText.textContent = `${data.text} (${Number(data.confidence || 0).toFixed(1)}%)`;
+          commSignCaption.classList.remove("d-none");
+        }
+      } catch (e) {
+      } finally {
+        commSignBusy = false;
+      }
+    }, "image/jpeg", 0.65);
+  } catch (e) {
+    commSignBusy = false;
+  }
+}
+setInterval(captureCommunitySignFrame, 250);
+
 function leave(){if(ended)return;ended=true;socket.emit("leave_community_call",{community_id:COMMUNITY_ID});if(stream)stream.getTracks().forEach(t=>t.stop());Object.values(peers).forEach(p=>p.close());location.href="{{ url_for('community.view', community_id=community._id) }}";}
 hangupBtn.onclick=leave;window.addEventListener("beforeunload",()=>{if(!ended)socket.emit("leave_community_call",{community_id:COMMUNITY_ID});});
 </script>
