@@ -13,8 +13,28 @@
                 <tbody>
                 {% for row in matches %}
                     <tr>
-                        <td><strong>{{ row.user_a.name }}</strong><div class="small text-muted">{{ row.user_a.email }}</div></td>
-                        <td><strong>{{ row.user_b.name }}</strong><div class="small text-muted">{{ row.user_b.email }}</div></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <img src="{{ row.user_a | avatar_url }}"
+                                     onerror="this.src='https://ui-avatars.com/api/?name={{ row.user_a.name | urlencode }}&background=6366f1&color=fff&size=32'"
+                                     class="rounded-circle me-2 flex-shrink-0" width="32" height="32" style="object-fit:cover;" alt="Avatar">
+                                <div>
+                                    <strong>{{ row.user_a.name }}</strong>
+                                    <div class="small text-muted">{{ row.user_a.email }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <img src="{{ row.user_b | avatar_url }}"
+                                     onerror="this.src='https://ui-avatars.com/api/?name={{ row.user_b.name | urlencode }}&background=6366f1&color=fff&size=32'"
+                                     class="rounded-circle me-2 flex-shrink-0" width="32" height="32" style="object-fit:cover;" alt="Avatar">
+                                <div>
+                                    <strong>{{ row.user_b.name }}</strong>
+                                    <div class="small text-muted">{{ row.user_b.email }}</div>
+                                </div>
+                            </div>
+                        </td>
                         <td><span class="badge text-bg-success rounded-pill">Mutual Match</span></td>
                     </tr>
                 {% else %}

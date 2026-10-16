@@ -45,7 +45,7 @@ def like(target_id):
             "partner_id": target.id,
             "partner_name": target.name,
         }
-        socketio.emit("match_notification", payload, room=f"user:{current_user.id}")
+        socketio.emit("match_notification", payload, to=f"user:{current_user.id}")
         socketio.emit(
             "match_notification",
             {
@@ -54,7 +54,7 @@ def like(target_id):
                 "partner_id": current_user.id,
                 "partner_name": current_user.name,
             },
-            room=f"user:{target.id}",
+            to=f"user:{target.id}",
         )
 
     return jsonify(status="liked",mutual=mutual)

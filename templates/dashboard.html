@@ -45,61 +45,88 @@
         <!-- Sidebar Filters (Desktop Only) -->
         <div class="col-lg-3 d-none d-lg-block" id="filters-sidebar">
             <div class="bg-white rounded-4 p-4 shadow-sm" style="position: sticky; top: 90px; border: 1px solid #e2e8f0;">
-                <h5 class="fw-bold mb-4 text-dark"><i class="bi bi-sliders me-2 text-primary"></i>Filters</h5>
-                
-                <div class="mb-4">
-                    <div class="small fw-bold text-muted text-uppercase mb-2" style="letter-spacing: 0.5px;">Age Range</div>
-                    <input type="range" class="form-range" min="18" max="99" value="45">
-                    <div class="d-flex justify-content-between small text-muted">
-                        <span>18</span><span>45</span>
-                    </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0 text-dark"><i class="bi bi-sliders me-2 text-primary"></i>Filters</h5>
+                    {% if request.args %}
+                    <a href="{{ url_for('main.dashboard') }}" class="small text-danger text-decoration-none fw-semibold">Reset</a>
+                    {% endif %}
                 </div>
-                
-                <div class="mb-4">
-                    <div class="small fw-bold text-muted text-uppercase mb-2" style="letter-spacing: 0.5px;">Gender</div>
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="radio" name="gender" id="g-male" checked>
-                        <label class="form-check-label" for="g-male">Male</label>
+
+                <form method="GET" action="{{ url_for('main.dashboard') }}" id="discover-filters-form">
+                    <!-- Gender Filter -->
+                    <div class="mb-4">
+                        <div class="small fw-bold text-muted text-uppercase mb-2" style="letter-spacing: 0.5px;">Looking For (Gender)</div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="gender" id="g-any" value="Any" {% if active_filters.gender|lower in ['any', 'all', ''] %}checked{% endif %}>
+                            <label class="form-check-label" for="g-any">Any Gender</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="gender" id="g-female" value="Female" {% if active_filters.gender|lower == 'female' %}checked{% endif %}>
+                            <label class="form-check-label" for="g-female">Women / Female</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="gender" id="g-male" value="Male" {% if active_filters.gender|lower == 'male' %}checked{% endif %}>
+                            <label class="form-check-label" for="g-male">Men / Male</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="gender" id="g-non" value="Non-binary" {% if active_filters.gender|lower == 'non-binary' %}checked{% endif %}>
+                            <label class="form-check-label" for="g-non">Non-binary</label>
+                        </div>
                     </div>
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="radio" name="gender" id="g-female">
-                        <label class="form-check-label" for="g-female">Female</label>
+
+                    <!-- Shared Interest Filter -->
+                    <div class="mb-4">
+                        <div class="small fw-bold text-muted text-uppercase mb-2" style="letter-spacing: 0.5px;">Filter by Specific Interest</div>
+                        <select name="interest" class="form-select form-select-sm rounded-3">
+                            <option value="">All Shared Interests</option>
+                            {% if interest_categories %}
+                                {% for category, ints in interest_categories.items() %}
+                                    <optgroup label="{{ category }}">
+                                        {% for i in ints %}
+                                            <option value="{{ i }}" {% if active_filters.interest|lower == i|lower %}selected{% endif %}>{{ i }}</option>
+                                        {% endfor %}
+                                    </optgroup>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
                     </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="gender" id="g-non">
-                        <label class="form-check-label" for="g-non">Non-binary</label>
+                    
+                    <!-- Age Range -->
+                    <div class="mb-4">
+                        <div class="small fw-bold text-muted text-uppercase mb-2" style="letter-spacing: 0.5px;">Age Range</div>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="number" name="min_age" class="form-control form-control-sm text-center rounded-3" min="18" max="99" value="{{ active_filters.min_age }}" placeholder="Min">
+                            <span class="text-muted">–</span>
+                            <input type="number" name="max_age" class="form-control form-control-sm text-center rounded-3" min="18" max="99" value="{{ active_filters.max_age }}" placeholder="Max">
+                        </div>
                     </div>
-                </div>
-                
-                <div class="mb-4">
-                    <div class="small fw-bold text-muted text-uppercase mb-2" style="letter-spacing: 0.5px;">Location</div>
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="radio" name="location" id="l-nearby" checked>
-                        <label class="form-check-label" for="l-nearby">Nearby</label>
+                    
+                    <!-- Communication Preference -->
+                    <div class="mb-4">
+                        <div class="small fw-bold text-muted text-uppercase mb-2" style="letter-spacing: 0.5px;">Communication</div>
+                        <select name="comm_pref" class="form-select form-select-sm rounded-3">
+                            <option value="">Any Communication</option>
+                            <option value="text" {% if active_filters.comm_pref == 'text' %}selected{% endif %}>💬 Text Chat</option>
+                            <option value="sign_language" {% if active_filters.comm_pref in ['sign_language', 'sign'] %}selected{% endif %}>🤟 Sign Language</option>
+                            <option value="voice" {% if active_filters.comm_pref == 'voice' %}selected{% endif %}>📞 Voice / Call</option>
+                        </select>
                     </div>
-                    <div class="input-group input-group-sm mt-2">
-                        <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
-                        <input type="text" class="form-control bg-light border-start-0" placeholder="Enter location">
+
+                    <!-- Online Status -->
+                    <div class="form-check form-switch mb-4">
+                        <input class="form-check-input" type="checkbox" name="online" value="1" id="online-switch" {% if active_filters.online %}checked{% endif %}>
+                        <label class="form-check-label small fw-semibold text-dark" for="online-switch">🟢 Online users only</label>
                     </div>
-                </div>
-                
-                <div class="mb-4">
-                    <div class="small fw-bold text-muted text-uppercase mb-2" style="letter-spacing: 0.5px;">Communication</div>
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" id="c-text" checked>
-                        <label class="form-check-label" for="c-text">Text</label>
-                    </div>
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" id="c-sign" checked>
-                        <label class="form-check-label" for="c-sign">Sign Language</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="c-voice">
-                        <label class="form-check-label" for="c-voice">Voice / Call</label>
-                    </div>
-                </div>
-                
-                <button class="btn btn-primary w-100 rounded-pill fw-semibold py-2">Apply Filters</button>
+                    
+                    <button type="submit" class="btn btn-primary w-100 rounded-pill fw-semibold py-2 shadow-sm">
+                        <i class="bi bi-funnel-fill me-1"></i> Apply Filters
+                    </button>
+                    {% if request.args %}
+                    <a href="{{ url_for('main.dashboard') }}" class="btn btn-light border w-100 rounded-pill fw-medium py-2 mt-2">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i> Reset Filters
+                    </a>
+                    {% endif %}
+                </form>
             </div>
         </div>
 
@@ -107,26 +134,86 @@
         <div class="col-lg-9 col-12" id="main-content-area">
             
             <!-- Mobile Filters Bar -->
-            <div class="d-flex d-lg-none gap-2 mb-4 overflow-auto pb-1" style="white-space: nowrap;">
-                <button class="btn btn-primary rounded-pill btn-sm px-3 fw-medium">All</button>
-                <button class="btn btn-light rounded-pill btn-sm px-3 fw-medium border">Nearby</button>
-                <button class="btn btn-light rounded-pill btn-sm px-3 fw-medium border">Online</button>
-                <button class="btn btn-light rounded-pill btn-sm ms-auto border px-3"><i class="bi bi-funnel"></i></button>
+            <div class="d-flex d-lg-none gap-2 mb-3 overflow-auto pb-1" style="white-space: nowrap;">
+                <a href="{{ url_for('main.dashboard') }}" class="btn {% if not active_filters.online and active_filters.gender|lower in ['any', 'all', ''] and not active_filters.interest %}btn-primary{% else %}btn-light border{% endif %} rounded-pill btn-sm px-3 fw-medium">All</a>
+                <a href="{{ url_for('main.dashboard', gender='Female') }}" class="btn {% if active_filters.gender|lower == 'female' %}btn-primary{% else %}btn-light border{% endif %} rounded-pill btn-sm px-3 fw-medium">Women</a>
+                <a href="{{ url_for('main.dashboard', gender='Male') }}" class="btn {% if active_filters.gender|lower == 'male' %}btn-primary{% else %}btn-light border{% endif %} rounded-pill btn-sm px-3 fw-medium">Men</a>
+                <a href="{{ url_for('main.dashboard', online='1') }}" class="btn {% if active_filters.online %}btn-primary{% else %}btn-light border{% endif %} rounded-pill btn-sm px-3 fw-medium"><i class="bi bi-circle-fill text-success me-1" style="font-size: 7px;"></i>Online</a>
+                <button class="btn btn-light rounded-pill btn-sm ms-auto border px-3" type="button" data-bs-toggle="collapse" data-bs-target="#mobile-filters-collapse">
+                    <i class="bi bi-sliders me-1"></i>Filters
+                </button>
+            </div>
+
+            <!-- Mobile Filters Collapsible Dropdown -->
+            <div class="collapse d-lg-none mb-4" id="mobile-filters-collapse">
+                <div class="bg-white rounded-4 p-3 border shadow-sm">
+                    <form method="GET" action="{{ url_for('main.dashboard') }}">
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="small fw-bold text-muted">Gender</label>
+                                <select name="gender" class="form-select form-select-sm rounded-3">
+                                    <option value="Any" {% if active_filters.gender|lower in ['any', 'all', ''] %}selected{% endif %}>Any Gender</option>
+                                    <option value="Female" {% if active_filters.gender|lower == 'female' %}selected{% endif %}>Women</option>
+                                    <option value="Male" {% if active_filters.gender|lower == 'male' %}selected{% endif %}>Men</option>
+                                    <option value="Non-binary" {% if active_filters.gender|lower == 'non-binary' %}selected{% endif %}>Non-binary</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="small fw-bold text-muted">Communication</label>
+                                <select name="comm_pref" class="form-select form-select-sm rounded-3">
+                                    <option value="">Any</option>
+                                    <option value="text" {% if active_filters.comm_pref == 'text' %}selected{% endif %}>Text</option>
+                                    <option value="sign_language" {% if active_filters.comm_pref in ['sign_language', 'sign'] %}selected{% endif %}>Sign</option>
+                                    <option value="voice" {% if active_filters.comm_pref == 'voice' %}selected{% endif %}>Voice</option>
+                                </select>
+                            </div>
+                            <div class="col-12 mt-2">
+                                <label class="small fw-bold text-muted">Specific Interest</label>
+                                <select name="interest" class="form-select form-select-sm rounded-3">
+                                    <option value="">All Shared Interests</option>
+                                    {% if interest_categories %}
+                                        {% for category, ints in interest_categories.items() %}
+                                            <optgroup label="{{ category }}">
+                                                {% for i in ints %}
+                                                    <option value="{{ i }}" {% if active_filters.interest|lower == i|lower %}selected{% endif %}>{{ i }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                        {% endfor %}
+                                    {% endif %}
+                                </select>
+                            </div>
+                            <div class="col-12 mt-3 d-flex gap-2">
+                                <button type="submit" class="btn btn-primary btn-sm rounded-pill flex-grow-1 fw-semibold">Apply</button>
+                                <a href="{{ url_for('main.dashboard') }}" class="btn btn-light btn-sm rounded-pill border px-3">Reset</a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             <!-- Page Header with Tabs -->
             <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end mb-4 gap-3">
                 <div>
                     <h2 class="fw-bold mb-1 text-dark">Discover</h2>
-                    <p class="text-muted mb-0">Find people who match your interests and preferences.</p>
+                    <p class="text-muted mb-0">Matched strictly based on mutual interests and gender preference.</p>
                 </div>
                 <div class="d-flex gap-3 align-items-center">
                     <ul class="nav nav-pills bg-white rounded-pill p-1 shadow-sm border" id="discoveryTabs">
-                        <li class="nav-item"><a class="nav-link active rounded-pill px-4 py-1 fw-medium" href="#" data-tab="candidates" style="font-size: 0.9rem;">Explore</a></li>
-                        <li class="nav-item"><a class="nav-link rounded-pill px-4 py-1 fw-medium text-dark" href="#" data-tab="matches" style="font-size: 0.9rem;">Mutual Matches</a></li>
+                        <li class="nav-item"><a class="nav-link active rounded-pill px-4 py-1 fw-medium" href="#" data-tab="candidates" style="font-size: 0.9rem;">Explore ({{ candidates|length }})</a></li>
+                        <li class="nav-item"><a class="nav-link rounded-pill px-4 py-1 fw-medium text-dark" href="#" data-tab="matches" style="font-size: 0.9rem;">Mutual Matches ({{ mutual_matches|length }})</a></li>
                     </ul>
                 </div>
             </div>
+
+            {% if not current_user.interests %}
+            <div class="alert alert-warning border-0 shadow-sm rounded-4 d-flex align-items-center gap-3 mb-4">
+                <div class="fs-3"><i class="bi bi-lightbulb-fill text-warning"></i></div>
+                <div class="flex-grow-1 small">
+                    <strong>Set your interests:</strong> Your profile doesn't have any interests listed yet. Add interests so the AI matching engine can discover candidates who share your passions!
+                </div>
+                <a href="{{ url_for('profile.edit_profile') }}" class="btn btn-sm btn-dark rounded-pill px-3">Add Interests</a>
+            </div>
+            {% endif %}
 
             <!-- Explore (Candidates) Tab -->
             <div id="candidates" class="tab-panel active">
@@ -137,25 +224,33 @@
                         <div class="card h-100 bg-white border border-light-subtle shadow-sm rounded-4 overflow-hidden text-decoration-none" style="transition: transform 0.2s, box-shadow 0.2s;">
                             
                             <!-- Desktop Image -->
-                            <div class="d-none d-md-block" style="height: 220px; overflow: hidden;">
-                                <img src="{{ url_for('static', filename='uploads/' + (candidate.get('profile_pic') or 'default.png')) }}" 
-                                     onerror="this.src='https://ui-avatars.com/api/?name={{ (candidate.get('name') or 'User') | urlencode }}&background=6366f1&color=fff&size=250'"
+                            <div class="d-none d-md-block" style="height: 220px; overflow: hidden; position: relative;">
+                                <img src="{{ candidate | avatar_url }}" 
+                                     onerror="this.src='https://ui-avatars.com/api/?name={{ candidate.name | urlencode }}&background=6366f1&color=fff&size=250'"
                                      style="width: 100%; height: 100%; object-fit: cover;">
+                                {% if candidate.get('_shared_interests_count') %}
+                                <span class="position-absolute bottom-0 start-0 m-2 badge bg-dark bg-opacity-75 rounded-pill px-2 py-1">
+                                    <i class="bi bi-stars text-warning me-1"></i>{{ candidate.get('_shared_interests_count') }} mutual interest{{ 's' if candidate.get('_shared_interests_count') != 1 else '' }}
+                                </span>
+                                {% endif %}
                             </div>
 
                             <div class="card-body d-flex flex-column p-3 p-md-4">
                                 <!-- Mobile Layout Header -->
                                 <div class="d-flex d-md-none gap-3 align-items-center mb-3 pb-3 border-bottom">
                                     <div style="width: 70px; height: 70px; border-radius: 50%; overflow: hidden; flex-shrink: 0;">
-                                        <img src="{{ url_for('static', filename='uploads/' + (candidate.get('profile_pic') or 'default.png')) }}" 
-                                             onerror="this.src='https://ui-avatars.com/api/?name={{ (candidate.get('name') or 'User') | urlencode }}&background=6366f1&color=fff&size=80'"
+                                        <img src="{{ candidate | avatar_url }}" 
+                                             onerror="this.src='https://ui-avatars.com/api/?name={{ candidate.name | urlencode }}&background=6366f1&color=fff&size=80'"
                                              style="width: 100%; height: 100%; object-fit: cover;">
                                     </div>
-                                    <div>
-                                        <h5 class="fw-bold mb-0 text-dark d-flex align-items-center">
-                                            {{ (candidate.get('name') or 'User').split(' ')[0] }}
-                                            {% if candidate.get('face_verified') %}<i class="bi bi-patch-check-fill text-primary ms-1" style="font-size: 0.8rem;"></i>{% endif %}
-                                        </h5>
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <h5 class="fw-bold mb-0 text-dark d-flex align-items-center">
+                                                {{ (candidate.get('name') or 'User').split(' ')[0] }}
+                                                {% if candidate.get('face_verified') %}<i class="bi bi-patch-check-fill text-primary ms-1" style="font-size: 0.8rem;"></i>{% endif %}
+                                            </h5>
+                                            <span class="badge bg-indigo-subtle text-indigo rounded-pill d-flex align-items-center px-2 py-1" style="background-color: #eef2ff; color: #4f46e5;"><i class="bi bi-lightning-fill text-warning me-1"></i>{{ candidate.get('_match_score', 0) }}% Match</span>
+                                        </div>
                                         <div class="text-muted small mt-1">
                                             <span>{{ candidate.get('age', '25') }} • {{ candidate.get('gender', 'Male') }}</span><br>
                                             <span><i class="bi bi-geo-alt me-1"></i>{{ candidate.get('location') if candidate.get('location') is string else (candidate.get('location') or {}).get('city', 'Unknown') }}</span>
@@ -171,19 +266,26 @@
                                             {% if candidate.get('face_verified') %}<i class="bi bi-patch-check-fill text-primary ms-1" style="font-size: 0.8rem;"></i>{% endif %}
                                         </h5>
                                     </div>
-                                    <span class="badge bg-indigo-subtle text-indigo rounded-pill d-flex align-items-center px-2 py-1" style="background-color: #eef2ff; color: #4f46e5;"><i class="bi bi-lightning-fill text-warning me-1"></i>98% Match</span>
+                                    <span class="badge bg-indigo-subtle text-indigo rounded-pill d-flex align-items-center px-2 py-1" style="background-color: #eef2ff; color: #4f46e5;"><i class="bi bi-lightning-fill text-warning me-1"></i>{{ candidate.get('_match_score', 0) }}% Match</span>
                                 </div>
                                 
-                                <div class="text-muted small mb-3 d-none d-md-flex align-items-center">
+                                <div class="text-muted small mb-2 d-none d-md-flex align-items-center">
                                     <span>{{ candidate.get('age', '25') }} • {{ candidate.get('gender', 'Male') }}</span>
                                     <span class="mx-2">•</span>
                                     <span><i class="bi bi-geo-alt me-1"></i>{{ candidate.get('location') if candidate.get('location') is string else (candidate.get('location') or {}).get('city', 'Unknown') }}</span>
                                 </div>
 
-                                <!-- Desktop Interests -->
+                                <!-- Desktop Interests with Mutual Highlighting -->
                                 <div class="d-none d-md-flex flex-wrap gap-1 mb-3">
-                                    {% for interest in (candidate.get('interests') or [])[:3] %}
-                                    <span class="badge bg-light text-secondary rounded-pill fw-medium border">{{ interest }}</span>
+                                    {% set shared_list = candidate.get('_shared_interests') or [] %}
+                                    {% for interest in (candidate.get('interests') or [])[:4] %}
+                                        {% if interest in shared_list %}
+                                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill fw-semibold" title="Mutual Interest!">
+                                                <i class="bi bi-check2 me-1"></i>{{ interest }}
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-light text-secondary rounded-pill fw-medium border">{{ interest }}</span>
+                                        {% endif %}
                                     {% endfor %}
                                 </div>
 
@@ -191,15 +293,15 @@
                                 <div class="mt-auto d-flex justify-content-between align-items-center pt-3 border-top">
                                     <div class="d-flex gap-1 text-primary align-items-center" style="font-size: 0.9rem;">
                                         {% if 'text' in (candidate.get('comm_prefs') or []) or candidate.get('comm_pref') == 'text' %}
-                                            <i class="bi bi-chat-text bg-light p-1 rounded text-muted"></i>
+                                            <i class="bi bi-chat-text bg-light p-1 rounded text-muted" title="Text Chat"></i>
                                         {% endif %}
                                         {% if 'sign_language' in (candidate.get('comm_prefs') or []) or candidate.get('comm_pref') == 'sign' %}
-                                            <i class="bi bi-camera-video bg-light p-1 rounded text-muted"></i>
+                                            <i class="bi bi-camera-video bg-light p-1 rounded text-muted" title="Sign Language"></i>
                                         {% endif %}
                                     </div>
                                     <div class="d-flex gap-2">
-                                        <button class="btn btn-light rounded-circle border shadow-sm action-btn d-flex align-items-center justify-content-center" data-action="dislike" data-target-id="{{ candidate._id }}" style="width: 40px; height: 40px; color: #94a3b8;"><i class="bi bi-x-lg"></i></button>
-                                        <button class="btn btn-primary rounded-circle shadow-sm action-btn d-flex align-items-center justify-content-center" data-action="like" data-target-id="{{ candidate._id }}" style="width: 40px; height: 40px; background-color: #eef2ff; color: #4f46e5; border: none;"><i class="bi bi-heart-fill"></i></button>
+                                        <button class="btn btn-light rounded-circle border shadow-sm action-btn d-flex align-items-center justify-content-center" data-action="dislike" data-target-id="{{ candidate._id }}" style="width: 40px; height: 40px; color: #94a3b8;" title="Pass"><i class="bi bi-x-lg"></i></button>
+                                        <button class="btn btn-primary rounded-circle shadow-sm action-btn d-flex align-items-center justify-content-center" data-action="like" data-target-id="{{ candidate._id }}" style="width: 40px; height: 40px; background-color: #eef2ff; color: #4f46e5; border: none;" title="Like"><i class="bi bi-heart-fill"></i></button>
                                     </div>
                                 </div>
                             </div>
@@ -209,9 +311,25 @@
                 </div>
                 {% else %}
                 <div class="text-center py-5 bg-white rounded-4 border shadow-sm mt-2">
-                    <i class="bi bi-people text-muted" style="font-size: 4rem;"></i>
-                    <h4 class="mt-3 fw-bold text-dark">No more candidates right now</h4>
-                    <p class="text-muted">Check back later — or <a href="{{ url_for('profile.edit_profile') }}" class="text-primary text-decoration-none">update your interests</a> to expand your matches.</p>
+                    <i class="bi bi-heartbreak text-muted" style="font-size: 4rem;"></i>
+                    <h4 class="mt-3 fw-bold text-dark">No matching profiles found</h4>
+                    <p class="text-muted px-3" style="max-width: 520px; margin: 0 auto;">
+                        {% if not current_user.interests %}
+                            You haven't added interests to your profile yet. Add your hobbies and passions to discover compatible matches!
+                        {% else %}
+                            Profiles appear strictly based on your gender and shared interest preferences. Try broadening your age range or clearing specific interest filters.
+                        {% endif %}
+                    </p>
+                    <div class="mt-3 d-flex justify-content-center gap-2">
+                        {% if request.args %}
+                        <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary rounded-pill px-4 fw-medium">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i>Reset Filters
+                        </a>
+                        {% endif %}
+                        <a href="{{ url_for('profile.edit_profile') }}" class="btn btn-outline-secondary rounded-pill px-4 fw-medium">
+                            <i class="bi bi-pencil me-1"></i>Edit Profile Interests
+                        </a>
+                    </div>
                 </div>
                 {% endif %}
             </div>
@@ -224,14 +342,14 @@
                     <div class="col">
                         <div class="card h-100 bg-white border border-light-subtle shadow-sm rounded-4 overflow-hidden border-top border-4 border-success">
                             <div class="d-flex align-items-center p-3 border-bottom">
-                                <img src="{{ url_for('static', filename='uploads/' + (match.get('profile_pic') or 'default.png')) }}"
-                                     onerror="this.src='https://ui-avatars.com/api/?name={{ (match.get('name') or 'User') | urlencode }}&background=22c55e&color=fff&size=50'"
+                                <img src="{{ match | avatar_url }}"
+                                     onerror="this.src='https://ui-avatars.com/api/?name={{ match.name | urlencode }}&background=22c55e&color=fff&size=50'"
                                      class="rounded-circle me-3" style="width: 50px; height: 50px; object-fit: cover;">
                                 <div>
                                     <h6 class="fw-bold mb-0 text-dark">
                                         {{ (match.get('name') or 'User') }}
-                                        {% if match.get('is_verified') %}
-                                            <i class="bi bi-patch-check-fill text-success ms-1" style="font-size: 0.8rem;"></i>
+                                        {% if match.get('face_verified') %}
+                                            <i class="bi bi-patch-check-fill text-primary ms-1" style="font-size: 0.85rem;" title="Verified Profile"></i>
                                         {% endif %}
                                     </h6>
                                     <p class="text-muted small mb-0">{{ (match.get('comm_pref') or 'text') | title }}</p>

@@ -32,6 +32,7 @@ class UserModel(UserMixin):
         
         self.profile_photo = user_doc.get("profile_photo", user_doc.get("profile_pic", "default.png"))
         self.profile_pic = self.profile_photo
+        self.profile_photo_public_id = user_doc.get("profile_photo_public_id")
         
         self._is_active = user_doc.get("is_active", True)
         self.liked = user_doc.get("liked", [])
@@ -60,16 +61,52 @@ class UserModel(UserMixin):
         self.relationship_goal = user_doc.get("relationship_goal", "Friendship")
         
         # Matching Preferences
-        mp = user_doc.get("matching_preferences", {})
+        mp = user_doc.get("matching_preferences")
+        if not isinstance(mp, dict):
+            mp = {}
+
+        pref_genders = mp.get("preferred_genders")
+        if not pref_genders:
+            legacy_g = user_doc.get("pref_gender")
+            pref_genders = [legacy_g] if legacy_g else ["Any"]
+        elif isinstance(pref_genders, str):
+            pref_genders = [pref_genders]
+        elif not isinstance(pref_genders, (list, tuple, set)):
+            pref_genders = ["Any"]
+
+        raw_min_age = mp.get("min_age", user_doc.get("pref_min_age", 18))
+        raw_max_age = mp.get("max_age", user_doc.get("pref_max_age", 99))
+        try:
+            min_age = int(raw_min_age) if raw_min_age is not None else 18
+        except (ValueError, TypeError):
+            min_age = 18
+        try:
+            max_age = int(raw_max_age) if raw_max_age is not None else 99
+        except (ValueError, TypeError):
+            max_age = 99
+
         self.matching_preferences = {
-            "min_age": mp.get("min_age", user_doc.get("pref_min_age", 18)),
-            "max_age": mp.get("max_age", user_doc.get("pref_max_age", 99)),
-            "preferred_genders": mp.get("preferred_genders", [user_doc.get("pref_gender", "Any")])
+            "min_age": min_age,
+            "max_age": max_age,
+            "preferred_genders": list(pref_genders)
         }
         
         # Verification
-        self.face_verified = user_doc.get("face_verified", user_doc.get("is_verified", False))
+        self.face_verified = bool(user_doc.get("face_verified", False))
         self.is_verified = self.face_verified
+        self.face_verified_at = user_doc.get("face_verified_at")
+        self.verified_profile_photo = user_doc.get("verified_profile_photo")
+        self.verified_profile_photo_id = user_doc.get("verified_profile_photo_id")
+
+    @property
+    def avatar_url(self):
+        """Return the resolved avatar URL for Cloudinary HTTPS, local uploads, or default avatar."""
+        photo = self.profile_photo or self.profile_pic
+        if not photo or photo == "default.png":
+            return "/static/uploads/default.png"
+        if str(photo).startswith(("http://", "https://")):
+            return photo
+        return f"/static/uploads/{photo}"
 
     @property
     def is_active(self):
@@ -121,12 +158,19 @@ class UserModel(UserMixin):
                 "display_name": ""
             },
             "relationship_goal": "Friendship",
+            "pref_min_age": 18,
+            "pref_max_age": 99,
+            "pref_gender": "Any",
             "matching_preferences": {
                 "min_age": 18,
                 "max_age": 99,
                 "preferred_genders": ["Any"]
             },
-            "face_verified": False
+            "face_verified": False,
+            "is_verified": False,
+            "face_verified_at": None,
+            "verified_profile_photo": None,
+            "verified_profile_photo_id": None
         }
         result = mongo.db.users.insert_one(doc)
         return str(result.inserted_id)
@@ -158,6 +202,15 @@ class UserModel(UserMixin):
             oid = ObjectId(user_id)
         except Exception:
             return
+        user_doc = mongo.db.users.find_one({"_id": oid})
+        if user_doc:
+            photo_ref = user_doc.get("profile_photo_public_id") or user_doc.get("profile_photo")
+            if photo_ref:
+                try:
+                    from utils.cloudinary_storage import delete_profile_photo
+                    delete_profile_photo(photo_ref)
+                except Exception:
+                    pass
         mongo.db.users.delete_one({"_id": oid})
         mongo.db.messages.delete_many({"$or": [{"sender_id": user_id}, {"receiver_id": user_id}]})
         mongo.db.users.update_many({}, {"$pull": {"liked": user_id, "disliked": user_id}})
@@ -171,3 +224,54 @@ class UserModel(UserMixin):
     @staticmethod
     def verify_password(hashed_password, plain_password):
         return check_password_hash(hashed_password, plain_password)
+
+    @staticmethod
+    def set_face_verified(user_id, photo_url, photo_public_id=None):
+        try:
+            oid = ObjectId(user_id)
+        except Exception:
+            return False
+        now = datetime.utcnow()
+        result = mongo.db.users.update_one(
+            {"_id": oid},
+            {
+                "$set": {
+                    "face_verified": True,
+                    "is_verified": True,
+                    "face_verified_at": now,
+                    "verified_profile_photo": photo_url,
+                    "verified_profile_photo_id": photo_public_id,
+                    "verification": {
+                        "status": "verified",
+                        "verified_at": now,
+                        "photo": photo_url
+                    }
+                }
+            }
+        )
+        return result.modified_count > 0
+
+    @staticmethod
+    def invalidate_face_verification(user_id):
+        try:
+            oid = ObjectId(user_id)
+        except Exception:
+            return False
+        result = mongo.db.users.update_one(
+            {"_id": oid},
+            {
+                "$set": {
+                    "face_verified": False,
+                    "is_verified": False,
+                    "face_verified_at": None,
+                    "verified_profile_photo": None,
+                    "verified_profile_photo_id": None,
+                    "verification": {
+                        "status": "unverified",
+                        "verified_at": None
+                    }
+                }
+            }
+        )
+        return result.modified_count > 0
+

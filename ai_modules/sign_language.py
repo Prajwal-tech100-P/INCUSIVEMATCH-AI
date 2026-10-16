@@ -1,29 +1,23 @@
-"""Real-time sign recognition — GCN + Transformer (GCN-T) architecture.
+"""Real-time sign recognition — Indian Sign Language (ISL) GCN + Transformer (GCN-T) architecture.
 
 Pipeline
 --------
-1. MediaPipe extracts 21 hand landmarks (x, y) per frame.
-2. A short sliding window of frames is kept per user session.
+1. MediaPipe HandLandmarker extracts 42 hand landmarks (21 for Hand 1 + 21 for Hand 2, [x, y]) per frame.
+2. A sliding window of frames is maintained per user session (target 60 frames).
 3. The GCN-T model processes the window:
-   - Spatial GCN block encodes each frame as a hand-skeleton graph.
-   - Temporal Transformer encoder attends across all frames.
-   - A classification head outputs sign probabilities.
-
-Backward compatibility
-----------------------
-* If a GRU checkpoint (arch != 'gcn_transformer') is found, the old BiGRU
-  runtime is used automatically.
-* An SVM joblib model is still supported as a last-resort fallback.
+   - Spatial Graph Convolutions (42-joint skeleton graph) encode joint spatial relationships.
+   - Temporal Transformer Encoder attends across temporal frames.
+   - Classification head outputs probabilities over 29 Indian Sign Language classes.
+4. Real-time dynamic resampling allows instant predictions as soon as >= 6 frames are captured,
+   sliding smoothly to 60 full frames.
 
 Model paths (searched in order)
 --------------------------------
-  models/sign_gcnt.pt       ← new GCN-T checkpoint
-  models/sign_gru.pt        ← legacy BiGRU checkpoint (auto-detected)
-  models/sign_classifier.joblib ← legacy SVM
-
-Training
---------
-  python ai_modules/train_sign_model.py data/sign_sequences.csv
+  sign_model_output/sign_gcn_transformer.pth  ← trained ISL 29-class GCN-T checkpoint
+  models/sign_gcnt.pt                        ← workspace copy
+  models/isl_gcn_transformer_best.pt         ← ISL 40-word checkpoint fallback
+  models/sign_gru.pt                         ← legacy BiGRU checkpoint
+  models/sign_classifier.joblib              ← legacy SVM
 """
 
 from __future__ import annotations
@@ -32,148 +26,117 @@ import math
 import threading
 from collections import deque
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import cv2
 import numpy as np
 
 
 # ---------------------------------------------------------------------------
-# Hand skeleton adjacency (MediaPipe 21-joint layout)
+# MediaPipe 42-joint hand topology (Hand 1: 0..20, Hand 2: 21..41)
 # ---------------------------------------------------------------------------
-_HAND_EDGES: List[Tuple[int, int]] = [
-    (0, 1),  (1, 2),  (2, 3),  (3, 4),   # thumb
-    (0, 5),  (5, 6),  (6, 7),  (7, 8),   # index
-    (0, 9),  (9, 10), (10, 11),(11, 12), # middle
-    (0, 13), (13, 14),(14, 15),(15, 16), # ring
-    (0, 17), (17, 18),(18, 19),(19, 20), # pinky
-    (5, 9),  (9, 13), (13, 17),          # palm
+_NUM_NODES = 42
+_LANDMARKS_PER_HAND = 21
+
+_HAND_EDGES_SINGLE: List[Tuple[int, int]] = [
+    (0, 1),  (1, 2),  (2, 3),  (3, 4),    # thumb
+    (0, 5),  (5, 6),  (6, 7),  (7, 8),    # index
+    (0, 9),  (9, 10), (10, 11), (11, 12), # middle
+    (0, 13), (13, 14), (14, 15), (15, 16),# ring
+    (0, 17), (17, 18), (18, 19), (19, 20),# pinky
+    (5, 9),  (9, 13), (13, 17),           # palm
 ]
-_NUM_JOINTS = 21
 
 
-def _build_adjacency() -> "np.ndarray":
-    """Symmetric, self-looped, degree-normalised adjacency matrix (21×21)."""
-    A = np.zeros((_NUM_JOINTS, _NUM_JOINTS), dtype=np.float32)
-    for i, j in _HAND_EDGES:
-        A[i, j] = 1.0
-        A[j, i] = 1.0
-    np.fill_diagonal(A, 1.0)          # self-loops
-    D = A.sum(axis=1, keepdims=True)
-    D_inv_sqrt = np.where(D > 0, 1.0 / np.sqrt(D), 0.0)
-    return D_inv_sqrt * A * D_inv_sqrt.T   # D^{-1/2} A D^{-1/2}
-
-
-_ADJ: np.ndarray = _build_adjacency()
+def _build_adjacency_42() -> "np.ndarray":
+    """Construct normalized 42x42 block-diagonal adjacency matrix."""
+    import torch
+    A = torch.eye(_NUM_NODES)
+    for offset in (0, 21):
+        for i in range(offset, offset + 20):
+            A[i, i + 1] = 1.0
+            A[i + 1, i] = 1.0
+    degree = A.sum(dim=1).clamp(min=1)
+    D = torch.diag(degree.pow(-0.5))
+    norm_adj = D @ A @ D
+    return norm_adj.numpy().astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
-# Lazy model builders (import torch only when needed)
+# Model definitions (imported dynamically when torch is ready)
 # ---------------------------------------------------------------------------
 
 def _build_gcn_transformer_class():
-    """Build the GCNTransformerNetwork nn.Module class on first use."""
+    """Build the GCNTransformer nn.Module matching sign_gcn_transformer.pth."""
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
 
+    def build_adj(num_nodes=42):
+        A = torch.eye(num_nodes)
+        for offset in (0, 21):
+            for i in range(offset, offset + 20):
+                A[i, i + 1] = 1.0
+                A[i + 1, i] = 1.0
+        degree = A.sum(dim=1).clamp(min=1)
+        D = torch.diag(degree.pow(-0.5))
+        return D @ A @ D
+
     class GraphConv(nn.Module):
-        """Single GCN layer: H' = σ(A_hat · H · W)."""
-        def __init__(self, in_dim: int, out_dim: int, adj: np.ndarray):
+        def __init__(self, in_features: int, out_features: int):
             super().__init__()
-            self.register_buffer("adj", torch.from_numpy(adj))
-            self.linear = nn.Linear(in_dim, out_dim, bias=False)
-            self.bn = nn.BatchNorm1d(out_dim)
+            self.linear = nn.Linear(in_features, out_features)
 
-        def forward(self, x: "torch.Tensor") -> "torch.Tensor":
-            # x: (B*T, J, in_dim)
-            h = self.linear(x)                      # (B*T, J, out_dim)
-            h = torch.bmm(self.adj.unsqueeze(0).expand(h.size(0), -1, -1), h)
-            bt, j, d = h.shape
-            h = self.bn(h.reshape(bt * j, d)).reshape(bt, j, d)
-            return F.relu(h)
+        def forward(self, x: torch.Tensor, adjacency: torch.Tensor) -> torch.Tensor:
+            # x: batch x frames x nodes x features
+            x = torch.matmul(adjacency, x)
+            return self.linear(x)
 
-    class GCNBlock(nn.Module):
-        """Two stacked GCN layers with residual projection."""
-        def __init__(self, in_dim: int, out_dim: int, adj: np.ndarray):
-            super().__init__()
-            self.gcn1 = GraphConv(in_dim, out_dim, adj)
-            self.gcn2 = GraphConv(out_dim, out_dim, adj)
-            self.proj = nn.Linear(in_dim, out_dim, bias=False) if in_dim != out_dim else nn.Identity()
-
-        def forward(self, x):
-            res = self.proj(x)
-            return self.gcn2(self.gcn1(x)) + res
-
-    class PositionalEncoding(nn.Module):
-        def __init__(self, d_model: int, max_len: int = 512):
-            super().__init__()
-            pe = torch.zeros(max_len, d_model)
-            pos = torch.arange(0, max_len).unsqueeze(1).float()
-            div = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-            pe[:, 0::2] = torch.sin(pos * div)
-            pe[:, 1::2] = torch.cos(pos * div)
-            self.register_buffer("pe", pe.unsqueeze(0))  # (1, max_len, d_model)
-
-        def forward(self, x):
-            return x + self.pe[:, :x.size(1)]
-
-    class GCNTransformerNetwork(nn.Module):
-        """
-        Spatial GCN (per-frame skeleton graph) +
-        Temporal Transformer (across frames) classifier.
-
-        Input : (B, T, J, C)  where J=21, C=node_dim (default 4: x,y,dx,dy)
-        Output: (B, num_classes)
-        """
+    class GCNTransformer(nn.Module):
         def __init__(
             self,
             num_classes: int,
-            seq_len: int = 24,
-            node_dim: int = 4,
-            gcn_dim: int = 64,
-            tf_heads: int = 4,
-            tf_layers: int = 2,
-            dropout: float = 0.3,
+            hidden_dim: int = 64,
+            heads: int = 4,
+            layers: int = 2,
+            in_features: int = 2,
         ):
             super().__init__()
-            adj = _build_adjacency()
-            self.gcn = GCNBlock(node_dim, gcn_dim, adj)
-            # After GCN we pool joints → (B, T, gcn_dim)
-            self.joint_pool = nn.Linear(gcn_dim * _NUM_JOINTS, gcn_dim)
-            self.pos_enc = PositionalEncoding(gcn_dim, max_len=512)
+            self.register_buffer("adjacency", build_adj(num_nodes=_NUM_NODES))
+            self.gcn1 = GraphConv(in_features, hidden_dim)
+            self.gcn2 = GraphConv(hidden_dim, hidden_dim)
+            self.activation = nn.ReLU()
+            self.dropout = nn.Dropout(0.2)
+
             encoder_layer = nn.TransformerEncoderLayer(
-                d_model=gcn_dim, nhead=tf_heads, dim_feedforward=gcn_dim * 4,
-                dropout=dropout, batch_first=True, norm_first=True,
+                d_model=hidden_dim,
+                nhead=heads,
+                dim_feedforward=128,
+                dropout=0.2,
+                batch_first=True,
+                norm_first=False,
             )
-            self.transformer = nn.TransformerEncoder(
-                encoder_layer, num_layers=tf_layers, enable_nested_tensor=False,
-            )
-            self.head = nn.Sequential(
-                nn.LayerNorm(gcn_dim),
-                nn.Dropout(dropout),
-                nn.Linear(gcn_dim, num_classes),
+            self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=layers)
+            self.classifier = nn.Sequential(
+                nn.LayerNorm(hidden_dim),
+                nn.Linear(hidden_dim, num_classes),
             )
 
-        def forward(self, x: "torch.Tensor") -> "torch.Tensor":
-            # x: (B, T, J, C)
-            B, T, J, C = x.shape
-            # --- Spatial GCN (applied to every frame independently) ---
-            h = x.reshape(B * T, J, C)           # (B*T, J, C)
-            h = self.gcn(h)                       # (B*T, J, gcn_dim)
-            h = h.reshape(B, T, J * h.shape[-1]) # (B, T, J*gcn_dim)
-            h = self.joint_pool(h)                # (B, T, gcn_dim)
-            # --- Temporal Transformer ---
-            h = self.pos_enc(h)
-            h = self.transformer(h)               # (B, T, gcn_dim)
-            h = h.mean(dim=1)                     # global avg pool → (B, gcn_dim)
-            return self.head(h)
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            # x: batch x frames x 42 nodes x 2 coordinates
+            x = self.activation(self.gcn1(x, self.adjacency))
+            x = self.dropout(self.activation(self.gcn2(x, self.adjacency)))
+            # Pool landmarks into one representation per frame
+            x = x.mean(dim=2)
+            x = self.transformer(x)
+            x = x.mean(dim=1)
+            return self.classifier(x)
 
-    return GCNTransformerNetwork
+    return GCNTransformer
 
 
 def _build_gru_class():
-    """Legacy BiGRU class — kept for backward compatibility."""
+    """Legacy BiGRU class for backward compatibility."""
     import torch.nn as nn
 
     class GRUNetwork(nn.Module):
@@ -201,7 +164,6 @@ def _build_gru_class():
     return GRUNetwork
 
 
-# Lazy class caches
 _GCNT_CLASS = None
 _GRU_CLASS = None
 
@@ -221,48 +183,58 @@ def _make_gru(**kw):
 
 
 # ---------------------------------------------------------------------------
-# Main recogniser class
+# Main Recognizer Class
 # ---------------------------------------------------------------------------
 
 class SignLanguageRecognizer:
-    """Real-time sign recogniser backed by GCN-T (or legacy BiGRU/SVM)."""
+    """Real-time Indian Sign Language Recognizer backed by GCN-Transformer."""
 
-    GCNT_MODEL_PATH = Path("models/sign_gcnt.pt")
-    GRU_MODEL_PATH  = Path("models/sign_gru.pt")
-    SVM_MODEL_PATH  = Path("models/sign_classifier.joblib")
+    DEFAULT_PATHS = [
+        Path("models/sign_gcnt_best.pt"),
+        Path("sign_model_output/sign_gcn_transformer.pth"),
+        Path("models/sign_gcnt.pt"),
+        Path("models/isl_gcn_transformer_best.pt"),
+        Path("models/sign_gru.pt"),
+    ]
+    SVM_MODEL_PATH = Path("models/sign_classifier.joblib")
+    TASK_MODEL_PATHS = [
+        Path("models/hand_landmarker.task"),
+        Path(r"C:\Users\ACER\isl-40words\models\hand_landmarker.task"),
+    ]
 
-    SEQ_LEN         = 24
-    MIN_CONFIDENCE  = 0.72
+    SEQ_LEN = 60
+    MIN_WARMUP_FRAMES = 6
+    MIN_CONFIDENCE = 0.07  # Minimum top-1 confidence threshold for 29 classes
     SMOOTHING_WINDOW = 5
 
-    # GCN-T hyper-params (must match training)
-    NODE_DIM  = 4   # x, y, dx, dy per joint
-    GCN_DIM   = 64
-    TF_HEADS  = 4
-    TF_LAYERS = 2
-    DROPOUT   = 0.30
-
     def __init__(self, model_path: Optional[str] = None):
-        self.model: Optional[object]  = None   # GCN-T or GRU nn.Module
-        self.svm:   Optional[object]  = None
-        self.hands: Optional[object]  = None
-        self.mp_hands: Optional[object] = None
-        self.error: Optional[str]     = None
-        self.arch: str                = "none"
-        self.labels: List[str]        = []
-        self.seq_len: int             = self.SEQ_LEN
-        self.lock                     = threading.Lock()
+        self.model: Optional[object] = None
+        self.svm: Optional[object] = None
+        self.landmarker: Optional[object] = None
+        self.legacy_hands: Optional[object] = None
+        self.error: Optional[str] = None
+        self.arch: str = "none"
+        self.is_2hand: bool = False
+        self.labels: List[str] = []
+        self.seq_len: int = self.SEQ_LEN
+        self.mean: Optional[np.ndarray] = None
+        self.std: Optional[np.ndarray] = None
+        self.lock = threading.Lock()
         self.sequences: Dict[str, deque] = {}
+        self.empty_streak: Dict[str, int] = {}
         self.recent_predictions: Dict[str, deque] = {}
 
-        # Resolve model path: explicit > gcnt default > gru legacy
+        # Resolve model path
+        self.model_path = None
         if model_path:
-            candidate = Path(model_path)
-        elif self.GCNT_MODEL_PATH.exists():
-            candidate = self.GCNT_MODEL_PATH
-        else:
-            candidate = self.GRU_MODEL_PATH
-        self.model_path = candidate
+            p = Path(model_path)
+            if p.exists():
+                self.model_path = p
+        if not self.model_path:
+            for candidate in self.DEFAULT_PATHS:
+                if candidate.exists():
+                    self.model_path = candidate
+                    break
 
         self._load_model()
         if self.model is None:
@@ -270,104 +242,216 @@ class SignLanguageRecognizer:
         self._load_hand_tracker()
 
     # ------------------------------------------------------------------
-    # Model loading
+    # Model Loading
     # ------------------------------------------------------------------
 
     def _load_model(self):
-        if not self.model_path.exists():
-            self.error = (
-                f"No trained model found at {self.model_path}. "
-                "Run: python ai_modules/train_sign_model.py data/sign_sequences.csv"
-            )
+        if not self.model_path or not self.model_path.exists():
+            self.error = "No trained sign model checkpoint found."
             return
+
         try:
             import torch
             ckpt = torch.load(self.model_path, map_location="cpu", weights_only=False)
-            self.labels  = [str(x) for x in ckpt["labels"]]
-            self.seq_len = int(ckpt.get("seq_len", self.SEQ_LEN))
-            arch = ckpt.get("arch", "gru")
 
-            if arch == "gcn_transformer":
-                self._load_gcnt(ckpt)
-            else:
-                self._load_gru_ckpt(ckpt)
+            # Check for enhanced 2-hand GCN-Transformer format (sign_gcnt_best.pt)
+            if ckpt.get("arch") == "gcn_transformer_2hand":
+                from ai_modules.sign_model_gcnt import GCNTransformerClassifier
+                self.labels = [str(x) for x in ckpt["classes"]]
+                self.seq_len = int(ckpt.get("seq_len", 24))
+                gcn_dim = int(ckpt.get("gcn_dim", 64))
+                heads = int(ckpt.get("tf_heads", 4))
+                layers = int(ckpt.get("tf_layers", 2))
+                dropout = float(ckpt.get("dropout", 0.25))
+                node_dim = int(ckpt.get("node_dim", 4))
+                use_temp_conv = bool(ckpt.get("use_temp_conv", False))
+                use_multiscale_pool = bool(ckpt.get("use_multiscale_pool", False))
+
+                net = GCNTransformerClassifier(
+                    num_classes=len(self.labels),
+                    seq_len=self.seq_len,
+                    node_dim=node_dim,
+                    gcn_dim=gcn_dim,
+                    tf_heads=heads,
+                    tf_layers=layers,
+                    dropout=dropout,
+                    use_temp_conv=use_temp_conv,
+                    use_multiscale_pool=use_multiscale_pool,
+                )
+                net.load_state_dict(ckpt["state_dict"])
+                net.eval()
+                self.model = net
+                self.arch = "gcn_transformer"
+                self.is_2hand = True
+                self.error = None
+                return
+
+            # Check for GCNTransformer checkpoint format
+            if "model_state_dict" in ckpt:
+                state_dict = ckpt["model_state_dict"]
+                # Determine classes
+                if "classes" in ckpt:
+                    self.labels = [str(x) for x in ckpt["classes"]]
+                elif "words" in ckpt:
+                    self.labels = [str(x) for x in ckpt["words"]]
+                elif "num_classes" in ckpt:
+                    self.labels = [f"sign_{i}" for i in range(int(ckpt["num_classes"]))]
+
+                # Sequence length & shapes
+                if "input_shape" in ckpt and isinstance(ckpt["input_shape"], (list, tuple)):
+                    self.seq_len = int(ckpt["input_shape"][0])
+                elif "sequence_length" in ckpt:
+                    self.seq_len = int(ckpt["sequence_length"])
+
+                # Normalization parameters
+                if "normalization_mean" in ckpt and "normalization_std" in ckpt:
+                    self.mean = np.array(ckpt["normalization_mean"], dtype=np.float32).reshape(1, 1, -1)
+                    self.std = np.array(ckpt["normalization_std"], dtype=np.float32).reshape(1, 1, -1)
+                    self.std = np.maximum(self.std, 1e-5)
+
+                hidden_dim = int(ckpt.get("hidden_dim", 64))
+                heads = int(ckpt.get("attention_heads", 4))
+                layers = int(ckpt.get("transformer_layers", 2))
+                in_feat = 2
+
+                # Detect in_features from gcn1.linear.weight
+                if "gcn1.linear.weight" in state_dict:
+                    in_feat = state_dict["gcn1.linear.weight"].shape[1]
+                    hidden_dim = state_dict["gcn1.linear.weight"].shape[0]
+
+                net = _make_gcnt(
+                    num_classes=len(self.labels),
+                    hidden_dim=hidden_dim,
+                    heads=heads,
+                    layers=layers,
+                    in_features=in_feat,
+                )
+                net.load_state_dict(state_dict)
+                net.eval()
+                self.model = net
+                self.arch = "gcn_transformer"
+                self.error = None
+                return
+
+            # Legacy BiGRU format
+            if "labels" in ckpt:
+                self.labels = [str(x) for x in ckpt["labels"]]
+                self.seq_len = int(ckpt.get("seq_len", self.SEQ_LEN))
+                net = _make_gru(
+                    input_size=int(ckpt.get("input_size", 84)),
+                    hidden_size=int(ckpt.get("hidden_size", 128)),
+                    num_layers=int(ckpt.get("num_layers", 2)),
+                    num_classes=len(self.labels),
+                    dropout=float(ckpt.get("dropout", 0.25)),
+                    bidirectional=True,
+                )
+                net.load_state_dict(ckpt["state_dict"])
+                net.eval()
+                self.model = net
+                self.arch = "gru"
+                self.error = None
         except Exception as exc:
             self.model = None
-            self.error = f"Could not load model ({self.model_path.name}): {exc}"
-
-    def _load_gcnt(self, ckpt: dict):
-        net = _make_gcnt(
-            num_classes=len(self.labels),
-            seq_len=self.seq_len,
-            node_dim=int(ckpt.get("node_dim", self.NODE_DIM)),
-            gcn_dim=int(ckpt.get("gcn_dim", self.GCN_DIM)),
-            tf_heads=int(ckpt.get("tf_heads", self.TF_HEADS)),
-            tf_layers=int(ckpt.get("tf_layers", self.TF_LAYERS)),
-            dropout=float(ckpt.get("dropout", self.DROPOUT)),
-        )
-        net.load_state_dict(ckpt["state_dict"])
-        net.eval()
-        self.model = net
-        self.arch  = "gcn_transformer"
-
-    def _load_gru_ckpt(self, ckpt: dict):
-        net = _make_gru(
-            input_size=int(ckpt.get("input_size", 84)),
-            hidden_size=int(ckpt.get("hidden_size", 128)),
-            num_layers=int(ckpt.get("num_layers", 2)),
-            num_classes=len(self.labels),
-            dropout=float(ckpt.get("dropout", 0.25)),
-            bidirectional=True,
-        )
-        net.load_state_dict(ckpt["state_dict"])
-        net.eval()
-        self.model = net
-        self.arch  = "gru"
+            self.error = f"Could not load sign model ({self.model_path.name}): {exc}"
 
     def _load_svm(self):
         if not self.SVM_MODEL_PATH.exists():
             return
         try:
             import joblib
-            self.svm  = joblib.load(self.SVM_MODEL_PATH)
+            self.svm = joblib.load(self.SVM_MODEL_PATH)
             self.arch = "svm"
         except Exception:
             self.svm = None
 
     def _load_hand_tracker(self):
+        """Initialize MediaPipe HandLandmarker with task model."""
+        task_file = None
+        for candidate in self.TASK_MODEL_PATHS:
+            if candidate.exists():
+                task_file = candidate
+                break
+
+        if task_file:
+            try:
+                import mediapipe as mp
+                from mediapipe.tasks import python
+                from mediapipe.tasks.python import vision
+
+                base_options = python.BaseOptions(model_asset_path=str(task_file.resolve()))
+                options = vision.HandLandmarkerOptions(
+                    base_options=base_options,
+                    running_mode=vision.RunningMode.IMAGE,
+                    num_hands=2,
+                )
+                self.landmarker = vision.HandLandmarker.create_from_options(options)
+                return
+            except Exception as exc:
+                self.landmarker = None
+
+        # Fallback to legacy mediapipe solutions if available
         try:
             import mediapipe as mp
-            self.mp_hands = mp.solutions.hands
-            self.hands = self.mp_hands.Hands(
-                static_image_mode=False,
-                max_num_hands=1,
-                model_complexity=1,
-                min_detection_confidence=0.60,
-                min_tracking_confidence=0.60,
-            )
-        except Exception as exc:
-            self.error = self.error or f"MediaPipe is unavailable: {exc}"
+            if hasattr(mp, "solutions") and hasattr(mp.solutions, "hands"):
+                self.legacy_hands = mp.solutions.hands.Hands(
+                    static_image_mode=False,
+                    max_num_hands=2,
+                    min_detection_confidence=0.5,
+                    min_tracking_confidence=0.5,
+                )
+        except Exception:
+            self.legacy_hands = None
+
+        if self.landmarker is None and self.legacy_hands is None:
+            self.error = self.error or "MediaPipe hand landmarker is unavailable."
 
     # ------------------------------------------------------------------
-    # Feature extraction
+    # Landmark Extraction
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _extract_joints(hand_landmarks) -> Optional[np.ndarray]:
-        """Return (21, 2) float32 array — wrist-centred, scale-normalised."""
-        pts = np.array(
-            [(p.x, p.y) for p in hand_landmarks.landmark], dtype=np.float32
-        )
-        pts -= pts[0]                               # wrist at origin
-        scale = np.max(np.linalg.norm(pts, axis=1))
-        if scale <= 1e-6:
-            return None
-        return (pts / scale).astype(np.float32)    # (21, 2)
+    def _extract_landmarks(self, frame_bgr: np.ndarray) -> Optional[np.ndarray]:
+        """
+        Extract (42, 2) float32 landmark array from BGR image:
+        Hand 1 at nodes 0..20, Hand 2 at nodes 21..41.
+        Returns None if no hand detected.
+        """
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
-    @staticmethod
-    def _flat_features(joints: np.ndarray) -> np.ndarray:
-        """Flatten (21,2) → (42,) for legacy GRU / SVM."""
-        return joints.reshape(-1)
+        # 1. New MediaPipe Tasks API
+        if self.landmarker is not None:
+            import mediapipe as mp
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            with self.lock:
+                result = self.landmarker.detect(mp_image)
+
+            if not result or not result.hand_landmarks:
+                return None
+
+            joints = np.zeros((_NUM_NODES, 2), dtype=np.float32)
+            for hand_idx, hand_landmarks in enumerate(result.hand_landmarks[:2]):
+                offset = hand_idx * _LANDMARKS_PER_HAND
+                for lm_idx, lm in enumerate(hand_landmarks[:_LANDMARKS_PER_HAND]):
+                    joints[offset + lm_idx, 0] = float(lm.x)
+                    joints[offset + lm_idx, 1] = float(lm.y)
+            return joints
+
+        # 2. Legacy MediaPipe solutions API
+        if self.legacy_hands is not None:
+            with self.lock:
+                result = self.legacy_hands.process(rgb)
+
+            if not result or not result.multi_hand_landmarks:
+                return None
+
+            joints = np.zeros((_NUM_NODES, 2), dtype=np.float32)
+            for hand_idx, hand_landmarks in enumerate(result.multi_hand_landmarks[:2]):
+                offset = hand_idx * _LANDMARKS_PER_HAND
+                for lm_idx, lm in enumerate(hand_landmarks.landmark[:_LANDMARKS_PER_HAND]):
+                    joints[offset + lm_idx, 0] = float(lm.x)
+                    joints[offset + lm_idx, 1] = float(lm.y)
+            return joints
+
+        return None
 
     # ------------------------------------------------------------------
     # Inference
@@ -375,45 +459,65 @@ class SignLanguageRecognizer:
 
     def _predict_gcnt(self, sequence: List[np.ndarray]) -> Tuple[str, float]:
         """
-        sequence: list of (21, 2) arrays, length == seq_len.
-        Returns (label, confidence).
+        sequence: list of (42, 2) arrays.
+        Resamples / normalizes and runs model.
         """
         import torch
-        arr = np.stack(sequence, axis=0).astype(np.float32)   # (T, 21, 2)
-        # Compute velocities per joint
-        vel = np.zeros_like(arr)                               # (T, 21, 2)
-        vel[1:] = arr[1:] - arr[:-1]
-        node_feat = np.concatenate([arr, vel], axis=-1)        # (T, 21, 4)
-        x = torch.from_numpy(node_feat).unsqueeze(0)           # (1, T, 21, 4)
+
+        # Enhanced 2-hand path with velocity features [x, y, dx, dy]
+        if getattr(self, "is_2hand", False):
+            from ai_modules.sign_model_gcnt import preprocess_live_frame_buffer
+            node_dim = getattr(self.model, "node_dim", 4)
+            arr = preprocess_live_frame_buffer(sequence, seq_len=self.seq_len, node_dim=node_dim)
+            x = torch.from_numpy(arr).unsqueeze(0).float()
+            with torch.no_grad():
+                logits = self.model(x)
+                probs = torch.softmax(logits, dim=-1)[0].cpu().numpy()
+            idx = int(np.argmax(probs))
+            label = self.labels[idx] if idx < len(self.labels) else f"sign_{idx}"
+            return label, float(probs[idx])
+
+        # Legacy 2-feature uniform temporal resampling to target seq_len (60)
+        num_frames = len(sequence)
+        if num_frames == self.seq_len:
+            arr = np.stack(sequence, axis=0).astype(np.float32)  # (60, 42, 2)
+        else:
+            indices = np.linspace(0, num_frames - 1, self.seq_len).round().astype(int)
+            arr = np.array(sequence, dtype=np.float32)[indices]
+
+        # Apply dataset normalization
+        if self.mean is not None and self.std is not None:
+            arr = (arr - self.mean) / self.std
+            arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+
+        x = torch.from_numpy(arr).unsqueeze(0).float()  # (1, 60, 42, 2)
         with torch.no_grad():
             logits = self.model(x)
-            probs  = torch.softmax(logits, dim=1)[0].numpy()
+            probs = torch.softmax(logits, dim=1)[0].numpy()
+
         idx = int(np.argmax(probs))
-        return self.labels[idx], float(probs[idx])
+        label = self.labels[idx] if idx < len(self.labels) else f"sign_{idx}"
+        return label, float(probs[idx])
 
     def _predict_gru(self, sequence: List[np.ndarray]) -> Tuple[str, float]:
-        """sequence: list of (42,) flat arrays."""
         import torch
-        arr = np.stack(sequence, axis=0).astype(np.float32)   # (T, 42)
-        vel = np.vstack([np.zeros((1, 42), dtype=np.float32), np.diff(arr, axis=0)])
-        feat = np.concatenate([arr, vel], axis=1)              # (T, 84)
-        x = torch.from_numpy(feat).unsqueeze(0)
+        flat_seq = [j.reshape(-1) for j in sequence[-self.seq_len:]]
+        arr = np.stack(flat_seq, axis=0).astype(np.float32)
+        x = torch.from_numpy(arr).unsqueeze(0).float()
         with torch.no_grad():
             logits = self.model(x)
-            probs  = torch.softmax(logits, dim=1)[0].numpy()
+            probs = torch.softmax(logits, dim=1)[0].numpy()
         idx = int(np.argmax(probs))
         return self.labels[idx], float(probs[idx])
 
-    def _predict_svm(self, feature: np.ndarray) -> Tuple[str, float]:
-        pred = self.svm.predict(feature.reshape(1, -1))[0]
-        conf = (
-            float(np.max(self.svm.predict_proba(feature.reshape(1, -1))[0]))
-            if hasattr(self.svm, "predict_proba") else 0.0
-        )
+    def _predict_svm(self, joints: np.ndarray) -> Tuple[str, float]:
+        feat = joints.reshape(1, -1)
+        pred = self.svm.predict(feat)[0]
+        conf = float(np.max(self.svm.predict_proba(feat)[0])) if hasattr(self.svm, "predict_proba") else 0.5
         return str(pred), conf
 
     # ------------------------------------------------------------------
-    # Smoothing helper
+    # Temporal Smoothing Helper
     # ------------------------------------------------------------------
 
     def _smooth(self, key: str, label: str, conf: float) -> Tuple[str, float]:
@@ -435,110 +539,110 @@ class SignLanguageRecognizer:
         key = str(user_id)
         with self.lock:
             self.sequences.pop(key, None)
+            self.empty_streak.pop(key, None)
             self.recent_predictions.pop(key, None)
 
     def recognize_frame(self, frame_data: bytes, user_id: str = "anonymous") -> dict:
         """
-        Decode one JPEG/PNG frame, run hand detection + sign classification.
+        Decode one image frame, extract 42 hand landmarks, run ISL GCN-T inference.
 
         Returns
         -------
-        dict with keys: text, confidence, message, ready (optional), arch
+        dict with keys: text, confidence, message, ready, arch
         """
-        # --- Decode frame ---
         arr = np.frombuffer(frame_data, np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR) if arr.size else None
         if frame is None:
-            return _resp("", 0.0, "Invalid image frame.")
+            return _resp("", 0.0, "Invalid image frame.", ready=False)
 
-        # --- Guard: model available? ---
         if self.model is None and self.svm is None:
-            return _resp("", 0.0, self.error or "Train a sign model first.")
-        if self.hands is None:
-            return _resp("", 0.0, self.error or "MediaPipe is unavailable.")
+            return _resp("", 0.0, self.error or "Train or download a sign model first.", ready=False)
 
-        # --- Hand detection ---
-        rgb    = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        result = self.hands.process(rgb)
-        key    = str(user_id)
+        if self.landmarker is None and self.legacy_hands is None:
+            return _resp("", 0.0, self.error or "MediaPipe landmarker unavailable.", ready=False)
 
-        if not result.multi_hand_landmarks:
-            with self.lock:
-                self.sequences.pop(key, None)
-            return _resp("", 0.0, "No hand detected.")
+        joints = self._extract_landmarks(frame)
+        key = str(user_id)
 
-        joints = self._extract_joints(result.multi_hand_landmarks[0])
+        # Track consecutive empty frames before resetting buffer
         if joints is None:
-            return _resp("", 0.0, "Could not normalise hand landmarks.")
+            with self.lock:
+                streak = self.empty_streak.get(key, 0) + 1
+                self.empty_streak[key] = streak
+                if streak >= 3:
+                    self.sequences.pop(key, None)
+            return _resp("", 0.0, "No hand detected. Position your hands in front of camera.", ready=False)
 
-        # --- GCN-T path ---
+        # Hand detected: reset empty streak and store frame landmarks
+        with self.lock:
+            self.empty_streak[key] = 0
+            q = self.sequences.setdefault(key, deque(maxlen=self.seq_len))
+            q.append(joints)
+            seq = list(q)
+
+        # GCN-Transformer Prediction Path
         if self.arch == "gcn_transformer":
-            with self.lock:
-                q = self.sequences.setdefault(key, deque(maxlen=self.seq_len))
-                q.append(joints)      # each element: (21, 2)
-                seq = list(q)
-
-            if len(seq) < self.seq_len:
+            if len(seq) < self.MIN_WARMUP_FRAMES:
                 return _resp(
                     "", 0.0,
-                    f"Buffering frames ({len(seq)}/{self.seq_len})…",
+                    f"Capturing sign movement ({len(seq)}/{self.MIN_WARMUP_FRAMES})…",
                     ready=False,
+                    arch="GCN-Transformer",
                 )
+
             try:
-                label, conf = self._predict_gcnt(seq)
-                label, conf = self._smooth(key, label, conf)
-                if conf < self.MIN_CONFIDENCE:
+                raw_label, conf = self._predict_gcnt(seq)
+                smoothed_label, smoothed_conf = self._smooth(key, raw_label, conf)
+
+                display_text = smoothed_label.replace("_", " ").title()
+
+                if smoothed_conf < self.MIN_CONFIDENCE:
                     return _resp(
-                        "UNCERTAIN", round(conf * 100, 2),
-                        "Low confidence — please repeat the sign.",
-                        ready=True, arch="GCN-Transformer",
+                        "UNCERTAIN",
+                        round(smoothed_conf * 100, 1),
+                        "Low confidence — continue holding or repeating the sign.",
+                        ready=True,
+                        arch="GCN-Transformer",
                     )
+
                 return _resp(
-                    label, round(conf * 100, 2),
-                    "GCN-Transformer prediction.",
-                    ready=True, arch="GCN-Transformer",
+                    display_text,
+                    round(smoothed_conf * 100, 1),
+                    f"Recognized: {display_text}",
+                    ready=True,
+                    arch="GCN-Transformer",
                 )
             except Exception as exc:
-                return _resp("", 0.0, f"GCN-T inference error: {exc}")
+                return _resp("", 0.0, f"GCN-T inference error: {exc}", ready=False)
 
-        # --- Legacy GRU path ---
+        # Legacy BiGRU path
         if self.arch == "gru":
-            flat = self._flat_features(joints)
-            with self.lock:
-                q = self.sequences.setdefault(key, deque(maxlen=self.seq_len))
-                q.append(flat)
-                seq = list(q)
-            if len(seq) < self.seq_len:
-                return _resp(
-                    "", 0.0,
-                    f"Collecting sign frames ({len(seq)}/{self.seq_len})…",
-                    ready=False,
-                )
+            if len(seq) < self.MIN_WARMUP_FRAMES:
+                return _resp("", 0.0, f"Buffering ({len(seq)}/{self.MIN_WARMUP_FRAMES})…", ready=False)
             try:
-                label, conf = self._predict_gru(seq)
-                label, conf = self._smooth(key, label, conf)
-                if conf < self.MIN_CONFIDENCE:
-                    return _resp(
-                        "UNCERTAIN", round(conf * 100, 2),
-                        "Low confidence — please repeat the sign.",
-                        ready=True, arch="BiGRU",
-                    )
-                return _resp(label, round(conf * 100, 2), "BiGRU sequence prediction.", ready=True, arch="BiGRU")
+                raw_label, conf = self._predict_gru(seq)
+                smoothed_label, smoothed_conf = self._smooth(key, raw_label, conf)
+                display_text = smoothed_label.replace("_", " ").title()
+                return _resp(
+                    display_text, round(smoothed_conf * 100, 1),
+                    f"Recognized: {display_text}", ready=True, arch="BiGRU"
+                )
             except Exception as exc:
-                return _resp("", 0.0, f"GRU inference error: {exc}")
+                return _resp("", 0.0, f"GRU inference error: {exc}", ready=False)
 
-        # --- SVM fallback ---
+        # SVM fallback
         if self.svm is not None:
             try:
-                flat  = self._flat_features(joints)
-                label, conf = self._predict_svm(flat)
-                if conf < 0.65:
-                    label = "UNCERTAIN"
-                return _resp(label, round(conf * 100, 2), "SVM compatibility prediction.", arch="SVM")
+                label, conf = self._predict_svm(joints)
+                display_text = label.replace("_", " ").title()
+                return _resp(
+                    display_text, round(conf * 100, 1),
+                    f"Recognized: {display_text}", ready=True, arch="SVM"
+                )
             except Exception as exc:
-                return _resp("", 0.0, f"SVM prediction failed: {exc}")
+                return _resp("", 0.0, f"SVM inference error: {exc}", ready=False)
 
-        return _resp("", 0.0, self.error or "No model available.")
+        return _resp("", 0.0, self.error or "No model available.", ready=False)
 
 
 # ---------------------------------------------------------------------------

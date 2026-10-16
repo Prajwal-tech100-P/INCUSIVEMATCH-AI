@@ -34,6 +34,29 @@ def create_app(config_class=Config):
     def load_user(user_id):
         return UserModel.get_by_id(user_id)
 
+    @app.template_filter("avatar_url")
+    def avatar_url_filter(user_or_photo):
+        """Resolve Cloudinary HTTPS URL, legacy local upload, or default avatar."""
+        if not user_or_photo:
+            return "/static/uploads/default.png"
+        if hasattr(user_or_photo, "avatar_url"):
+            return user_or_photo.avatar_url
+        photo = None
+        if isinstance(user_or_photo, str):
+            photo = user_or_photo
+        elif isinstance(user_or_photo, dict):
+            photo = user_or_photo.get("profile_photo") or user_or_photo.get("profile_pic")
+        elif hasattr(user_or_photo, "profile_photo"):
+            photo = user_or_photo.profile_photo or getattr(user_or_photo, "profile_pic", None)
+
+        if not photo or photo == "default.png":
+            return "/static/uploads/default.png"
+        if str(photo).startswith(("http://", "https://")):
+            return photo
+        return f"/static/uploads/{photo}"
+
+    app.jinja_env.globals["avatar_url"] = avatar_url_filter
+
     @app.before_request
     def check_maintenance():
         from flask import request, redirect, url_for, jsonify
@@ -50,7 +73,7 @@ def create_app(config_class=Config):
         
         # Admins must always be able to access the admin panel to turn off maintenance.
         # If unauthenticated, the @admin_required decorator will redirect them to login.
-        if getattr(request, 'endpoint', None) in allowed_endpoints or getattr(request, 'blueprint', None) == 'admin':
+        if app.config.get("TESTING") or getattr(request, 'endpoint', None) in allowed_endpoints or getattr(request, 'blueprint', None) == 'admin':
             return
 
         # Fetch settings from MongoDB safely

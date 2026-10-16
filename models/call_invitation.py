@@ -27,7 +27,6 @@ class CallInvitation:
 
     @classmethod
     def create(cls, caller_id, recipient_id):
-        cls.ensure_indexes()
         now = cls._now()
         mongo.db[cls.COLLECTION].update_many(
             {
@@ -49,7 +48,6 @@ class CallInvitation:
 
     @classmethod
     def pending_for(cls, recipient_id):
-        cls.ensure_indexes()
         now = cls._now()
         doc = mongo.db[cls.COLLECTION].find_one(
             {

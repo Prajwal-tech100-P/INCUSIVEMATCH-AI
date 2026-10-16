@@ -37,6 +37,12 @@ class Config:
     MAX_CONTENT_LENGTH = 5 * 1024 * 1024
     ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 
+    # Cloudinary persistent image storage configuration
+    CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME", "").strip()
+    CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY", "").strip()
+    CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET", "").strip()
+    CLOUDINARY_FOLDER = os.environ.get("CLOUDINARY_FOLDER", "inclusivematch/profile_photos").strip()
+
     # Browser session hardening.
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"

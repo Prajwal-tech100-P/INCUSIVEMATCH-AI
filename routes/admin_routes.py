@@ -49,7 +49,10 @@ def users():
 @admin_required
 def matches():
     # Build a clean list of mutual pairs for the admin view.
-    users = list(mongo.db.users.find({"role": "user"}, {"name": 1, "email": 1, "liked": 1}))
+    users = list(mongo.db.users.find(
+        {"role": "user"},
+        {"name": 1, "email": 1, "liked": 1, "profile_photo": 1, "profile_pic": 1}
+    ))
     by_id = {str(u["_id"]): u for u in users}
     seen = set()
     match_rows = []

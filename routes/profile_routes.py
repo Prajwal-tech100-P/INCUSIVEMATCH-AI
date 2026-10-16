@@ -2,8 +2,16 @@ import os
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
+from bson import ObjectId
+from extensions import mongo
 from models.user import UserModel
-from utils.auth import allowed_file
+from utils.cloudinary_storage import (
+    is_cloudinary_configured,
+    validate_image_file,
+    upload_profile_photo,
+    delete_profile_photo,
+    extract_public_id_from_url,
+)
 
 profile_bp = Blueprint('profile', __name__)
 
@@ -88,6 +96,9 @@ def edit_profile():
             'marital_status': marital_status,
             'location': location_data,
             'relationship_goal': relationship_goal,
+            'pref_min_age': pref_min_age,
+            'pref_max_age': pref_max_age,
+            'pref_gender': preferred_genders[0] if len(preferred_genders) == 1 else ("Any" if "Any" in preferred_genders else ",".join(preferred_genders)),
             'matching_preferences': {
                 'min_age': pref_min_age,
                 'max_age': pref_max_age,
@@ -95,15 +106,85 @@ def edit_profile():
             }
         }
 
-        # Handle profile picture upload
+        # Handle profile picture upload with Cloudinary persistence
         if 'profile_pic' in request.files:
             file = request.files['profile_pic']
-            if file and file.filename and allowed_file(file.filename, current_app.config['ALLOWED_EXTENSIONS']):
-                filename = secure_filename(f"{current_user.id}_{file.filename}")
-                file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], filename))
-                update_data['profile_photo'] = filename
-                update_data['profile_pic'] = filename  # Backward compat
+            if file and file.filename:
+                # 1. Validate image format, size (max 5 MB), and content integrity
+                is_valid, error_msg = validate_image_file(file)
+                if not is_valid:
+                    flash(error_msg, 'danger')
+                    return redirect(url_for('profile.edit_profile'))
 
+                # 2. Check Cloudinary availability (do not silently fall back to local storage)
+                if not is_cloudinary_configured():
+                    flash(
+                        'Cloudinary storage is not configured. Profile photo upload failed. '
+                        'Existing profile data was preserved.',
+                        'danger',
+                    )
+                    return redirect(url_for('profile.edit_profile'))
+
+                # 3. Upload the new photo first
+                try:
+                    upload_res = upload_profile_photo(file)
+                    new_photo_url = upload_res['secure_url']
+                    new_public_id = upload_res['public_id']
+                except Exception as upload_err:
+                    flash(
+                        f'Failed to upload profile photo to Cloudinary: {upload_err}. '
+                        'Existing profile data was preserved.',
+                        'danger',
+                    )
+                    return redirect(url_for('profile.edit_profile'))
+
+                # 4. Attach new photo details to update payload
+                old_public_id = getattr(current_user, 'profile_photo_public_id', None)
+                if not old_public_id and getattr(current_user, 'profile_photo', None):
+                    old_public_id = extract_public_id_from_url(current_user.profile_photo)
+                update_data['profile_photo'] = new_photo_url
+                update_data['profile_pic'] = new_photo_url  # Backward compat
+                update_data['profile_photo_public_id'] = new_public_id
+
+                # Immediately invalidate previous verification because profile photo changed
+                update_data['face_verified'] = False
+                update_data['is_verified'] = False
+                update_data['face_verified_at'] = None
+                update_data['verified_profile_photo'] = None
+                update_data['verified_profile_photo_id'] = None
+                update_data['verification'] = {
+                    'status': 'unverified',
+                    'verified_at': None
+                }
+
+                # 5. Update database after successful upload
+                try:
+                    UserModel.update_profile(current_user.id, update_data)
+                except Exception as db_err:
+                    # Clean up newly uploaded image to avoid orphaned files
+                    try:
+                        delete_profile_photo(new_public_id)
+                    except Exception:
+                        pass
+                    flash(
+                        f'Database update failed: {db_err}. Existing profile photo was preserved.',
+                        'danger',
+                    )
+                    return redirect(url_for('profile.edit_profile'))
+
+                # 6. Delete old Cloudinary image only AFTER the database update succeeds
+                if old_public_id and old_public_id != new_public_id:
+                    try:
+                        delete_profile_photo(old_public_id)
+                    except Exception as del_err:
+                        current_app.logger.warning(
+                            f'Failed to delete old Cloudinary image {old_public_id}: {del_err}'
+                        )
+
+                flash('Profile updated successfully!', 'success')
+                return redirect(url_for('profile.my_profile'))
+
+        # If no new photo was submitted, update profile attributes as normal
         UserModel.update_profile(current_user.id, update_data)
         flash('Profile updated successfully!', 'success')
         return redirect(url_for('profile.my_profile'))
@@ -114,60 +195,92 @@ def edit_profile():
 @profile_bp.route('/profile/verify', methods=['POST'])
 @login_required
 def verify_profile():
+    if not current_user.is_active:
+        return {'success': False, 'message': 'Account is deactivated or suspended.'}, 403
+
     data = request.get_json(silent=True) or {}
     image_data_b64 = data.get('image', '')
     
     if not image_data_b64:
-        return {'success': False, 'message': 'No image provided.'}
-        
+        return {'success': False, 'message': 'No live camera capture provided.'}, 400
+
+    user_doc = mongo.db.users.find_one({'_id': ObjectId(current_user.id)}) or {}
+    photo = user_doc.get('profile_photo') or user_doc.get('profile_pic') or getattr(current_user, 'profile_photo', None)
+    if not photo or photo == 'default.png':
+        return {'success': False, 'message': 'Please upload a clear profile photo first before verifying.'}, 400
+
     try:
         import base64
         import os
-        from datetime import datetime
+        import urllib.request
+        from werkzeug.utils import secure_filename
         from ai_modules.face_verification import FaceVerifier
 
-        # Handle base64 image data from the canvas
+        # Handle base64 image data from the live camera canvas
         if ',' in image_data_b64:
             image_data_b64 = image_data_b64.split(',')[1]
-        image_data = base64.b64decode(image_data_b64)
-        
-        if not current_user.profile_photo:
-            return {'success': False, 'message': 'Please upload a profile photo first.'}
-            
-        photo_path = os.path.join(current_app.config['UPLOAD_FOLDER'], current_user.profile_photo)
-        if not os.path.exists(photo_path):
-            return {'success': False, 'message': 'Profile photo not found.'}
-            
-        with open(photo_path, 'rb') as f:
-            profile_image_data = f.read()
-            
+
+        try:
+            image_data = base64.b64decode(image_data_b64)
+        except Exception:
+            return {'success': False, 'message': 'Invalid camera image format.'}, 400
+
+        if not image_data or len(image_data) < 100:
+            return {'success': False, 'message': 'Live capture is empty or corrupt.'}, 400
+
+        # Retrieve reference profile image data
+        if str(photo).startswith(('http://', 'https://')):
+            try:
+                req = urllib.request.Request(photo, headers={'User-Agent': 'InclusiveMatch-AI'})
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    if resp.status != 200:
+                        return {'success': False, 'message': f'Failed to retrieve profile photo (HTTP {resp.status}).'}, 400
+                    profile_image_data = resp.read()
+            except Exception as e:
+                return {'success': False, 'message': f'Failed to download profile photo for verification: {e}'}, 400
+        else:
+            safe_photo = secure_filename(photo)
+            photo_path = os.path.join(current_app.config['UPLOAD_FOLDER'], safe_photo)
+            if not os.path.isfile(photo_path):
+                return {'success': False, 'message': 'Reference profile photo not found.'}, 400
+            with open(photo_path, 'rb') as f:
+                profile_image_data = f.read()
+
         verifier = FaceVerifier()
         result = verifier.verify(image_data, profile_image_data)
-        
+
         if result.get("verified"):
-            UserModel.update_profile(current_user.id, {
-                'face_verified': True, 
-                'is_verified': True,
-                'verification': {
-                    'status': 'verified',
-                    'verified_at': datetime.utcnow()
-                }
-            })
-            return {'success': True, 'message': 'Profile verified successfully!'}
+            UserModel.set_face_verified(
+                current_user.id,
+                photo_url=photo,
+                photo_public_id=getattr(current_user, 'profile_photo_public_id', None)
+            )
+            current_user.face_verified = True
+            current_user.is_verified = True
+            return {
+                'success': True,
+                'message': 'Face verified successfully! Verified badge granted.',
+                'score': result.get('score'),
+                'threshold': result.get('threshold')
+            }
         else:
-            return {'success': False, 'message': result.get("reason", "Verification failed. Please make sure your face is clearly visible and matches your profile photo.")}
-            
+            return {
+                'success': False,
+                'message': result.get('reason', 'Verification failed. Face does not match profile photo.'),
+                'score': result.get('score'),
+                'threshold': result.get('threshold')
+            }, 400
+
     except Exception as e:
-        import logging
-        logging.error(f"Verification error: {e}")
-        return {'success': False, 'message': 'An error occurred during verification.'}
+        current_app.logger.error("Verification endpoint error: %s", e)
+        return {'success': False, 'message': f'An unexpected error occurred during verification: {e}'}, 500
 
 
 @profile_bp.route('/profile/<user_id>')
 @login_required
 def view_profile(user_id):
     user = UserModel.get_by_id(user_id)
-    if not user:
-        flash('User not found.', 'danger')
+    if not user or not user.is_active:
+        flash('User profile is not available.', 'danger')
         return redirect(url_for('main.dashboard'))
     return render_template('profile.html', user=user, interests_cats=INTEREST_CATEGORIES, edit_mode=False)
