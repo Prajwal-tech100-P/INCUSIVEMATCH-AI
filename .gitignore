@@ -3,3 +3,20 @@ __pycache__/
 .env
 venv/
 .venv/
+# Large ISL training dataset (keep local, exclude from Git)
+datasets/sign-dictionary-isl/
+
+# Python and test caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Temporary files and logs
+tmp/
+temp/
+*.log
+
+# Training outputs
+runs/
+wandb/
+lightning_logs/
