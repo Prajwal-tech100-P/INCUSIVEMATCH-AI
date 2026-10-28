@@ -34,7 +34,14 @@ def _authorized_call(data):
 
 def _ice_servers():
     cfg = current_app.config
-    servers = [{"urls": url} for url in cfg.get("WEBRTC_STUN_URLS", [])]
+    stun_urls = cfg.get("WEBRTC_STUN_URLS", [])
+    if not stun_urls:
+        stun_urls = [
+            "stun:stun.l.google.com:19302",
+            "stun:stun1.l.google.com:19302",
+            "stun:stun2.l.google.com:19302",
+        ]
+    servers = [{"urls": url} for url in stun_urls]
     turn_url = cfg.get("WEBRTC_TURN_URL")
     turn_user = cfg.get("WEBRTC_TURN_USERNAME")
     turn_credential = cfg.get("WEBRTC_TURN_CREDENTIAL")
@@ -64,9 +71,17 @@ def video_call(partner_id):
         pass
     if not partner or partner.id == current_user.id or not Match.are_matched(current_user.id, partner_id):
         return "Video calls are available only between active mutual matches.", 403
+
+    call_id = request.args.get("call_id", "").strip()
+    if not call_id:
+        active_inv = CallInvitation.get_active_call(current_user.id, partner_id)
+        if active_inv:
+            call_id = str(active_inv["_id"])
+
     return render_template(
         "video_call.html",
         partner=partner,
+        call_id=call_id,
         webrtc_ice_servers=_ice_servers(),
     )
 
@@ -202,6 +217,9 @@ def decline_call(data):
     return {"ok": True, "message": "Call declined."}
 
 
+_active_call_sockets = {}
+
+
 @socketio.on("join_call")
 def join_call(data):
     if not current_user.is_authenticated:
@@ -211,7 +229,25 @@ def join_call(data):
         emit("call_error", {"message": "You can only call an active mutual match."})
         return
     join_room(room)
-    emit("call_ready", {"user_id": str(current_user.id)}, to=room)
+
+    data = data or {}
+    partner_id = str(data.get("partner_id", "")).strip()
+    call_id = str(data.get("call_id", "")).strip()
+    if not call_id:
+        active_inv = CallInvitation.get_active_call(current_user.id, partner_id)
+        if active_inv:
+            call_id = str(active_inv["_id"])
+
+    sid = getattr(request, "sid", None)
+    if sid:
+        _active_call_sockets[sid] = {
+            "room": room,
+            "user_id": str(current_user.id),
+            "partner_id": partner_id,
+            "call_id": call_id,
+        }
+
+    emit("call_ready", {"user_id": str(current_user.id), "call_id": call_id}, to=room)
 
 
 @socketio.on("signal")
@@ -259,26 +295,119 @@ def signal(data):
     emit("signal", payload, to=room, include_self=False)
 
 
+def _handle_call_termination(data, reason="hangup"):
+    if not current_user.is_authenticated:
+        return {"ok": False, "message": "Please log in again."}
+
+    data = data or {}
+    partner_id = str(data.get("partner_id", "")).strip()
+    call_id = str(data.get("call_id", "")).strip()
+
+    sid = getattr(request, "sid", None)
+    tracked = _active_call_sockets.pop(sid, None) if sid else None
+    if not partner_id and tracked:
+        partner_id = tracked.get("partner_id", "")
+    if not call_id and tracked:
+        call_id = tracked.get("call_id", "")
+
+    # Security check: If call_id is supplied, verify caller belongs to that call
+    if call_id:
+        try:
+            from bson import ObjectId
+            from extensions import mongo
+            doc = mongo.db[CallInvitation.COLLECTION].find_one({"_id": ObjectId(call_id)})
+            if doc:
+                uid_str = str(current_user.id)
+                if uid_str != str(doc.get("caller_id")) and uid_str != str(doc.get("recipient_id")):
+                    return {"ok": False, "message": "Unauthorized to end this call."}
+        except Exception:
+            pass
+
+    room = _authorized_call({"partner_id": partner_id})
+    if not room:
+        # If call_id was valid and belongs to current_user, mark ended to prevent orphan state
+        if call_id:
+            CallInvitation.end_call(call_id=call_id, user_id=current_user.id)
+        return {"ok": False, "message": "Unauthorized or not matched."}
+
+    success, cid = CallInvitation.end_call(
+        call_id=call_id,
+        user_id=current_user.id,
+        partner_id=partner_id,
+    )
+
+    resolved_call_id = call_id or (cid if isinstance(cid, str) and cid not in ("already_ended", "no_active_call") else None)
+
+    # Clear any active remote signing indicator before leaving
+    emit(
+        "signing_status",
+        {
+            "speaker": current_user.name,
+            "user_id": str(current_user.id),
+            "state": "IDLE",
+            "is_signing": False,
+        },
+        to=room,
+        include_self=False,
+    )
+
+    termination_payload = {
+        "call_id": resolved_call_id,
+        "ended_by": str(current_user.id),
+        "reason": data.get("reason", reason),
+    }
+
+    # Emit termination events to call room
+    emit("call_ended", termination_payload, to=room, include_self=False)
+    emit("call_terminated", termination_payload, to=room, include_self=False)
+    emit("peer_left", {"user_id": str(current_user.id), "reason": reason}, to=room, include_self=False)
+
+    # Also notify partner's private user room
+    if partner_id:
+        emit("call_ended", termination_payload, to=f"user:{partner_id}")
+        emit("call_terminated", termination_payload, to=f"user:{partner_id}")
+
+    leave_room(room)
+    return {"ok": True, "message": "Call ended successfully.", "call_id": resolved_call_id}
+
+
+@socketio.on("end_call")
+def end_call(data):
+    reason = data.get("reason", "hangup") if data else "hangup"
+    return _handle_call_termination(data, reason=reason)
+
+
 @socketio.on("leave_call")
 def leave_call(data):
-    if not current_user.is_authenticated:
+    reason = data.get("reason", "left") if data else "left"
+    return _handle_call_termination(data, reason=reason)
+
+
+def handle_video_disconnect(sid, user_id=None):
+    """Clean up active call if a participating socket disconnects unexpectedly."""
+    info = _active_call_sockets.pop(sid, None)
+    if not info:
         return
-    room = _authorized_call(data)
+    room = info.get("room")
+    partner_id = info.get("partner_id")
+    call_id = info.get("call_id")
+    uid = info.get("user_id") or (str(user_id) if user_id else None)
+
+    CallInvitation.end_call(call_id=call_id, user_id=uid, partner_id=partner_id)
+
+    payload = {
+        "call_id": call_id,
+        "ended_by": uid,
+        "reason": "disconnected",
+    }
     if room:
-        # Clear any active remote signing indicator before leaving
-        emit(
-            "signing_status",
-            {
-                "speaker": current_user.name,
-                "user_id": str(current_user.id),
-                "state": "IDLE",
-                "is_signing": False,
-            },
-            to=room,
-            include_self=False,
-        )
-        leave_room(room)
-        emit("peer_left", {"user_id": str(current_user.id)}, to=room, include_self=False)
+        socketio.emit("call_ended", payload, to=room)
+        socketio.emit("call_terminated", payload, to=room)
+        socketio.emit("peer_left", {"user_id": uid, "reason": "disconnected"}, to=room)
+    if partner_id:
+        socketio.emit("call_ended", payload, to=f"user:{partner_id}")
+        socketio.emit("call_terminated", payload, to=f"user:{partner_id}")
+
 
 
 @socketio.on("sign_caption")

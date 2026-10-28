@@ -147,6 +147,8 @@ const MY_ID = "{{ current_user.id }}";
 const MY_NAME = "{{ current_user.name|e }}";
 
 const callParams = new URLSearchParams(window.location.search);
+const CALL_ID = "{{ call_id | default('', true) }}" || callParams.get("call_id") || "";
+let signInterval = null;
 const INCOMING_CALL = callParams.get("incoming") === "1";
 const OUTGOING_CALL = callParams.get("outgoing") === "1";
 const AUTO_START = INCOMING_CALL || OUTGOING_CALL;
@@ -168,6 +170,25 @@ if (unmuteRemoteBtn) {
     unmuteRemoteBtn.classList.add("d-none");
   };
 }
+
+if (remoteVideo) {
+  remoteVideo.addEventListener("playing", () => {
+    if (remotePlaceholder) remotePlaceholder.classList.add("d-none");
+  });
+  remoteVideo.addEventListener("loadeddata", () => {
+    if (remotePlaceholder) remotePlaceholder.classList.add("d-none");
+  });
+  remoteVideo.addEventListener("canplay", () => {
+    if (remotePlaceholder) remotePlaceholder.classList.add("d-none");
+  });
+}
+
+document.addEventListener("click", () => {
+  if (remoteVideo && remoteVideo.muted && unmuteRemoteBtn && !unmuteRemoteBtn.classList.contains("d-none")) {
+    remoteVideo.muted = false;
+    unmuteRemoteBtn.classList.add("d-none");
+  }
+}, { capture: true });
 
 // Sign recognition & accessibility elements
 const toggleSignAiBtn = document.getElementById("toggle-sign-ai");
@@ -241,59 +262,93 @@ function createPeer() {
     }
   };
 
-  pc.ontrack = async (event) => {
+  pc.ontrack = (event) => {
     console.log("[WebRTC] Remote track received:", event.track.kind);
     if (!remoteVideo) return;
 
-    if (event.streams && event.streams[0]) {
-      remoteVideo.srcObject = event.streams[0];
-    } else {
-      if (!remoteVideo.srcObject) {
-        remoteVideo.srcObject = new MediaStream();
+    let remoteStream = remoteVideo.srcObject;
+    if (!remoteStream || !(remoteStream instanceof MediaStream)) {
+      if (event.streams && event.streams[0]) {
+        remoteStream = event.streams[0];
+      } else {
+        remoteStream = new MediaStream();
       }
-      const remoteStream = remoteVideo.srcObject;
-      if (!remoteStream.getTracks().some(track => track.id === event.track.id)) {
-        remoteStream.addTrack(event.track);
+      remoteVideo.srcObject = remoteStream;
+    } else {
+      if (event.streams && event.streams[0]) {
+        event.streams[0].getTracks().forEach(track => {
+          if (!remoteStream.getTracks().some(t => t.id === track.id)) {
+            remoteStream.addTrack(track);
+          }
+        });
       }
     }
 
-    if (remotePlaceholder) remotePlaceholder.classList.add("d-none");
+    if (!remoteStream.getTracks().some(track => track.id === event.track.id)) {
+      remoteStream.addTrack(event.track);
+    }
+
+    const hidePlaceholder = () => {
+      if (remotePlaceholder) remotePlaceholder.classList.add("d-none");
+    };
+
+    const attemptPlay = async () => {
+      try {
+        await remoteVideo.play();
+        hidePlaceholder();
+        if (unmuteRemoteBtn) unmuteRemoteBtn.classList.add("d-none");
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          return;
+        }
+        console.warn("[WebRTC] Remote video playback requires user interaction / muted fallback:", error);
+        try {
+          remoteVideo.muted = true;
+          await remoteVideo.play();
+          hidePlaceholder();
+          if (unmuteRemoteBtn) unmuteRemoteBtn.classList.remove("d-none");
+        } catch (err2) {
+          if (err2 && err2.name !== "AbortError") {
+            console.error("[WebRTC] Remote video playback failed completely:", err2);
+          }
+        }
+      }
+    };
 
     event.track.onunmute = () => {
       console.log("[WebRTC] Remote track unmuted:", event.track.kind);
-      if (remotePlaceholder) remotePlaceholder.classList.add("d-none");
-      remoteVideo.play().catch(() => {});
+      hidePlaceholder();
+      attemptPlay();
     };
 
-    try {
-      await remoteVideo.play();
-    } catch (error) {
-      console.warn("[WebRTC] Remote video playback requires user interaction:", error);
-      try {
-        remoteVideo.muted = true;
-        await remoteVideo.play();
-        if (unmuteRemoteBtn) unmuteRemoteBtn.classList.remove("d-none");
-      } catch (err2) {
-        console.error("[WebRTC] Remote video playback failed completely:", err2);
-      }
-    }
+    hidePlaceholder();
+    attemptPlay();
   };
 
   pc.onconnectionstatechange = () => {
-    const state = pc.connectionState;
+    const state = pc ? pc.connectionState : "closed";
     console.log("[WebRTC] connectionState:", state);
     if (state === "connected") setStatus("Connected");
     else if (state === "connecting") setStatus("Connecting…");
-    else if (state === "disconnected") setStatus("Connection interrupted");
-    else if (state === "failed") setStatus("Call connection failed");
-    else if (state === "closed") setStatus("Call ended");
+    else if (state === "disconnected") setStatus("Connection interrupted. Attempting to recover…");
+    else if (state === "failed") {
+      setStatus("Call connection failed. Disconnecting…");
+      handleRemoteTermination({ reason: "connection_failed" });
+    } else if (state === "closed") {
+      if (!ended) handleRemoteTermination({ reason: "connection_closed" });
+    }
   };
 
   pc.oniceconnectionstatechange = () => {
-    if (pc.iceConnectionState === "failed") {
-      setStatus("Network connection failed");
-    } else if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+    const state = pc ? pc.iceConnectionState : "closed";
+    console.log("[WebRTC] iceConnectionState:", state);
+    if (state === "failed") {
+      setStatus("Network connection failed. Disconnecting…");
+      handleRemoteTermination({ reason: "ice_failed" });
+    } else if (state === "connected" || state === "completed") {
       setStatus("Connected");
+    } else if (state === "disconnected") {
+      setStatus("Connection unstable. Reconnecting…");
     }
   };
 
@@ -303,56 +358,71 @@ function createPeer() {
 function addLocalTracks() {
   if (!stream) return;
   const peer = createPeer();
+  const senders = peer.getSenders();
   for (const track of stream.getTracks()) {
-    const senders = peer.getSenders();
     const existing = senders.find(s => s.track && s.track.kind === track.kind);
     if (existing) {
-      existing.replaceTrack(track).catch(err => console.warn("replaceTrack error:", err));
+      if (existing.track !== track) {
+        existing.replaceTrack(track).catch(err => console.warn("replaceTrack error:", err));
+      }
     } else {
       peer.addTrack(track, stream);
     }
   }
 }
 
+let mediaPromise = null;
+
 async function ensureMedia() {
   if (stream) return true;
-  hidePermissionHelp();
+  if (mediaPromise) return mediaPromise;
 
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setStatus("Camera/mic unavailable");
-    showPermissionHelp("Your browser does not expose camera/microphone access here. Use localhost or HTTPS.");
-    return false;
-  }
+  mediaPromise = (async () => {
+    hidePermissionHelp();
 
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-    });
-    if (localVideo) {
-      localVideo.srcObject = stream;
-      localVideo.play().catch(() => {});
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus("Camera/mic unavailable");
+      showPermissionHelp("Your browser does not expose camera/microphone access here. Use localhost or HTTPS.");
+      return false;
     }
-    createPeer();
-    addLocalTracks();
-    muteBtn.disabled = false;
-    cameraBtn.disabled = false;
-    startBtn.textContent = "Camera & Mic Ready";
-    setStatus(peerPresent ? "Ready — connecting…" : `Waiting for ${PARTNER_NAME}…`);
 
-    // Initialize speech recognition alongside audio stream
-    startSpeechRecognition();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      if (localVideo) {
+        localVideo.srcObject = stream;
+        localVideo.play().catch(() => {});
+      }
+      createPeer();
+      addLocalTracks();
+      muteBtn.disabled = false;
+      cameraBtn.disabled = false;
+      startBtn.textContent = "Camera & Mic Ready";
+      setStatus(peerPresent ? "Ready — connecting…" : `Waiting for ${PARTNER_NAME}…`);
 
-    if (peerPresent && isInitiator()) {
-      await makeOffer();
+      // Initialize speech recognition alongside audio stream
+      startSpeechRecognition();
+
+      // Announce ready status to partner
+      socket.emit("signal", { partner_id: PARTNER_ID, type: "ready" });
+
+      if (peerPresent && isInitiator()) {
+        await makeOffer();
+      }
+      return true;
+    } catch (error) {
+      console.error("getUserMedia error:", error);
+      setStatus("Camera/microphone blocked");
+      showPermissionHelp("Please allow camera and microphone permissions in your browser.");
+      return false;
+    } finally {
+      mediaPromise = null;
     }
-    return true;
-  } catch (error) {
-    console.error("getUserMedia error:", error);
-    setStatus("Camera/microphone blocked");
-    showPermissionHelp("Please allow camera and microphone permissions in your browser.");
-    return false;
-  }
+  })();
+
+  return mediaPromise;
 }
 
 async function makeOffer() {
@@ -477,10 +547,45 @@ function startSpeechRecognition() {
 // Socket Events
 // -------------------------------------------------------------------------
 
-socket.on("connect", async () => {
+async function initCall() {
+  if (ended) return;
   setStatus(AUTO_START ? "Starting camera & mic…" : "Ready — waiting for both users");
-  socket.emit("join_call", { partner_id: PARTNER_ID });
-  if (AUTO_START) await ensureMedia();
+  socket.emit("join_call", { partner_id: PARTNER_ID, call_id: CALL_ID });
+  if (AUTO_START) {
+    await ensureMedia();
+  }
+}
+
+let socketDisconnectTimer = null;
+socket.on("disconnect", (reason) => {
+  console.warn("[Socket.IO] Disconnected:", reason);
+  if (ended) return;
+  if (reason === "io server disconnect") {
+    handleRemoteTermination({ reason: "server_disconnect" });
+    return;
+  }
+  setStatus("Connection interrupted. Reconnecting…");
+  if (!socketDisconnectTimer) {
+    socketDisconnectTimer = setTimeout(() => {
+      if (!socket.connected && !ended) {
+        console.warn("[Socket.IO] Reconnection timed out.");
+        handleRemoteTermination({ reason: "network_timeout" });
+      }
+    }, 12000);
+  }
+});
+
+if (socket.connected) {
+  initCall();
+}
+socket.on("connect", () => {
+  if (socketDisconnectTimer) {
+    clearTimeout(socketDisconnectTimer);
+    socketDisconnectTimer = null;
+  }
+  if (!ended) {
+    initCall();
+  }
 });
 
 socket.on("call_ready", async data => {
@@ -513,11 +618,37 @@ socket.on("signal", async data => {
     return;
   }
 
-  if (!(await ensureMedia())) return;
-  const peer = createPeer();
+  if (data.type === "candidate") {
+    const peer = pc;
+    if (peer && peer.remoteDescription && peer.remoteDescription.type) {
+      try {
+        await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+      } catch (e) {
+        console.warn("Failed to add ICE candidate:", e);
+      }
+    } else {
+      pendingCandidates.push(data.candidate);
+    }
+    return;
+  }
 
-  try {
-    if (data.type === "offer") {
+  if (data.type === "answer") {
+    const peer = createPeer();
+    if (!isInitiator() && peer.signalingState === "stable") return;
+    try {
+      await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      await flushCandidates();
+      setStatus("Connected");
+    } catch (err) {
+      console.warn("Failed to set remote description on answer:", err);
+    }
+    return;
+  }
+
+  if (data.type === "offer") {
+    await ensureMedia();
+    const peer = createPeer();
+    try {
       addLocalTracks();
       await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
       await flushCandidates();
@@ -525,46 +656,33 @@ socket.on("signal", async data => {
       await peer.setLocalDescription(answer);
       socket.emit("signal", { partner_id: PARTNER_ID, type: "answer", sdp: peer.localDescription });
       setStatus("Connecting…");
-    } else if (data.type === "answer") {
-      if (!isInitiator() && peer.signalingState === "stable") return;
-      await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
-      await flushCandidates();
-      setStatus("Connected");
-    } else if (data.type === "candidate") {
-      if (peer && peer.remoteDescription && peer.remoteDescription.type) {
-        try {
-          await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch (e) {
-          console.warn("Failed to add ICE candidate:", e);
-        }
-      } else {
-        pendingCandidates.push(data.candidate);
-      }
+    } catch (error) {
+      console.error("Signaling error on offer:", error);
+      setStatus("Call negotiation error");
     }
-  } catch (error) {
-    console.error("Signaling error:", error);
-    setStatus("Call negotiation error");
+    return;
   }
 });
 
-socket.on("peer_left", () => {
-  peerPresent = false;
-  remoteUserId = null;
-  if (remoteVideo) remoteVideo.srcObject = null;
-  if (remotePlaceholder) remotePlaceholder.classList.remove("d-none");
-  if (remoteSigningIndicator) remoteSigningIndicator.classList.add("d-none");
-  if (pc) { pc.close(); pc = null; }
-  pendingCandidates = [];
-  setStatus("The other user left the call.");
-});
-
-socket.on("call_terminated", data => {
+function handleRemoteTermination(data) {
+  if (ended) return;
   cleanupCall();
-  setStatus("This connection has ended. Returning to dashboard…");
+  const reason = data && data.reason;
+  let msg = "Call ended by partner. Returning to chat…";
+  if (reason === "network_timeout" || reason === "connection_failed" || reason === "ice_failed" || reason === "disconnected") {
+    msg = "Call disconnected due to network issues. Returning to chat…";
+  } else if (reason === "left" || reason === "hangup") {
+    msg = "The other user ended the call. Returning to chat…";
+  }
+  setStatus(msg);
   setTimeout(() => {
-    window.location.href = "{{ url_for('main.dashboard') }}";
-  }, 1500);
-});
+    window.location.href = "{{ url_for('chat.chat_with', partner_id=partner.id) }}";
+  }, 1200);
+}
+
+socket.on("call_ended", handleRemoteTermination);
+socket.on("call_terminated", handleRemoteTermination);
+socket.on("peer_left", handleRemoteTermination);
 
 // Partner relayed sign caption
 socket.on("sign_caption", data => {
@@ -708,46 +826,109 @@ if (speakSign) {
 function cleanupCall() {
   if (ended) return;
   ended = true;
+
+  // 1. Stop speech recognition
   if (speechRecognizer) {
     try { speechRecognizer.stop(); } catch (e) {}
     speechRecognizer = null;
   }
+  speechActive = false;
+
+  // 2. Stop speech synthesis
   if (window.speechSynthesis) {
-    window.speechSynthesis.cancel();
+    try { window.speechSynthesis.cancel(); } catch (e) {}
   }
   isSpeakingSynthesized = false;
+
+  // 3. Stop sign recognition interval and loop
+  signAiEnabled = false;
+  signBusy = false;
+  if (signInterval) {
+    try { clearInterval(signInterval); } catch (e) {}
+    signInterval = null;
+  }
+
+  // 4. Hide overlays and reset indicators
   if (remoteSigningIndicator) {
     remoteSigningIndicator.classList.add("d-none");
   }
   if (liveCaptionBanner) {
     liveCaptionBanner.classList.add("d-none");
   }
+  if (remotePlaceholder) {
+    remotePlaceholder.classList.remove("d-none");
+  }
+
+  // 5. Stop all local audio and video media tracks immediately
   if (stream) {
     stream.getTracks().forEach(track => {
-      try { track.stop(); } catch (e) {}
+      try {
+        track.stop();
+        track.enabled = false;
+      } catch (e) {}
     });
     stream = null;
   }
+
+  // 6. Close RTCPeerConnection and clear all listeners
   if (pc) {
-    try { pc.close(); } catch (e) {}
+    try {
+      pc.onicecandidate = null;
+      pc.ontrack = null;
+      pc.onconnectionstatechange = null;
+      pc.oniceconnectionstatechange = null;
+      pc.close();
+    } catch (e) {}
     pc = null;
   }
-  if (remoteVideo) remoteVideo.srcObject = null;
-  if (localVideo) localVideo.srcObject = null;
+
+  // 7. Clear local and remote video elements' srcObject
+  if (remoteVideo) {
+    remoteVideo.srcObject = null;
+  }
+  if (localVideo) {
+    localVideo.srcObject = null;
+  }
+
+  // 8. Stop any active call ringtones
+  if (typeof stopRingtone === "function") {
+    try { stopRingtone(); } catch (e) {}
+  }
+
+  // 9. Reset state variables
   pendingCandidates = [];
   peerPresent = false;
+  remoteUserId = null;
   localSigningActive = false;
 }
 
 hangupBtn.onclick = () => {
+  if (ended) return;
   cleanupCall();
-  socket.emit("leave_call", { partner_id: PARTNER_ID });
-  location.href = "{{ url_for('chat.chat_with', partner_id=partner.id) }}";
+  try {
+    socket.emit("end_call", { partner_id: PARTNER_ID, call_id: CALL_ID, reason: "hangup" });
+    socket.emit("leave_call", { partner_id: PARTNER_ID, call_id: CALL_ID, reason: "hangup" });
+  } catch (e) {}
+  setStatus("Call ended. Returning to chat…");
+  setTimeout(() => {
+    window.location.href = "{{ url_for('chat.chat_with', partner_id=partner.id) }}";
+  }, 350);
 };
 
 window.addEventListener("beforeunload", () => {
   cleanupCall();
-  socket.emit("leave_call", { partner_id: PARTNER_ID });
+  try {
+    socket.emit("end_call", { partner_id: PARTNER_ID, call_id: CALL_ID, reason: "page_unload" });
+    socket.emit("leave_call", { partner_id: PARTNER_ID, call_id: CALL_ID, reason: "page_unload" });
+  } catch (e) {}
+});
+
+window.addEventListener("pagehide", () => {
+  cleanupCall();
+  try {
+    socket.emit("end_call", { partner_id: PARTNER_ID, call_id: CALL_ID, reason: "page_hide" });
+    socket.emit("leave_call", { partner_id: PARTNER_ID, call_id: CALL_ID, reason: "page_hide" });
+  } catch (e) {}
 });
 
 // -------------------------------------------------------------------------
@@ -860,7 +1041,7 @@ if (btnClearTranscript) {
 }
 
 async function runSignRecognition() {
-  if (!signAiEnabled || signBusy) return;
+  if (!signAiEnabled || signBusy || ended) return;
 
   const mode = signSourceSelect ? signSourceSelect.value : "auto";
   let targetVideo = null;
@@ -976,6 +1157,6 @@ async function runSignRecognition() {
 }
 
 // 220ms continuous recognition interval
-setInterval(runSignRecognition, 220);
+signInterval = setInterval(runSignRecognition, 220);
 </script>
 {% endblock %}

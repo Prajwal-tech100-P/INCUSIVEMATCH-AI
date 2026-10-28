@@ -419,16 +419,19 @@ function setupSocketHandlers(socket) {
         if ((currentOutgoingCallId && String(data.call_id) === String(currentOutgoingCallId)) ||
             (currentOutgoingPartnerId && String(data.user_id) === String(currentOutgoingPartnerId))) {
             cleanupOutgoingCallUI();
-            window.location.href = `/video/${encodeURIComponent(data.user_id)}?outgoing=1`;
+            const cid = data.call_id ? `&call_id=${encodeURIComponent(data.call_id)}` : '';
+            window.location.href = `/video/${encodeURIComponent(data.user_id)}?outgoing=1${cid}`;
         }
     });
 
-    socket.on('call_terminated', (data) => {
+    const handleCallTerminationInMain = (data) => {
         cleanupOutgoingCallUI();
         const old = document.getElementById('incoming-call-overlay');
         if (old) old.remove();
         stopRingtone(data ? data.call_id : null);
-    });
+    };
+    socket.on('call_terminated', handleCallTerminationInMain);
+    socket.on('call_ended', handleCallTerminationInMain);
 }
 
 function getInclusiveSocket() {
@@ -715,10 +718,12 @@ function showIncomingCall(data, socket) {
                 }
                 const notifItem = document.getElementById(`call-notification-${callId}`);
                 if (notifItem) notifItem.remove();
-                window.location.href = `/video/${encodeURIComponent(data.caller_id)}?incoming=1`;
+                const cid = callId ? `&call_id=${encodeURIComponent(callId)}` : '';
+                window.location.href = `/video/${encodeURIComponent(data.caller_id)}?incoming=1${cid}`;
             });
         } else {
-            window.location.href = `/video/${encodeURIComponent(data.caller_id)}?incoming=1`;
+            const cid = callId ? `&call_id=${encodeURIComponent(callId)}` : '';
+            window.location.href = `/video/${encodeURIComponent(data.caller_id)}?incoming=1${cid}`;
         }
     };
 
