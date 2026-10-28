@@ -171,13 +171,95 @@ a:focus, button:focus, input:focus, select:focus, textarea:focus {
 }
 
 /* --------------------------------------
-   RESPONSIVE LAYOUT (Mobile / Android)
+   RESPONSIVE LAYOUT & MOBILE ENHANCEMENTS
    -------------------------------------- */
+
+/* Global Mobile viewport and safety */
+html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+}
+
+/* Touch targets: practical tap area >= 44x44px */
+.btn, .nav-link, .form-check-label, .dropdown-item {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.form-check {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+}
+
+/* Mobile Top Navbar Collapse Styling */
+@media (max-width: 991px) {
+    .navbar-collapse {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 1.25rem;
+        margin-top: 0.75rem;
+        box-shadow: 0 14px 35px rgba(0, 0, 0, 0.08);
+    }
+    .navbar-nav .nav-item {
+        margin-bottom: 0.25rem;
+    }
+    .navbar-nav .nav-link {
+        padding: 0.65rem 1rem !important;
+        border-radius: 12px;
+        color: #334155;
+        font-weight: 500;
+        transition: background-color 0.15s ease, color 0.15s ease;
+    }
+    .navbar-nav .nav-link:hover,
+    .navbar-nav .nav-link:focus {
+        background-color: #f8fafc;
+        color: var(--primary-color) !important;
+    }
+    .navbar-collapse .dropdown-menu {
+        position: static !important;
+        float: none;
+        width: 100% !important;
+        margin-top: 0.5rem;
+        border: 1px solid #e2e8f0;
+        box-shadow: none;
+        background-color: #f8fafc;
+    }
+}
+
+/* Filter Offcanvas & Android Bottom Sheet */
+.filter-panel.offcanvas-end {
+    width: 380px;
+    max-width: 90vw;
+    border-left: 1px solid #e2e8f0;
+    box-shadow: -5px 0 25px rgba(0,0,0,0.08);
+}
+
+.bottom-sheet-drag-handle {
+    width: 44px;
+    height: 4px;
+    background: #cbd5e1;
+    border-radius: 2px;
+    margin: 4px auto 8px;
+}
+
+.filter-pill-label {
+    transition: all 0.15s ease-in-out;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.btn-check:checked + .filter-pill-label {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.3);
+}
+
 @media (max-width: 768px) {
-    /* Hide the desktop navbar links if we are using bottom nav */
-    .desktop-nav-links { display: none !important; }
-    
-    /* Make the top navbar compact */
+    /* Compact Top Navbar on Mobile */
     .navbar { padding-top: 0.5rem; padding-bottom: 0.5rem; }
     .navbar-brand { font-size: 1.25rem !important; }
 
@@ -191,8 +273,8 @@ a:focus, button:focus, input:focus, select:focus, textarea:focus {
         border-top: 1px solid #e2e8f0;
         display: flex;
         justify-content: space-around;
-        padding: 0.5rem 0;
-        z-index: 1050;
+        padding: 0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom, 0px));
+        z-index: 1040;
         box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
     }
     .mobile-bottom-nav a {
@@ -201,59 +283,114 @@ a:focus, button:focus, input:focus, select:focus, textarea:focus {
         display: flex;
         flex-direction: column;
         align-items: center;
-        font-size: 0.7rem;
+        font-size: 0.72rem;
         font-weight: 600;
-        gap: 4px;
+        gap: 3px;
+        min-height: 44px;
+        justify-content: center;
         transition: color 0.2s;
     }
     .mobile-bottom-nav a.active, .mobile-bottom-nav a:hover {
         color: var(--primary-color);
     }
     .mobile-bottom-nav i {
-        font-size: 1.4rem;
+        font-size: 1.35rem;
     }
 
-    /* Add padding to body to prevent content from being hidden behind bottom nav */
-    body { padding-bottom: 70px; }
+    /* Body padding for mobile bottom nav + safe areas */
+    body {
+        padding-bottom: calc(75px + env(safe-area-inset-bottom, 0px));
+    }
     .footer { display: none; }
+
+    /* Filter Offcanvas transformed into Android Half-Screen Bottom Sheet */
+    .filter-panel.offcanvas,
+    .filter-panel.offcanvas-end {
+        top: auto !important;
+        right: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        height: 58vh !important;
+        max-height: 60vh !important;
+        min-height: 48vh !important;
+        border-radius: 24px 24px 0 0 !important;
+        border: none !important;
+        border-top: 1px solid rgba(0,0,0,0.08) !important;
+        box-shadow: 0 -10px 40px rgba(0,0,0,0.2) !important;
+        transform: translateY(100%) !important;
+        transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        padding-bottom: env(safe-area-inset-bottom, 12px) !important;
+    }
+    .filter-panel.offcanvas.show {
+        transform: translateY(0) !important;
+    }
+    .filter-panel .offcanvas-footer {
+        padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
+    }
 
     /* Chat Layout Adjustments */
     .chat-container { 
-        /* Subtract top nav (~70), bottom nav (~70), and py-3 padding (32) */
-        height: calc(100vh - 172px) !important; 
+        height: calc(100dvh - 172px) !important; 
         min-height: unset !important; 
         border-radius: 0 !important; 
     }
     
-    /* Hide bottom nav and expand chat when keyboard is open (detect via input focus) */
+    /* Hide bottom nav and expand chat when keyboard is open */
     body:has(input:focus) .mobile-bottom-nav {
         display: none !important;
     }
     body:has(input:focus) .chat-container {
-        /* Expand to fill the space where bottom nav was */
-        height: calc(100vh - 102px) !important;
+        height: calc(100dvh - 102px) !important;
     }
 
-    .chat-sidebar { display: none; } /* On mobile, we might toggle this or separate the views */
+    .chat-sidebar { display: none; }
     .chat-sidebar.mobile-active { display: flex !important; width: 100%; height: 100%; }
     .chat-main-window { display: flex; width: 100%; }
     .chat-main-window.mobile-hidden { display: none !important; }
     
     /* Video Call Mobile Adjustments */
-    .video-call-container { padding: 0 !important; height: calc(100vh - 70px); display: flex; flex-direction: column; }
+    .video-call-container { padding: 0 !important; height: calc(100dvh - 70px); display: flex; flex-direction: column; }
     #remote { border-radius: 0 !important; }
     #local { width: 100px !important; bottom: 80px !important; right: 10px !important; }
     .video-controls { position: absolute; bottom: 10px; left: 0; right: 0; justify-content: center; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 20px; margin: 0 10px; }
     
     /* General Mobile UI */
     .container { padding-left: 1rem; padding-right: 1rem; }
-    .card { border-radius: 12px !important; }
-    .btn { padding: 0.6rem 1rem; }
+    .card { border-radius: 14px !important; }
+}
+
+/* Small phone padding adjustments (320px - 576px) */
+@media (max-width: 576px) {
+    .card-body.p-5 {
+        padding: 1.5rem !important;
+    }
+    .card-body.p-4 {
+        padding: 1.25rem !important;
+    }
+    .container.py-5 {
+        padding-top: 1.5rem !important;
+        padding-bottom: 1.5rem !important;
+    }
+    .profile-container {
+        padding: 1.25rem !important;
+    }
+    .profile-header {
+        flex-direction: column !important;
+        text-align: center !important;
+        gap: 1rem !important;
+    }
+    .profile-header .d-flex {
+        justify-content: center !important;
+    }
+    .admin-sidebar {
+        position: static !important;
+        margin-bottom: 1rem;
+    }
 }
 
 /* Desktop classes */
 .mobile-bottom-nav { display: none; }
 @media (min-width: 769px) {
     .mobile-bottom-nav { display: none !important; }
-    .desktop-nav-links { display: flex; }
 }

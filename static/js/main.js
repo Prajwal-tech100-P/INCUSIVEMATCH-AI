@@ -832,3 +832,75 @@ function escapeHtml(value) {
         '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
     }[ch]));
 }
+
+// Mobile UX: Navbar Collapse and Filter Panel Interaction
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Mobile Hamburger Menu enhancements
+    const navbarCollapse = document.getElementById('navbarNav');
+    const navbarToggler = document.getElementById('navbarTogglerBtn') || document.querySelector('.navbar-toggler');
+
+    if (navbarCollapse && navbarToggler) {
+        // Close menu when tapping outside
+        document.addEventListener('click', (event) => {
+            if (navbarCollapse.classList.contains('show')) {
+                if (!navbarCollapse.contains(event.target) && !navbarToggler.contains(event.target)) {
+                    if (window.bootstrap && bootstrap.Collapse) {
+                        const bsCollapse = bootstrap.Collapse.getInstance(navbarCollapse) || new bootstrap.Collapse(navbarCollapse, { toggle: false });
+                        bsCollapse.hide();
+                    } else {
+                        navbarCollapse.classList.remove('show');
+                        navbarToggler.setAttribute('aria-expanded', 'false');
+                    }
+                }
+            }
+        });
+
+        // Close on Escape key
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && navbarCollapse.classList.contains('show')) {
+                if (window.bootstrap && bootstrap.Collapse) {
+                    const bsCollapse = bootstrap.Collapse.getInstance(navbarCollapse) || new bootstrap.Collapse(navbarCollapse, { toggle: false });
+                    bsCollapse.hide();
+                } else {
+                    navbarCollapse.classList.remove('show');
+                    navbarToggler.setAttribute('aria-expanded', 'false');
+                }
+                navbarToggler.focus();
+            }
+        });
+
+        // Close when clicking a nav-link (except dropdown toggles)
+        navbarCollapse.querySelectorAll('.nav-link:not(.dropdown-toggle), .dropdown-item, .btn').forEach(link => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth < 992 && navbarCollapse.classList.contains('show')) {
+                    if (window.bootstrap && bootstrap.Collapse) {
+                        const bsCollapse = bootstrap.Collapse.getInstance(navbarCollapse) || new bootstrap.Collapse(navbarCollapse, { toggle: false });
+                        bsCollapse.hide();
+                    } else {
+                        navbarCollapse.classList.remove('show');
+                        navbarToggler.setAttribute('aria-expanded', 'false');
+                    }
+                }
+            });
+        });
+    }
+
+    // 2. Discover Filters Form Validation and Interaction
+    const filterForm = document.getElementById('discover-filters-form');
+    if (filterForm) {
+        filterForm.addEventListener('submit', (e) => {
+            const minAgeInput = document.getElementById('filter-min-age');
+            const maxAgeInput = document.getElementById('filter-max-age');
+            if (minAgeInput && maxAgeInput) {
+                const minVal = parseInt(minAgeInput.value, 10);
+                const maxVal = parseInt(maxAgeInput.value, 10);
+                if (!isNaN(minVal) && !isNaN(maxVal) && minVal > maxVal) {
+                    e.preventDefault();
+                    alert('Minimum age cannot be greater than maximum age.');
+                    minAgeInput.focus();
+                    return false;
+                }
+            }
+        });
+    }
+});
