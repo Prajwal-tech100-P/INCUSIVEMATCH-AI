@@ -80,7 +80,8 @@ def run_all_checks():
                 "email": email_1,
                 "password": password,
                 "confirm_password": password,
-                "comm_pref": "text"
+                "comm_pref": "text",
+                "terms_consent": "on"
             }, follow_redirects=True)
             
             assert reg_resp.status_code == 200
