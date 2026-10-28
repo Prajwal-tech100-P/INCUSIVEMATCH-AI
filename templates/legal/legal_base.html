@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+    .legal-wrapper {
+        padding: 2.5rem 0;
+        min-height: calc(100vh - 180px);
+    }
+    .legal-sidebar {
+        position: sticky;
+        top: 90px;
+        z-index: 10;
+    }
+    .legal-nav-link {
+        display: flex;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-radius: 0.75rem;
+        color: #475569;
+        font-weight: 500;
+        font-size: 0.925rem;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        margin-bottom: 0.35rem;
+    }
+    .legal-nav-link:hover {
+        background: #f1f5f9;
+        color: #4f46e5;
+        transform: translateX(3px);
+    }
+    .legal-nav-link.active {
+        background: #eef2ff;
+        color: #4338ca;
+        font-weight: 600;
+        border-left: 4px solid #4f46e5;
+    }
+    .legal-nav-link i {
+        font-size: 1.15rem;
+        width: 28px;
+        margin-right: 0.5rem;
+    }
+    .legal-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 1.25rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+        padding: 2.5rem;
+    }
+    .legal-header {
+        border-bottom: 2px solid #f1f5f9;
+        padding-bottom: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    .legal-badge {
+        font-size: 0.8rem;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        font-weight: 700;
+        padding: 0.35rem 0.75rem;
+        border-radius: 2rem;
+    }
+    .legal-body h2 {
+        font-size: 1.45rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin-top: 2.25rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.4rem;
+        border-bottom: 1px solid #f1f5f9;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .legal-body h3 {
+        font-size: 1.15rem;
+        font-weight: 600;
+        color: #334155;
+        margin-top: 1.5rem;
+        margin-bottom: 0.75rem;
+    }
+    .legal-body p, .legal-body li {
+        color: #475569;
+        line-height: 1.75;
+        font-size: 1rem;
+    }
+    .toc-card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 1rem;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 2rem;
+    }
+    .toc-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1e293b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.75rem;
+    }
+    .toc-list {
+        list-style: none;
+        padding-left: 0;
+        margin-bottom: 0;
+        column-count: 2;
+    }
+    @media (max-width: 768px) {
+        .toc-list {
+            column-count: 1;
+        }
+        .legal-card {
+            padding: 1.5rem;
+        }
+    }
+    .toc-list li {
+        margin-bottom: 0.4rem;
+    }
+    .toc-list a {
+        color: #4f46e5;
+        text-decoration: none;
+        font-size: 0.925rem;
+    }
+    .toc-list a:hover {
+        text-decoration: underline;
+    }
+    .config-placeholder {
+        display: inline-block;
+        background: #fffbeb;
+        color: #b45309;
+        border: 1px dashed #f59e0b;
+        padding: 0.15rem 0.5rem;
+        border-radius: 0.375rem;
+        font-family: monospace;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+    .summary-box {
+        background: #f5f3ff;
+        border: 1px solid #ddd6fe;
+        border-left: 5px solid #6366f1;
+        border-radius: 0.75rem;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container legal-wrapper">
+    <div class="row g-4">
+        <!-- Sidebar Navigation -->
+        <div class="col-lg-3">
+            <div class="legal-sidebar">
+                <div class="card border-0 shadow-sm rounded-4 p-3 mb-4 bg-white">
+                    <h6 class="text-uppercase text-muted fw-bold small px-2 mb-3">Policy Directory</h6>
+                    <nav class="nav flex-column" aria-label="Legal Documents Navigation">
+                        <a class="legal-nav-link {% if active_doc == 'privacy' %}active{% endif %}" href="{{ url_for('legal.privacy_policy') }}">
+                            <i class="bi bi-shield-check text-primary"></i>Privacy Policy
+                        </a>
+                        <a class="legal-nav-link {% if active_doc == 'terms' %}active{% endif %}" href="{{ url_for('legal.terms_conditions') }}">
+                            <i class="bi bi-file-earmark-text text-indigo"></i>Terms & Conditions
+                        </a>
+                        <a class="legal-nav-link {% if active_doc == 'guidelines' %}active{% endif %}" href="{{ url_for('legal.community_guidelines') }}">
+                            <i class="bi bi-people text-success"></i>Community Guidelines
+                        </a>
+                        <a class="legal-nav-link {% if active_doc == 'safety' %}active{% endif %}" href="{{ url_for('legal.user_safety') }}">
+                            <i class="bi bi-heart-pulse text-danger"></i>User Safety Policy
+                        </a>
+                        <a class="legal-nav-link {% if active_doc == 'cookies' %}active{% endif %}" href="{{ url_for('legal.cookie_policy') }}">
+                            <i class="bi bi-cookie text-warning"></i>Cookie Policy
+                        </a>
+                        <a class="legal-nav-link {% if active_doc == 'ai' %}active{% endif %}" href="{{ url_for('legal.ai_transparency') }}">
+                            <i class="bi bi-cpu text-info"></i>AI Transparency Notice
+                        </a>
+                        <a class="legal-nav-link {% if active_doc == 'accessibility' %}active{% endif %}" href="{{ url_for('legal.accessibility_statement') }}">
+                            <i class="bi bi-universal-access text-primary"></i>Accessibility Statement
+                        </a>
+                        <a class="legal-nav-link {% if active_doc == 'data_rights' %}active{% endif %}" href="{{ url_for('legal.data_rights') }}">
+                            <i class="bi bi-trash3 text-secondary"></i>Account Deletion & Rights
+                        </a>
+                        <a class="legal-nav-link {% if active_doc == 'grievance' %}active{% endif %}" href="{{ url_for('legal.contact_grievance') }}">
+                            <i class="bi bi-envelope-paper text-dark"></i>Contact & Grievance
+                        </a>
+                    </nav>
+                </div>
+
+                <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center d-none d-lg-block">
+                    <i class="bi bi-shield-lock-fill text-primary fs-3 mb-2"></i>
+                    <h6 class="fw-bold mb-1">Privacy by Design</h6>
+                    <p class="small text-muted mb-0">InclusiveMatch AI prioritizes data minimization, accessibility, and user safety.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Document Content -->
+        <div class="col-lg-9">
+            <article class="legal-card" id="legal-document-content">
+                {% block legal_content %}{% endblock %}
+            </article>
+        </div>
+    </div>
+</div>
+{% endblock %}

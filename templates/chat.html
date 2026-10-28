@@ -35,9 +35,18 @@
     width: 100%; cursor: pointer; transition: background .12s;
 }
 .chat-dropdown-item:hover { background: #f1f5f9; }
+.chat-dropdown-item:focus-visible { outline: 2px solid #6366f1; outline-offset: -2px; background: #eef2ff; }
+.chat-dropdown-item.warning { color: #d97706; }
+.chat-dropdown-item.warning:hover { background: #fffbeb; }
 .chat-dropdown-item.danger { color: #ef4444; }
 .chat-dropdown-item.danger:hover { background: #fef2f2; }
 .chat-dropdown-divider { height: 1px; background: #e2e8f0; margin: 0; }
+.btn-part-ways-confirm { background: #f59e0b; color: #1e293b; border: none; border-radius: 10px; font-weight: 600; }
+.btn-part-ways-confirm:hover { background: #d97706; color: #fff; }
+.btn-part-ways-confirm:focus-visible { outline: 2px solid #d97706; outline-offset: 2px; }
+.btn-restrict-confirm { background: #ef4444; color: #fff; border: none; border-radius: 10px; font-weight: 600; }
+.btn-restrict-confirm:hover { background: #dc2626; }
+.btn-restrict-confirm:focus-visible { outline: 2px solid #dc2626; outline-offset: 2px; }
 
 /* --- Online / Offline dot (Removed) --- */
 
@@ -143,15 +152,24 @@
 
                         <!-- 3-dot menu -->
                         <div class="chat-dropdown" id="chat-dropdown">
-                            <button class="chat-menu-btn" id="chat-menu-toggle" title="More options" aria-label="More options">
+                            <button class="chat-menu-btn" id="chat-menu-toggle" title="More options" aria-label="More options" aria-haspopup="true" aria-expanded="false">
                                 <i class="bi bi-three-dots-vertical"></i>
                             </button>
-                            <div class="chat-dropdown-menu" id="chat-dropdown-menu">
-                                <button class="chat-dropdown-item" id="btn-report-user">
+                            <div class="chat-dropdown-menu" id="chat-dropdown-menu" role="menu" aria-label="Chat options">
+                                <a href="{{ url_for('profile.view_profile', user_id=active_partner.id) }}" class="chat-dropdown-item" role="menuitem" id="menu-view-profile">
+                                    <i class="bi bi-person"></i> View Profile
+                                </a>
+                                <button type="button" class="chat-dropdown-item" id="btn-report-user" role="menuitem">
                                     <i class="bi bi-flag"></i> Report User
                                 </button>
+                                <button type="button" class="chat-dropdown-item warning" id="btn-part-ways" role="menuitem">
+                                    <i class="bi bi-heartbreak"></i> Part Ways
+                                </button>
+                                <button type="button" class="chat-dropdown-item danger" id="btn-restrict-user" role="menuitem">
+                                    <i class="bi bi-shield-slash"></i> Restrict User
+                                </button>
                                 <div class="chat-dropdown-divider"></div>
-                                <button class="chat-dropdown-item danger" id="btn-delete-chat">
+                                <button type="button" class="chat-dropdown-item danger" id="btn-delete-chat" role="menuitem">
                                     <i class="bi bi-trash3"></i> Delete Chat
                                 </button>
                             </div>
@@ -249,6 +267,41 @@
     </div>
 </div>
 
+<!-- Part Ways Confirmation Modal -->
+<div class="report-modal-overlay" id="part-ways-modal" role="dialog" aria-modal="true" aria-labelledby="part-ways-title">
+    <div class="report-modal">
+        <h5 id="part-ways-title"><i class="bi bi-heartbreak text-warning me-2"></i>Part Ways?</h5>
+        <p class="text-muted small mb-3">Are you sure you want to end this connection? You will no longer appear as a match with this person.</p>
+        
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-cancel px-4" id="part-ways-cancel">Cancel</button>
+            <button type="button" class="btn btn-part-ways-confirm px-4" id="part-ways-submit">
+                <i class="bi bi-heartbreak me-1"></i>Part Ways
+            </button>
+        </div>
+        <div id="part-ways-feedback" class="small mt-2" style="display:none;"></div>
+    </div>
+</div>
+
+<!-- Restrict User Confirmation Modal -->
+<div class="report-modal-overlay" id="restrict-user-modal" role="dialog" aria-modal="true" aria-labelledby="restrict-user-title">
+    <div class="report-modal">
+        <h5 id="restrict-user-title"><i class="bi bi-shield-slash text-danger me-2"></i>Restrict This User?</h5>
+        <p class="text-muted small mb-3">This person will no longer be able to contact you through InclusiveMatch AI. Your existing connection will also end.</p>
+        
+        <label for="restrict-reason" class="form-label small fw-semibold mb-1">Reason (optional)</label>
+        <input type="text" id="restrict-reason" class="form-control mb-3" style="border-radius:10px;" maxlength="200" placeholder="Optional context...">
+
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-cancel px-4" id="restrict-user-cancel">Cancel</button>
+            <button type="button" class="btn btn-restrict-confirm px-4" id="restrict-user-submit">
+                <i class="bi bi-shield-slash me-1"></i>Restrict User
+            </button>
+        </div>
+        <div id="restrict-user-feedback" class="small mt-2" style="display:none;"></div>
+    </div>
+</div>
+
 <!-- Delete Confirm Toast -->
 <div class="delete-toast" id="delete-toast">
     <span>Delete entire chat?</span>
@@ -281,6 +334,9 @@ if (toggleSoundBtn) {
         const isCurrentlyEnabled = localStorage.getItem("inclusive_msg_sound_enabled") !== "false";
         localStorage.setItem("inclusive_msg_sound_enabled", isCurrentlyEnabled ? "false" : "true");
         updateSoundToggleUI();
+        if (typeof unlockAudio === "function") {
+            unlockAudio();
+        }
     };
     updateSoundToggleUI();
 }
@@ -291,8 +347,18 @@ window.addEventListener("beforeunload", () => {
 
 const chatHistory=document.getElementById("chat-history"), msgInput=document.getElementById("msg-input"), msgError=document.getElementById("msg-error");
 chatHistory.scrollTop=chatHistory.scrollHeight;
-const socket=io();
-socket.emit("join_user_room",{});
+
+if (msgInput) {
+    msgInput.addEventListener("focus", () => {
+        if (typeof unlockAudio === "function") unlockAudio();
+    }, { once: true });
+}
+
+const socket = window.inclusiveSocket || (typeof getInclusiveSocket === "function" ? getInclusiveSocket() : io({ transports: ["websocket", "polling"] }));
+if (!window.inclusiveSocket) {
+    window.inclusiveSocket = socket;
+    socket.emit("join_user_room", {});
+}
 
 /* ── Incoming messages (no timestamp) ──────────────────────────────────── */
 function appendIncoming(data){
@@ -406,12 +472,255 @@ btnTts.onclick = () => {
     }
 };
 
-/* ── 3-dot dropdown toggle ─────────────────────────────────────────────── */
+/* ── 3-dot dropdown toggle & keyboard accessibility ────────────────────── */
 const menuToggle=document.getElementById("chat-menu-toggle");
 const menuDropdown=document.getElementById("chat-dropdown-menu");
-menuToggle.addEventListener("click",e=>{e.stopPropagation();menuDropdown.classList.toggle("show");});
-document.addEventListener("click",()=>menuDropdown.classList.remove("show"));
-menuDropdown.addEventListener("click",e=>e.stopPropagation());
+
+if (menuToggle && menuDropdown) {
+  menuToggle.addEventListener("click", e => {
+    e.stopPropagation();
+    const isShown = menuDropdown.classList.toggle("show");
+    menuToggle.setAttribute("aria-expanded", isShown ? "true" : "false");
+    if (isShown) {
+      const firstItem = menuDropdown.querySelector(".chat-dropdown-item");
+      if (firstItem) firstItem.focus();
+    }
+  });
+
+  document.addEventListener("click", () => {
+    menuDropdown.classList.remove("show");
+    menuToggle.setAttribute("aria-expanded", "false");
+  });
+
+  menuDropdown.addEventListener("click", e => e.stopPropagation());
+
+  // Keyboard navigation within the menu
+  menuDropdown.addEventListener("keydown", e => {
+    const items = Array.from(menuDropdown.querySelectorAll(".chat-dropdown-item:not([disabled])"));
+    const currentIndex = items.indexOf(document.activeElement);
+
+    if (e.key === "Escape") {
+      menuDropdown.classList.remove("show");
+      menuToggle.setAttribute("aria-expanded", "false");
+      menuToggle.focus();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const nextIndex = (currentIndex + 1) % items.length;
+      items[nextIndex].focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const prevIndex = (currentIndex - 1 + items.length) % items.length;
+      items[prevIndex].focus();
+    }
+  });
+}
+
+/* ── Connection Ended UI Helper ────────────────────────────────────────── */
+function disableChatForEndedConnection(noticeText) {
+  if (msgInput) {
+    msgInput.disabled = true;
+    msgInput.placeholder = "Connection ended. Messaging is disabled.";
+  }
+  const btnSend = document.getElementById("btn-send");
+  if (btnSend) btnSend.disabled = true;
+  const callBtns = document.querySelectorAll(".js-start-call");
+  callBtns.forEach(b => b.disabled = true);
+  const camBtn = document.getElementById("btn-camera");
+  if (camBtn) camBtn.disabled = true;
+  const spBtn = document.getElementById("btn-speech");
+  if (spBtn) spBtn.disabled = true;
+  const ttsBtn = document.getElementById("btn-tts");
+  if (ttsBtn) ttsBtn.disabled = true;
+  const menuBtn = document.getElementById("chat-menu-toggle");
+  if (menuBtn) menuBtn.disabled = true;
+
+  // Remove partner from contact items in the inbox sidebar without refresh
+  const sidebarItems = document.querySelectorAll(".contact-item");
+  sidebarItems.forEach(item => {
+    const href = item.getAttribute("href") || "";
+    if (href.includes(PARTNER_ID)) {
+      item.remove();
+    }
+  });
+
+  // Append clear visual banner in conversation history
+  const noticeDiv = document.createElement("div");
+  noticeDiv.className = "alert alert-warning text-center rounded-3 my-3 shadow-sm";
+  noticeDiv.innerHTML = `<i class="bi bi-info-circle me-1"></i> ${noticeText || 'This connection has ended. Communication is disabled.'}`;
+  chatHistory.appendChild(noticeDiv);
+  chatHistory.scrollTop = chatHistory.scrollHeight;
+}
+
+// Real-time synchronization: handle match termination emitted from backend
+socket.on("match_ended", data => {
+  if (data && String(data.partner_id) === String(PARTNER_ID)) {
+    disableChatForEndedConnection("This connection has ended. You can no longer send messages or initiate calls.");
+  }
+});
+
+/* ── Part Ways ─────────────────────────────────────────────────────────── */
+const partWaysModal = document.getElementById("part-ways-modal");
+const partWaysFeedback = document.getElementById("part-ways-feedback");
+const btnPartWays = document.getElementById("btn-part-ways");
+const partWaysCancel = document.getElementById("part-ways-cancel");
+const partWaysSubmit = document.getElementById("part-ways-submit");
+let isPartingWays = false;
+
+if (btnPartWays) {
+  btnPartWays.addEventListener("click", () => {
+    menuDropdown.classList.remove("show");
+    menuToggle.setAttribute("aria-expanded", "false");
+    partWaysModal.classList.add("show");
+    partWaysFeedback.style.display = "none";
+    if (partWaysCancel) partWaysCancel.focus();
+  });
+}
+if (partWaysCancel) {
+  partWaysCancel.addEventListener("click", () => {
+    partWaysModal.classList.remove("show");
+    menuToggle.focus();
+  });
+}
+if (partWaysModal) {
+  partWaysModal.addEventListener("click", e => {
+    if (e.target === partWaysModal) partWaysModal.classList.remove("show");
+  });
+  partWaysModal.addEventListener("keydown", e => {
+    if (e.key === "Escape") {
+      partWaysModal.classList.remove("show");
+      menuToggle.focus();
+    }
+  });
+}
+
+if (partWaysSubmit) {
+  partWaysSubmit.addEventListener("click", async () => {
+    if (isPartingWays) return;
+    isPartingWays = true;
+    partWaysSubmit.disabled = true;
+    partWaysCancel.disabled = true;
+    partWaysSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Parting Ways...';
+
+    try {
+      const res = await fetch("/chat/part-ways", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partner_id: PARTNER_ID }),
+      });
+      const data = await res.json().catch(() => ({}));
+      partWaysFeedback.style.display = "block";
+
+      if (res.ok) {
+        partWaysFeedback.className = "small mt-2 text-success";
+        partWaysFeedback.textContent = data.message || "Connection ended.";
+        disableChatForEndedConnection("You have parted ways with this user.");
+        setTimeout(() => {
+          partWaysModal.classList.remove("show");
+          window.location.href = "{{ url_for('main.dashboard') }}";
+        }, 1200);
+      } else {
+        partWaysFeedback.className = "small mt-2 text-danger";
+        partWaysFeedback.textContent = data.error || "Unable to part ways. Please try again.";
+        partWaysSubmit.disabled = false;
+        partWaysCancel.disabled = false;
+        partWaysSubmit.innerHTML = '<i class="bi bi-heartbreak me-1"></i>Part Ways';
+        isPartingWays = false;
+      }
+    } catch (err) {
+      partWaysFeedback.style.display = "block";
+      partWaysFeedback.className = "small mt-2 text-danger";
+      partWaysFeedback.textContent = "Network error. Please check your connection.";
+      partWaysSubmit.disabled = false;
+      partWaysCancel.disabled = false;
+      partWaysSubmit.innerHTML = '<i class="bi bi-heartbreak me-1"></i>Part Ways';
+      isPartingWays = false;
+    }
+  });
+}
+
+/* ── Restrict User ─────────────────────────────────────────────────────── */
+const restrictModal = document.getElementById("restrict-user-modal");
+const restrictFeedback = document.getElementById("restrict-user-feedback");
+const btnRestrict = document.getElementById("btn-restrict-user");
+const restrictCancel = document.getElementById("restrict-user-cancel");
+const restrictSubmit = document.getElementById("restrict-user-submit");
+const restrictReason = document.getElementById("restrict-reason");
+let isRestricting = false;
+
+if (btnRestrict) {
+  btnRestrict.addEventListener("click", () => {
+    menuDropdown.classList.remove("show");
+    menuToggle.setAttribute("aria-expanded", "false");
+    restrictModal.classList.add("show");
+    restrictFeedback.style.display = "none";
+    if (restrictReason) restrictReason.value = "";
+    if (restrictCancel) restrictCancel.focus();
+  });
+}
+if (restrictCancel) {
+  restrictCancel.addEventListener("click", () => {
+    restrictModal.classList.remove("show");
+    menuToggle.focus();
+  });
+}
+if (restrictModal) {
+  restrictModal.addEventListener("click", e => {
+    if (e.target === restrictModal) restrictModal.classList.remove("show");
+  });
+  restrictModal.addEventListener("keydown", e => {
+    if (e.key === "Escape") {
+      restrictModal.classList.remove("show");
+      menuToggle.focus();
+    }
+  });
+}
+
+if (restrictSubmit) {
+  restrictSubmit.addEventListener("click", async () => {
+    if (isRestricting) return;
+    isRestricting = true;
+    restrictSubmit.disabled = true;
+    restrictCancel.disabled = true;
+    restrictSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Restricting...';
+
+    const reason = restrictReason ? restrictReason.value.trim() : "";
+
+    try {
+      const res = await fetch("/chat/restrict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partner_id: PARTNER_ID, reason: reason }),
+      });
+      const data = await res.json().catch(() => ({}));
+      restrictFeedback.style.display = "block";
+
+      if (res.ok) {
+        restrictFeedback.className = "small mt-2 text-success";
+        restrictFeedback.textContent = data.message || "User restricted.";
+        disableChatForEndedConnection("This user has been restricted.");
+        setTimeout(() => {
+          restrictModal.classList.remove("show");
+          window.location.href = "{{ url_for('main.dashboard') }}";
+        }, 1200);
+      } else {
+        restrictFeedback.className = "small mt-2 text-danger";
+        restrictFeedback.textContent = data.error || "Unable to restrict user. Please try again.";
+        restrictSubmit.disabled = false;
+        restrictCancel.disabled = false;
+        restrictSubmit.innerHTML = '<i class="bi bi-shield-slash me-1"></i>Restrict User';
+        isRestricting = false;
+      }
+    } catch (err) {
+      restrictFeedback.style.display = "block";
+      restrictFeedback.className = "small mt-2 text-danger";
+      restrictFeedback.textContent = "Network error. Please check your connection.";
+      restrictSubmit.disabled = false;
+      restrictCancel.disabled = false;
+      restrictSubmit.innerHTML = '<i class="bi bi-shield-slash me-1"></i>Restrict User';
+      isRestricting = false;
+    }
+  });
+}
 
 /* ── Report user ───────────────────────────────────────────────────────── */
 const reportModal=document.getElementById("report-modal");

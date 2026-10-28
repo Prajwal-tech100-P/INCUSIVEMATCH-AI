@@ -1,0 +1,218 @@
+{% extends "legal/legal_base.html" %}
+
+{% block title %}Contact & Grievance Redressal — InclusiveMatch AI{% endblock %}
+
+{% block legal_content %}
+<div class="legal-header">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <span class="badge bg-dark-subtle text-dark border border-dark-subtle legal-badge">Support & Statutory Grievance Redressal</span>
+        <span class="text-muted small"><i class="bi bi-clock-history me-1"></i>Version {{ versions.contact_grievance }} | Effective: {{ versions.last_updated }}</span>
+    </div>
+    <h1 class="fw-bold text-dark mb-2">Contact & Grievance Redressal Portal</h1>
+    <p class="text-muted lead fs-6 mb-0">InclusiveMatch AI provides dedicated channels for user support, accessibility inquiries, privacy rights requests, and statutory grievance redressal under the <strong>Digital Personal Data Protection Act, 2023</strong> and the <strong>Information Technology (Intermediary Guidelines) Rules, 2021</strong>.</p>
+</div>
+
+<!-- Support & Grievance Overview -->
+<div class="summary-box">
+    <h6 class="fw-bold text-dark mb-2"><i class="bi bi-shield-check text-primary me-2"></i>Statutory Turnaround Commitments</h6>
+    <p class="small text-secondary mb-0">Under Indian Intermediary Guidelines and statutory rules, our Grievance mechanism acknowledges receipt of all complaints within <strong>24 hours</strong> of submission and resolves or disposes of them within <strong>15 days</strong> from receipt.</p>
+</div>
+
+<div class="row g-4 my-2">
+    <!-- Contact & Grievance Officer Details Card -->
+    <div class="col-lg-5">
+        <div class="card border border-primary-subtle rounded-4 p-4 bg-light h-100 shadow-sm">
+            <h5 class="fw-bold text-dark mb-3"><i class="bi bi-building text-primary me-2"></i>Contact & Grievance Officer</h5>
+            <p class="small text-muted mb-3">You may direct formal communications, legal notices, privacy rights requests, or accessibility inquiries to our designated team:</p>
+
+            <div class="mb-3">
+                <span class="display-field-label d-block text-muted small fw-bold">Data Fiduciary / Platform Entity</span>
+                <span class="config-placeholder">[INCLUSIVEMATCH_AI_ORGANIZATION_NAME]</span>
+            </div>
+
+            <div class="mb-3">
+                <span class="display-field-label d-block text-muted small fw-bold">Designated Grievance Officer</span>
+                <span class="config-placeholder">[NAME_OF_GRIEVANCE_OFFICER]</span>
+            </div>
+
+            <div class="mb-3">
+                <span class="display-field-label d-block text-muted small fw-bold">Official Grievance Email</span>
+                <span class="config-placeholder">[GRIEVANCE_OFFICER_EMAIL, e.g., grievance@inclusivematch.ai]</span>
+            </div>
+
+            <div class="mb-3">
+                <span class="display-field-label d-block text-muted small fw-bold">General Support Email</span>
+                <span class="config-placeholder">[SUPPORT_EMAIL, e.g., support@inclusivematch.ai]</span>
+            </div>
+
+            <div class="mb-3">
+                <span class="display-field-label d-block text-muted small fw-bold">Registered Office Address</span>
+                <span class="config-placeholder">[PHYSICAL_OFFICE_ADDRESS, e.g., Technology Park, Outer Ring Road, Bengaluru, Karnataka 560103, India]</span>
+            </div>
+
+            <div class="mt-4 pt-3 border-top small text-muted">
+                <p class="mb-2"><i class="bi bi-universal-access text-primary me-1"></i><strong>Accessibility Accommodations:</strong> Deaf and Hard-of-Hearing members may submit queries in Indian Sign Language video links or request sign-supported correspondence.</p>
+                <p class="mb-0"><i class="bi bi-telephone-fill text-danger me-1"></i><strong>Immediate Emergencies:</strong> For physical danger or severe cyber threats, contact the India Cyber Helpline at <strong>1930</strong> or Emergency Response at <strong>112</strong>.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interactive Submission Form -->
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
+            <h5 class="fw-bold text-dark mb-2"><i class="bi bi-pencil-square text-primary me-2"></i>Submit a Request or Grievance</h5>
+            <p class="small text-muted mb-4">Complete the form below to receive a registered tracking ID. All submissions are persistently logged in our grievance management system.</p>
+
+            <form action="{{ url_for('legal.submit_grievance') }}" method="POST" id="grievanceForm">
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label for="name" class="form-label fw-semibold small">Full Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control rounded-3" id="name" name="name" 
+                               value="{% if current_user.is_authenticated %}{{ current_user.name }}{% endif %}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="email" class="form-label fw-semibold small">Email Address <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control rounded-3" id="email" name="email" 
+                               value="{% if current_user.is_authenticated %}{{ current_user.email }}{% endif %}" required>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="category" class="form-label fw-semibold small">Request Category <span class="text-danger">*</span></label>
+                    <select class="form-select rounded-3" id="category" name="category" required>
+                        <option value="" selected disabled>Select an inquiry or grievance category...</option>
+                        <option value="data_access">Data Access Request (DPDP Act, Sec 11)</option>
+                        <option value="data_correction">Data Correction or Updating (DPDP Act, Sec 12)</option>
+                        <option value="data_erasure">Data Deletion / Erasure Request (DPDP Act, Sec 12)</option>
+                        <option value="privacy_complaint">Privacy Complaint or Violation</option>
+                        <option value="safety_misconduct">User Safety, Harassment or Misconduct Report</option>
+                        <option value="accessibility_barrier">Accessibility Barrier Report</option>
+                        <option value="general_legal">General Legal, Technical or Terms Inquiry</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label for="subject" class="form-label fw-semibold small">Subject <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control rounded-3" id="subject" name="subject" 
+                           placeholder="Brief summary of your inquiry or grievance" required minlength="3">
+                </div>
+
+                <div class="mb-4">
+                    <label for="message" class="form-label fw-semibold small">Detailed Description <span class="text-danger">*</span></label>
+                    <textarea class="form-control rounded-3" id="message" name="message" rows="5" 
+                              placeholder="Please provide full details, including dates, usernames, or screenshots if applicable..." required minlength="15"></textarea>
+                    <div class="form-text small">Minimum 15 characters. Be as specific as possible to assist prompt resolution.</div>
+                </div>
+
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary btn-lg fw-bold rounded-pill shadow-sm hover-lift">
+                        <i class="bi bi-send-fill me-2"></i>Submit Grievance / Request
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Grievance Tracking Section -->
+<div class="card border border-light-subtle rounded-4 shadow-sm my-4 p-4 bg-white">
+    <div class="row align-items-center g-3">
+        <div class="col-lg-6">
+            <h5 class="fw-bold text-dark mb-1"><i class="bi bi-search text-primary me-2"></i>Track an Existing Grievance</h5>
+            <p class="small text-muted mb-0">Enter your Tracking ID (e.g., <code>GRV-20261027-ABC123</code>) and registered email address to check status updates and review the official administrative response.</p>
+        </div>
+        <div class="col-lg-6">
+            <form action="{{ url_for('legal.track_grievance') }}" method="POST">
+                <div class="input-group">
+                    <input type="text" class="form-control" name="tracking_id" placeholder="Tracking ID (GRV-...)" required>
+                    <input type="email" class="form-control" name="email" placeholder="Registered Email" required>
+                    <button type="submit" class="btn btn-primary fw-semibold px-3">
+                        <i class="bi bi-arrow-right"></i> Track
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Search Result Box -->
+    {% if searched %}
+        {% if tracking_result %}
+        <div class="mt-4 pt-3 border-top">
+            <div class="card bg-light border-0 p-3 rounded-3">
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+                    <span class="badge bg-primary rounded-pill">{{ tracking_result.tracking_id }}</span>
+                    <span class="badge bg-{{ 'warning text-dark' if tracking_result.status == 'pending' else 'primary' if tracking_result.status == 'in_progress' else 'success' if tracking_result.status == 'resolved' else 'secondary' }} rounded-pill px-3 py-1">
+                        {{ tracking_result.status | upper }}
+                    </span>
+                </div>
+                <h6 class="fw-bold text-dark mb-1">{{ tracking_result.subject }}</h6>
+                <div class="small text-muted mb-2">
+                    <strong>Category:</strong> {{ tracking_result.category_label or tracking_result.category }} | 
+                    <strong>Filed on:</strong> {{ tracking_result.formatted_date }}
+                </div>
+                <div class="p-2 bg-white rounded border small text-secondary mb-3" style="white-space: pre-wrap;">{{ tracking_result.message }}</div>
+
+                {% if tracking_result.resolution_notes %}
+                <div class="border-start border-4 border-success ps-3 py-2 bg-white rounded">
+                    <strong class="text-success small d-block mb-1"><i class="bi bi-check-circle-fill me-1"></i>Official Administrative Response:</strong>
+                    <div class="small text-dark" style="white-space: pre-wrap;">{{ tracking_result.resolution_notes }}</div>
+                    {% if tracking_result.formatted_resolved_date %}
+                    <div class="small text-muted mt-1">Resolved on: {{ tracking_result.formatted_resolved_date }}</div>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="small text-muted fst-italic">
+                    <i class="bi bi-clock me-1"></i>Your grievance is currently under active review by the Grievance Officer. An update will be posted here and communicated to your email.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    {% endif %}
+</div>
+
+<!-- Authenticated User Grievance History -->
+{% if current_user.is_authenticated and user_grievances %}
+<div class="card border border-light-subtle rounded-4 shadow-sm my-4 p-4 bg-white">
+    <h5 class="fw-bold text-dark mb-3"><i class="bi bi-clock-history text-indigo me-2"></i>Your Submitted Requests & Status</h5>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle small mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Tracking ID</th>
+                    <th>Category</th>
+                    <th>Subject</th>
+                    <th>Date Filed</th>
+                    <th>Status</th>
+                    <th>Official Response</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for g in user_grievances %}
+                <tr>
+                    <td class="font-monospace fw-bold text-primary">{{ g.tracking_id }}</td>
+                    <td>{{ g.category_label or g.category }}</td>
+                    <td class="fw-semibold">{{ g.subject }}</td>
+                    <td>{{ g.formatted_date }}</td>
+                    <td>
+                        <span class="badge bg-{{ 'warning text-dark' if g.status == 'pending' else 'primary' if g.status == 'in_progress' else 'success' if g.status == 'resolved' else 'secondary' }} rounded-pill">
+                            {{ g.status | upper }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if g.resolution_notes %}
+                        <span class="text-success" title="{{ g.resolution_notes }}">
+                            <i class="bi bi-check-circle me-1"></i>{{ g.resolution_notes | truncate(40) }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted fst-italic">Pending review</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

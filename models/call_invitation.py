@@ -83,3 +83,21 @@ class CallInvitation:
             {"$set": {"status": status, "updated_at": now}},
         )
         return result.modified_count == 1
+
+    @classmethod
+    def cancel(cls, call_id, caller_id):
+        try:
+            oid = ObjectId(call_id)
+        except Exception:
+            return False
+        now = cls._now()
+        result = mongo.db[cls.COLLECTION].update_one(
+            {
+                "_id": oid,
+                "caller_id": str(caller_id),
+                "status": "pending",
+            },
+            {"$set": {"status": "cancelled", "updated_at": now}},
+        )
+        return result.modified_count == 1
+

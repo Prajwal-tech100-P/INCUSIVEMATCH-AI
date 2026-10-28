@@ -1,0 +1,116 @@
+{
+  "test_split_n": 961,
+  "v1_test_macro_f1": 0.207183906970704,
+  "v2_test_macro_f1": 0.6687989050673951,
+  "v1_test_metrics": {
+    "toxic": {
+      "precision": 0.8888888888888888,
+      "recall": 0.014625228519195612,
+      "f1": 0.02877697841726619,
+      "positives": 547
+    },
+    "severe_toxic": {
+      "precision": 0.9166666666666666,
+      "recall": 0.7857142857142857,
+      "f1": 0.8461538461538461,
+      "positives": 14
+    },
+    "insult": {
+      "precision": 1.0,
+      "recall": 0.015822784810126583,
+      "f1": 0.03115264797507788,
+      "positives": 316
+    },
+    "threat": {
+      "precision": 0.8571428571428571,
+      "recall": 0.09523809523809523,
+      "f1": 0.17142857142857143,
+      "positives": 63
+    },
+    "harassment": {
+      "precision": 1.0,
+      "recall": 0.07142857142857142,
+      "f1": 0.13333333333333333,
+      "positives": 28
+    },
+    "hate": {
+      "precision": 1.0,
+      "recall": 0.01639344262295082,
+      "f1": 0.03225806451612903,
+      "positives": 244
+    }
+  },
+  "v2_test_metrics": {
+    "toxic": {
+      "precision": 0.7751937984496124,
+      "recall": 0.9140767824497258,
+      "f1": 0.8389261744966443,
+      "positives": 547
+    },
+    "severe_toxic": {
+      "precision": 0.6666666666666666,
+      "recall": 0.5714285714285714,
+      "f1": 0.6153846153846154,
+      "positives": 14
+    },
+    "insult": {
+      "precision": 0.7256637168141593,
+      "recall": 0.7784810126582279,
+      "f1": 0.751145038167939,
+      "positives": 316
+    },
+    "threat": {
+      "precision": 0.6415094339622641,
+      "recall": 0.5396825396825397,
+      "f1": 0.5862068965517241,
+      "positives": 63
+    },
+    "harassment": {
+      "precision": 0.43478260869565216,
+      "recall": 0.35714285714285715,
+      "f1": 0.39215686274509803,
+      "positives": 28
+    },
+    "hate": {
+      "precision": 0.8142292490118577,
+      "recall": 0.8442622950819673,
+      "f1": 0.8289738430583501,
+      "positives": 244
+    }
+  },
+  "benchmark_n": 127,
+  "v1_moderation": {
+    "accuracy": 0.7401574803149606,
+    "precision": 0.9512195121951219,
+    "recall": 0.5571428571428572,
+    "f1": 0.7027027027027027,
+    "fp": 2,
+    "fn": 31
+  },
+  "v2_moderation": {
+    "accuracy": 0.905511811023622,
+    "precision": 0.9264705882352942,
+    "recall": 0.9,
+    "f1": 0.9130434782608695,
+    "fp": 5,
+    "fn": 7
+  },
+  "v1_you_fp_rate": 0.2,
+  "v2_you_fp_rate": 0.05,
+  "v2_false_negatives": [
+    "You obnoxious brat, leave me alone.",
+    "You are a dead man, you won't survive this week.",
+    "I know your daily routine and what train you take home.",
+    "I created five fake accounts just to keep messaging your friends.",
+    "Do what I say or you will deeply regret ever crossing me.",
+    "I will show up at your office lobby tomorrow and make a huge scene.",
+    "Your ethnic group is dirty and genetically inferior."
+  ],
+  "v2_false_positives": [
+    "This leg workout is absolutely killing me!",
+    "My feet are killing me after standing all day.",
+    "I would kill for a hot cup of tea right now.",
+    "I hate Mondays so much, weekends go by too fast.",
+    "I am a transgender man living my authentic truth."
+  ]
+}

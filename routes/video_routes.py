@@ -21,6 +21,12 @@ def _authorized_call(data):
     partner_id = str(data.get("partner_id", "")).strip()
     if not partner_id or partner_id == str(current_user.id):
         return None
+    try:
+        from models.restriction import Restriction
+        if Restriction.is_restricted_either(current_user.id, partner_id):
+            return None
+    except Exception:
+        pass
     if not Match.are_matched(current_user.id, partner_id):
         return None
     return call_room(current_user.id, partner_id)
@@ -50,6 +56,12 @@ def _ice_servers():
 @login_required
 def video_call(partner_id):
     partner = UserModel.get_by_id(partner_id)
+    try:
+        from models.restriction import Restriction
+        if Restriction.is_restricted_either(current_user.id, partner_id):
+            return "Video calls are available only between active mutual matches.", 403
+    except Exception:
+        pass
     if not partner or partner.id == current_user.id or not Match.are_matched(current_user.id, partner_id):
         return "Video calls are available only between active mutual matches.", 403
     return render_template(
@@ -83,6 +95,12 @@ def call_user(data):
         return {"ok": False, "message": "Invalid call recipient."}
 
     partner = UserModel.get_by_id(partner_id)
+    try:
+        from models.restriction import Restriction
+        if Restriction.is_restricted_either(current_user.id, partner_id):
+            return {"ok": False, "message": "You can only call an active mutual match."}
+    except Exception:
+        pass
     if not partner or not Match.are_matched(current_user.id, partner_id):
         return {"ok": False, "message": "You can only call an active mutual match."}
 
@@ -112,7 +130,9 @@ def cancel_call(data):
     
     if not partner_id or not call_id:
         return {"ok": False}
-        
+
+    CallInvitation.cancel(call_id, current_user.id)
+
     socketio.emit(
         "call_cancelled",
         {"call_id": call_id, "caller_id": str(current_user.id)},
@@ -131,6 +151,12 @@ def accept_call(data):
     call_id = str(data.get("call_id", "")).strip()
 
     caller = UserModel.get_by_id(caller_id)
+    try:
+        from models.restriction import Restriction
+        if Restriction.is_restricted_either(current_user.id, caller_id):
+            return {"ok": False, "message": "This call is no longer available."}
+    except Exception:
+        pass
     if not caller or not Match.are_matched(current_user.id, caller_id):
         return {"ok": False, "message": "This call is no longer available."}
 
@@ -155,6 +181,12 @@ def decline_call(data):
     call_id = str(data.get("call_id", "")).strip()
     caller = UserModel.get_by_id(caller_id)
 
+    try:
+        from models.restriction import Restriction
+        if Restriction.is_restricted_either(current_user.id, caller_id):
+            return {"ok": False, "message": "This call is no longer available."}
+    except Exception:
+        pass
     if not caller or not Match.are_matched(current_user.id, caller_id):
         return {"ok": False, "message": "This call is no longer available."}
 
@@ -233,13 +265,25 @@ def leave_call(data):
         return
     room = _authorized_call(data)
     if room:
+        # Clear any active remote signing indicator before leaving
+        emit(
+            "signing_status",
+            {
+                "speaker": current_user.name,
+                "user_id": str(current_user.id),
+                "state": "IDLE",
+                "is_signing": False,
+            },
+            to=room,
+            include_self=False,
+        )
         leave_room(room)
         emit("peer_left", {"user_id": str(current_user.id)}, to=room, include_self=False)
 
 
 @socketio.on("sign_caption")
 def sign_caption(data):
-    """Relay real-time recognized sign captions to the other participant in the call."""
+    """Relay real-time recognized sign captions and accumulated phrases to the other participant."""
     if not current_user.is_authenticated:
         return
     data = data or {}
@@ -247,17 +291,71 @@ def sign_caption(data):
     if not room:
         return
     text = str(data.get("text", "")).strip()[:100]
+    phrase = str(data.get("phrase", "")).strip()[:300]
     confidence = float(data.get("confidence", 0.0))
-    if text:
+    is_final = bool(data.get("is_final", False))
+    if text or phrase:
         emit(
             "sign_caption",
             {
                 "speaker": current_user.name,
                 "user_id": str(current_user.id),
                 "text": text,
+                "phrase": phrase,
                 "confidence": confidence,
+                "is_final": is_final,
             },
             to=room,
             include_self=False,
         )
+
+
+@socketio.on("speech_caption")
+def speech_caption(data):
+    """Relay live speech-to-text subtitles to the other participant in the authorized call room."""
+    if not current_user.is_authenticated:
+        return
+    data = data or {}
+    room = _authorized_call(data)
+    if not room:
+        return
+    text = str(data.get("text", "")).strip()[:500]
+    is_final = bool(data.get("is_final", False))
+    if text:
+        emit(
+            "speech_caption",
+            {
+                "speaker": current_user.name,
+                "user_id": str(current_user.id),
+                "text": text,
+                "is_final": is_final,
+            },
+            to=room,
+            include_self=False,
+        )
+
+
+@socketio.on("signing_status")
+def signing_status(data):
+    """Relay automatic signing activity state (e.g. SIGNING vs IDLE) to update remote indicator."""
+    if not current_user.is_authenticated:
+        return
+    data = data or {}
+    room = _authorized_call(data)
+    if not room:
+        return
+    state = str(data.get("state", "IDLE")).strip()[:32]
+    is_signing = bool(data.get("is_signing", False))
+    emit(
+        "signing_status",
+        {
+            "speaker": current_user.name,
+            "user_id": str(current_user.id),
+            "state": state,
+            "is_signing": is_signing,
+        },
+        to=room,
+        include_self=False,
+    )
+
 

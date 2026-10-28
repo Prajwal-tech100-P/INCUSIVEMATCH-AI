@@ -57,6 +57,15 @@ def create_app(config_class=Config):
 
     app.jinja_env.globals["avatar_url"] = avatar_url_filter
 
+    def generate_csrf_token():
+        from flask import session
+        import secrets
+        if "_csrf_token" not in session:
+            session["_csrf_token"] = secrets.token_hex(32)
+        return session["_csrf_token"]
+
+    app.jinja_env.globals["csrf_token"] = generate_csrf_token
+
     @app.before_request
     def check_maintenance():
         from flask import request, redirect, url_for, jsonify
@@ -67,13 +76,19 @@ def create_app(config_class=Config):
             'static', 
             'auth.login', 
             'auth.logout', 
+            'auth.forgot_password',
+            'auth.reset_password',
             'main.maintenance', 
             'health_check'
         ]
         
         # Admins must always be able to access the admin panel to turn off maintenance.
-        # If unauthenticated, the @admin_required decorator will redirect them to login.
-        if app.config.get("TESTING") or getattr(request, 'endpoint', None) in allowed_endpoints or getattr(request, 'blueprint', None) == 'admin':
+        # Legal and policy pages remain accessible so users can always read policies.
+        if (
+            app.config.get("TESTING")
+            or getattr(request, 'endpoint', None) in allowed_endpoints
+            or getattr(request, 'blueprint', None) in ('admin', 'legal')
+        ):
             return
 
         # Fetch settings from MongoDB safely
@@ -118,6 +133,7 @@ def create_app(config_class=Config):
     from routes.admin_routes import admin_bp
     from routes.video_routes import video_bp
     from routes.community_routes import community_bp
+    from routes.legal_routes import legal_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
@@ -126,11 +142,23 @@ def create_app(config_class=Config):
     app.register_blueprint(chat_bp)
     app.register_blueprint(video_bp)
     app.register_blueprint(community_bp)
+    app.register_blueprint(legal_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
 
     @app.route("/health")
     def health_check():
         return {"status": "healthy", "service": "Inclusive Match AI"}
+
+    with app.app_context():
+        try:
+            from models.call_invitation import CallInvitation
+            from models.restriction import Restriction
+            from models.password_reset import PasswordReset
+            CallInvitation.ensure_indexes()
+            Restriction.ensure_indexes()
+            PasswordReset.ensure_indexes()
+        except Exception:
+            pass
 
     return app
 

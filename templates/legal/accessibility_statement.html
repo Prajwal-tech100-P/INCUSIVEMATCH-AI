@@ -1,0 +1,136 @@
+{% extends "legal/legal_base.html" %}
+
+{% block title %}Accessibility Statement — InclusiveMatch AI{% endblock %}
+
+{% block legal_content %}
+<div class="legal-header">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle legal-badge">Accessibility & Inclusion Commitment</span>
+        <span class="text-muted small"><i class="bi bi-clock-history me-1"></i>Version {{ versions.accessibility_statement }} | Effective: {{ versions.last_updated }}</span>
+    </div>
+    <h1 class="fw-bold text-dark mb-2">Accessibility Statement & Assistive Standards</h1>
+    <p class="text-muted lead fs-6 mb-0">InclusiveMatch AI was founded on the fundamental principle that dating and interpersonal connection must be universally accessible. We are committed to removing digital barriers for persons with disabilities, the Deaf community, and individuals with diverse sensory and motor needs.</p>
+</div>
+
+<div class="summary-box">
+    <h6 class="fw-bold text-primary mb-2"><i class="bi bi-universal-access me-2"></i>Our Accessibility Mission</h6>
+    <p class="small text-secondary mb-0">We design and develop our platform with reference to the <strong>Web Content Accessibility Guidelines (WCAG) 2.1 Level AA</strong> and the <strong>Rights of Persons with Disabilities Act, 2016 (RPwD Act)</strong>. We believe in candid disclosure: rather than claiming premature perfection, we document working features, ongoing audits, and remaining accessibility gaps.</p>
+</div>
+
+<div class="toc-card">
+    <div class="toc-title"><i class="bi bi-list-nested me-2"></i>Table of Contents</div>
+    <ul class="toc-list">
+        <li><a href="#access-1">1. Assistive Features Implemented</a></li>
+        <li><a href="#access-2">2. Visual & Sensory Adaptations</a></li>
+        <li><a href="#access-3">3. Keyboard Navigation & Focus Standards</a></li>
+        <li><a href="#access-4">4. Screen Reader Compatibility</a></li>
+        <li><a href="#access-5">5. Known Accessibility Gaps & Roadmap</a></li>
+        <li><a href="#access-6">6. Feedback & Accessibility Reporting</a></li>
+    </ul>
+</div>
+
+<div class="legal-body">
+    <section id="access-1">
+        <h2>1. Assistive Features Implemented</h2>
+        <p>Our engineering team has built several specialized assistive features directly into the core platform:</p>
+
+        <div class="row g-3 my-2">
+            <div class="col-md-6">
+                <div class="card h-100 border-0 bg-light p-3 rounded-3">
+                    <h6 class="fw-bold text-primary mb-2"><i class="bi bi-hand-index-thumb-fill me-2"></i>Live Indian Sign Language (ISL) Recognition</h6>
+                    <p class="small text-muted mb-0">Translates supported Indian Sign Language gestures into text subtitles in real-time during video calls, bridging communication between Deaf and hearing users.</p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100 border-0 bg-light p-3 rounded-3">
+                    <h6 class="fw-bold text-primary mb-2"><i class="bi bi-mic-fill me-2"></i>Speech-to-Text (STT) Subtitles</h6>
+                    <p class="small text-muted mb-0">Converts spoken audio into real-time visual captions via the Web Speech API during video calls, ensuring Hard-of-Hearing members can read live dialogue.</p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100 border-0 bg-light p-3 rounded-3">
+                    <h6 class="fw-bold text-primary mb-2"><i class="bi bi-volume-up-fill me-2"></i>Text-to-Speech (TTS) Synthesis</h6>
+                    <p class="small text-muted mb-0">Enables automatic vocalization of recognized sign language gestures or text chat messages for hearing partners using browser speech synthesis.</p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100 border-0 bg-light p-3 rounded-3">
+                    <h6 class="fw-bold text-primary mb-2"><i class="bi bi-bell-fill me-2"></i>Multi-Modal Incoming Call Alerts</h6>
+                    <p class="small text-muted mb-0">Incoming calls trigger both an audible ringtone and a high-contrast visual animated modal overlay, accommodating members who are Deaf, Hard-of-Hearing, or working in silent mode.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="access-2">
+        <h2>2. Visual & Sensory Adaptations</h2>
+        <ul>
+            <li><strong>High Contrast Color Palette:</strong> Text elements are styled in Slate 800 (<code>#1e293b</code>) against a Slate 50 background (<code>#f8fafc</code>), achieving a contrast ratio exceeding 7:1 (well above the WCAG AA minimum requirement of 4.5:1).</li>
+            <li><strong>Typography:</strong> We employ the highly legible <em>Inter</em> geometric typeface with ample line height (<code>line-height: 1.75</code>) and distinguishable letterforms.</li>
+            <li><strong>Reduced Motion Support:</strong> Critical animations respect operating system preferences for reduced motion (<code>@media (prefers-reduced-motion: reduce)</code>).</li>
+        </ul>
+    </section>
+
+    <section id="access-3">
+        <h2>3. Keyboard Navigation & Focus Standards</h2>
+        <p>InclusiveMatch AI is engineered to be fully operable without a mouse:</p>
+        <ul>
+            <li><strong>Skip to Main Content:</strong> Every page includes a hidden skip link (<code>&lt;a href="#main-content" class="visually-hidden-focusable"&gt;</code>) allowing keyboard users to bypass navigation menus.</li>
+            <li><strong>High-Visibility Focus Indicators:</strong> All interactive elements (links, buttons, form inputs, selects) display an unmistakable <strong>3px solid bright yellow focus ring (<code>outline: 3px solid #fde047; outline-offset: 2px;</code>)</strong> when tabbed via keyboard.</li>
+            <li><strong>Logical Tab Sequence:</strong> Navigation follows a natural top-to-bottom, left-to-right DOM sequence without keyboard traps.</li>
+        </ul>
+    </section>
+
+    <section id="access-4">
+        <h2>4. Screen Reader Compatibility</h2>
+        <ul>
+            <li><strong>Semantic HTML5 Landmarks:</strong> Pages are structured using appropriate semantic tags: <code>&lt;header&gt;</code>, <code>&lt;nav&gt;</code>, <code>&lt;main&gt;</code>, <code>&lt;article&gt;</code>, and <code>&lt;footer&gt;</code>.</li>
+            <li><strong>Descriptive Form Labels:</strong> Form inputs feature explicit <code>&lt;label for="..."&gt;</code> associations and clear validation feedback.</li>
+            <li><strong>Image Alternative Text:</strong> User avatars include descriptive <code>alt</code> attributes indicating the profile owner's name.</li>
+        </ul>
+    </section>
+
+    <section id="access-5">
+        <h2>5. Known Accessibility Gaps & Remediation Roadmap</h2>
+        <p>In accordance with our commitment to transparency, we acknowledge the following areas where improvements are underway:</p>
+        <div class="table-responsive my-3">
+            <table class="table table-bordered align-middle small">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 25%;">Area / Component</th>
+                        <th style="width: 45%;">Identified Gap</th>
+                        <th style="width: 30%;">Remediation Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Video Call Subtitle Timing</strong></td>
+                        <td>During rapid speech or signing, live subtitle updates may occasionally cause screen reader verbosity congestion.</td>
+                        <td>Implementing ARIA live region rate limiting and quiet modes.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Third-Party Browser Web Speech API</strong></td>
+                        <td>Speech-to-Text performance varies across browsers (Chrome/Edge provide full support; some Linux/Firefox browsers require external configurations).</td>
+                        <td>Displaying clear browser compatibility badges and fallback text chat.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Comprehensive Screen Reader Testing</strong></td>
+                        <td>Manual testing has been conducted primarily on desktop NVDA and Google Chrome TalkBack; comprehensive testing on iOS VoiceOver is in progress.</td>
+                        <td>Scheduled for next evaluation phase.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section id="access-6">
+        <h2>6. Feedback & Accessibility Reporting</h2>
+        <p>If you encounter an accessibility barrier or experience difficulty using any part of InclusiveMatch AI, please notify us immediately. We welcome user feedback to guide our technical roadmap:</p>
+        <div class="card border border-primary-subtle rounded-3 p-3 bg-light">
+            <p class="mb-1"><strong>Accessibility Coordinator:</strong> <span class="config-placeholder">[ACCESSIBILITY_COORDINATOR_NAME, e.g., Accessibility Officer, InclusiveMatch AI]</span></p>
+            <p class="mb-1"><strong>Accessibility Support Email:</strong> <span class="config-placeholder">[ACCESSIBILITY_EMAIL, e.g., accessibility@inclusivematch.ai]</span></p>
+            <p class="mb-0 small text-muted mt-2"><i class="bi bi-chat-square-text me-1"></i>You can submit an immediate accessibility report through our <a href="{{ url_for('legal.contact_grievance') }}" class="fw-bold">Contact & Grievance Portal</a> under the category <em>"Accessibility Barrier Report"</em>. We investigate all accessibility inquiries promptly.</p>
+        </div>
+    </section>
+</div>
+{% endblock %}

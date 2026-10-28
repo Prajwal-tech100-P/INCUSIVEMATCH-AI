@@ -15,6 +15,10 @@ def like(target_id):
     if not target or target.role!="user" or not target.is_active or target.id==current_user.id:
         return jsonify(error="Invalid profile."),400
 
+    from models.restriction import Restriction
+    if Restriction.is_restricted_either(current_user.id, target_id):
+        return jsonify(error="Invalid profile."),400
+
     # Only create a match notification when the relationship changes
     # from one-sided to mutual. This prevents duplicate notifications.
     was_mutual = Match.is_mutual(current_user.id, target_id)
@@ -68,3 +72,22 @@ def dislike(target_id):
         return jsonify(error="Invalid profile."),400
     Match.dislike(current_user.id,target_id)
     return jsonify(status="disliked")
+
+
+@match_bp.route("/part-ways/<target_id>", methods=["POST"])
+@login_required
+def part_ways(target_id):
+    target = UserModel.get_by_id(target_id)
+    if not target or target.id == current_user.id:
+        return jsonify(error="Invalid user."), 400
+    if not Match.are_matched(current_user.id, target_id):
+        return jsonify(error="No active mutual match found."), 400
+    Match.part_ways(current_user.id, target_id)
+    from routes.video_routes import call_room
+    socketio.emit("match_ended", {"partner_id": str(target_id)}, to=f"user:{current_user.id}")
+    socketio.emit("match_ended", {"partner_id": str(current_user.id)}, to=f"user:{target_id}")
+    try:
+        socketio.emit("call_terminated", {"reason": "connection_ended"}, to=call_room(current_user.id, target_id))
+    except Exception:
+        pass
+    return jsonify(status="ok", message="You have parted ways with this user.")

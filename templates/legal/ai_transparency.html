@@ -1,0 +1,124 @@
+{% extends "legal/legal_base.html" %}
+
+{% block title %}AI Transparency Notice — InclusiveMatch AI{% endblock %}
+
+{% block legal_content %}
+<div class="legal-header">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle legal-badge">Algorithmic Transparency</span>
+        <span class="text-muted small"><i class="bi bi-clock-history me-1"></i>Version {{ versions.ai_transparency }} | Effective: {{ versions.last_updated }}</span>
+    </div>
+    <h1 class="fw-bold text-dark mb-2">AI Transparency & Algorithmic Decision Notice</h1>
+    <p class="text-muted lead fs-6 mb-0">InclusiveMatch AI uses artificial intelligence responsibly to assist communication, foster accessible connections, and protect member safety. This document explains our assistive capabilities, operating scope, and technological safeguards.</p>
+</div>
+
+<div class="summary-box">
+    <h6 class="fw-bold text-indigo mb-2"><i class="bi bi-cpu me-2"></i>Ethical AI Commitments</h6>
+    <ul class="mb-0 ps-3 small text-secondary">
+        <li><strong>No emotion recognition:</strong> We do not attempt to read emotions, intentions, or physiological states from facial expressions or body language.</li>
+        <li><strong>No automated legal determinations:</strong> Match recommendations and safety flags are computational heuristics; they do not carry judicial or legal finality.</li>
+        <li><strong>Transparent operational boundaries:</strong> We clearly disclose the assistive scope, conversational features, and environmental dependencies for our automated systems.</li>
+    </ul>
+</div>
+
+<div class="toc-card">
+    <div class="toc-title"><i class="bi bi-list-nested me-2"></i>Table of Contents</div>
+    <ul class="toc-list">
+        <li><a href="#ai-1">1. AI Compatibility Recommender</a></li>
+        <li><a href="#ai-2">2. Real-Time Safety & Toxicity Moderation</a></li>
+        <li><a href="#ai-3">3. Indian Sign Language (ISL) Recognition</a></li>
+        <li><a href="#ai-4">4. Biometric Selfie Face Verification</a></li>
+        <li><a href="#ai-5">5. Human Oversight & Algorithmic Appeals</a></li>
+    </ul>
+</div>
+
+<div class="legal-body">
+    <section id="ai-1">
+        <h2>1. AI Compatibility Recommender</h2>
+        <h3>Purpose & Overview</h3>
+        <p>Our match recommender assists members in discovering compatible partners by identifying mutual alignment across user profiles:</p>
+        <ul>
+            <li><strong>Relational Compatibility Analysis:</strong> Analyzes shared interests, lifestyle preferences, and communication modalities.</li>
+            <li><strong>Assistive Pairing:</strong> Prioritizes compatible communication preferences (such as Sign Language, Text Messaging, or Spoken Word) to foster inclusive conversations.</li>
+            <li><strong>Inputs Processed:</strong> Shared hobby/interest categories, communication modality preferences, age preferences, and general geographical proximity.</li>
+        </ul>
+
+        <h3>Operational Scope & Limitations</h3>
+        <p><strong>Recommendation is not reality:</strong> Algorithmic scores represent mathematical similarity and heuristic alignment. High compatibility scores do not guarantee interpersonal chemistry, emotional reciprocity, or relationship success. We encourage members to take their time getting to know matches through accessible messaging and video calls.</p>
+    </section>
+
+    <section id="ai-2">
+        <h2>2. Real-Time Safety & Toxicity Moderation</h2>
+        <h3>System Overview & Categories</h3>
+        <p>Our text safety module screens private messages in real-time to detect abusive, threatening, or harmful language. It combines automated language classification with a context-aware safety decision engine:</p>
+        <ul>
+            <li><strong>Safety Categories Monitored:</strong> Outgoing text is evaluated across core safety categories:
+                <ol class="small mt-1 mb-2">
+                    <li><code>toxic</code> (General verbal hostility or abuse)</li>
+                    <li><code>severe_toxic</code> (Extremely aggressive or dangerous language)</li>
+                    <li><code>insult</code> (Disparaging or offensive insults)</li>
+                    <li><code>threat</code> (Explicit expressions of violence or harm)</li>
+                    <li><code>harassment</code> (Persistent stalking or targeted bullying)</li>
+                    <li><code>hate</code> (Hate speech targeting protected identity groups)</li>
+                </ol>
+            </li>
+            <li><strong>Multi-Tier Context Engine:</strong>
+                <ul>
+                    <li><strong>Step 1 (Zero-Tolerance Physical Safety Defense):</strong> Real physical threats (e.g. violent threats or expressions of harm) are strictly caught and blocked regardless of emojis or casual framing.</li>
+                    <li><strong>Step 2 (Safe Idioms):</strong> Recognizes common benign idioms of craving or exertion (e.g. <em>"I would kill for a lemonade"</em>, <em>"This workout is killing me"</em>, <em>"Dying from laughter"</em>).</li>
+                    <li><strong>Step 3 (Playful Banter):</strong> Distinguishes food teasing, competitive gaming hyperbole (<em>"Going to kill you in Ludo 🎮"</em>), and friendly teasing with humor emojis from hostile insults.</li>
+                    <li><strong>Step 4 (Ambiguous Review):</strong> Routes standalone or uncertain expressions for non-punitive audit without penalizing the user.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h3>Operational Scope & Limitations</h3>
+        <p>Language is subjective and dynamic. Automated language models may occasionally misunderstand sarcasm, dialect-specific slang, or cultural humor, leading to false positives (flagging harmless banter) or false negatives (failing to detect novel harassment patterns). An automated warning indicates a detected risk pattern, not a definitive legal finding of malicious intent.</p>
+    </section>
+
+    <section id="ai-3">
+        <h2>3. Indian Sign Language (ISL) Recognition</h2>
+        <h3>Assistive Workflow & Data Flow</h3>
+        <p>Our sign language module translates live webcam gestures into text in real-time to facilitate accessible communication:</p>
+        <ul>
+            <li><strong>Hand Gesture Landmark Detection:</strong> Real-time computer vision analyzes hand joint coordinates from incoming video frames to recognize sign gestures.</li>
+            <li><strong>Temporal Gesture Modeling:</strong> Evaluates hand movements across consecutive video frames to translate signs into text captions.</li>
+            <li><strong>Zero Storage of Video:</strong> Camera frames are processed strictly in volatile server memory for landmark extraction and are discarded immediately. Raw video frames are never stored on disk or in persistent databases.</li>
+        </ul>
+
+        <h3>Conversational Vocabulary Scope</h3>
+        <p>Our assistive sign recognition model focuses on core conversational signs for daily interaction (such as common greetings, inquiries, expressions of courtesy, and daily communication phrases).</p>
+
+        <h3>Assistive Performance & Operational Standards</h3>
+        <p>Our assistive systems undergo continuous internal quality benchmarks to ensure responsive, real-time recognition under recommended lighting and framing conditions while minimizing latency.</p>
+
+        <h3>Real-World Limitations</h3>
+        <p><strong>This assistive tool does not replace universal human interpretation:</strong></p>
+        <ul>
+            <li>Vocabulary is limited to supported conversational gestures; unlisted words, complex fingerspelling, or regional dialect variations cannot be recognized.</li>
+            <li>Recognition requires clear, well-lit webcam visibility of hands within the camera frame. Poor lighting, motion blur, or partial hand occlusions reduce recognition reliability.</li>
+            <li>The model analyzes hand geometry only; it does not capture facial grammar, mouthing, or torso non-manual markers that constitute essential grammatical elements of fluent Indian Sign Language.</li>
+        </ul>
+    </section>
+
+    <section id="ai-4">
+        <h2>4. Biometric Selfie Face Verification</h2>
+        <h3>Technology & Verification Workflow</h3>
+        <p>The optional face verification system allows members to earn a verified profile badge:</p>
+        <ul>
+            <li><strong>Face Detection:</strong> Identifies face bounding boxes and facial landmarks from a live webcam capture.</li>
+            <li><strong>Feature Representation:</strong> Generates a compact mathematical feature representation of facial geometry in volatile memory.</li>
+            <li><strong>Similarity Comparison:</strong> The live facial representation is compared with the reference profile photo stored in cloud media storage. If facial similarity meets the verification threshold, the verified badge is granted.</li>
+            <li><strong>Verification Invalidation:</strong> If a user uploads a new profile photograph, previously granted verification badges are automatically revoked to prevent identity swapping.</li>
+        </ul>
+
+        <h3>Operational Scope & Limitations</h3>
+        <p>Face verification confirms that the user controlling the camera possesses facial features matching the uploaded profile photo. It does not constitute a background check, criminal record review, or legal identity authentication.</p>
+    </section>
+
+    <section id="ai-5">
+        <h2>5. Human Oversight & Algorithmic Appeals</h2>
+        <p>In accordance with ethical AI governance standards, InclusiveMatch AI maintains human administrative oversight over all automated systems. No user is permanently terminated solely by an algorithm without the opportunity for human review. If you encounter an algorithmic error, you may file an appeal through our <a href="{{ url_for('legal.contact_grievance') }}" class="fw-semibold">Grievance Portal</a>.</p>
+    </section>
+</div>
+{% endblock %}

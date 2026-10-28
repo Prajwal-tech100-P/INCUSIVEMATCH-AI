@@ -1,0 +1,31 @@
+{
+  "total_samples": 74,
+  "approach_1_raw": {
+    "precision": 0.6,
+    "recall": 0.7941176470588235,
+    "f1": 0.6835443037974683,
+    "confusion_matrix": {
+      "tn": 22,
+      "fp": 18,
+      "fn": 7,
+      "tp": 27
+    },
+    "joke_idiom_fp_rate": 0.46875,
+    "threat_fn_rate": 0.19047619047619047,
+    "ambiguous_warning_rate": 0.375
+  },
+  "approach_2_context_aware": {
+    "precision": 0.9696969696969697,
+    "recall": 0.9411764705882353,
+    "f1": 0.9552238805970149,
+    "confusion_matrix": {
+      "tn": 39,
+      "fp": 1,
+      "fn": 2,
+      "tp": 32
+    },
+    "joke_idiom_fp_rate": 0.03125,
+    "threat_fn_rate": 0.0,
+    "ambiguous_warning_rate": 0.0
+  }
+}
