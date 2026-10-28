@@ -20,7 +20,10 @@
                             <input type="email" class="form-control form-control-lg bg-light" id="email" name="email" required autofocus>
                         </div>
                         <div class="mb-4">
-                            <label for="password" class="form-label fw-semibold">Password</label>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label for="password" class="form-label fw-semibold mb-0">Password</label>
+                                <a href="{{ url_for('auth.forgot_password') }}" class="small text-decoration-none text-primary fw-semibold" id="forgot-password-link">Forgot Password?</a>
+                            </div>
                             <input type="password" class="form-control form-control-lg bg-light" id="password" name="password" required>
                         </div>
                         <div class="d-grid gap-2">

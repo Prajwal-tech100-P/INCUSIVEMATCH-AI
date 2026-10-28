@@ -29,34 +29,90 @@ class Match:
 
     @staticmethod
     def like(user_id, target_id):
-        if user_id == target_id: return False
+        if str(user_id) == str(target_id): return False
+        try:
+            from models.restriction import Restriction
+            if Restriction.is_restricted_either(user_id, target_id):
+                return False
+        except Exception:
+            pass
         target = Match._oid(target_id)
         if not target: return False
         result = mongo.db.users.update_one(
             {"_id": Match._oid(user_id), "role": "user", "is_active": True},
-            {"$addToSet": {"liked": target_id}, "$pull": {"disliked": target_id}}
+            {"$addToSet": {"liked": str(target_id)}, "$pull": {"disliked": str(target_id)}}
         )
         return result.modified_count > 0
 
     @staticmethod
     def dislike(user_id, target_id):
         target = Match._oid(target_id)
-        if not target or user_id == target_id: return False
+        if not target or str(user_id) == str(target_id): return False
         result = mongo.db.users.update_one(
             {"_id": Match._oid(user_id), "role": "user"},
-            {"$addToSet": {"disliked": target_id}, "$pull": {"liked": target_id}}
+            {"$addToSet": {"disliked": str(target_id)}, "$pull": {"liked": str(target_id)}}
         )
         return result.modified_count > 0
 
     @staticmethod
     def is_mutual(user_a_id, user_b_id):
-        a = mongo.db.users.find_one({"_id": Match._oid(user_a_id), "role": "user"})
-        b = mongo.db.users.find_one({"_id": Match._oid(user_b_id), "role": "user"})
-        return bool(a and b and user_b_id in a.get("liked", []) and user_a_id in b.get("liked", []))
+        if str(user_a_id) == str(user_b_id):
+            return False
+        try:
+            from models.restriction import Restriction
+            if Restriction.is_restricted_either(user_a_id, user_b_id):
+                return False
+        except Exception:
+            pass
+        oid_a = Match._oid(user_a_id)
+        oid_b = Match._oid(user_b_id)
+        a = mongo.db.users.find_one({"_id": oid_a, "role": "user"})
+        b = mongo.db.users.find_one({"_id": oid_b, "role": "user"})
+        if not a or not b:
+            return False
+        a_liked = [str(x) for x in a.get("liked", [])]
+        b_liked = [str(x) for x in b.get("liked", [])]
+        return str(user_b_id) in a_liked and str(user_a_id) in b_liked
 
     @staticmethod
     def are_matched(user_a_id, user_b_id):
         return Match.is_mutual(user_a_id, user_b_id)
+
+    @staticmethod
+    def part_ways(user_a_id, user_b_id):
+        """Safely ends a mutual match between two users without permanently restricting either."""
+        oid_a = Match._oid(user_a_id)
+        oid_b = Match._oid(user_b_id)
+        if not oid_a or not oid_b or str(user_a_id) == str(user_b_id):
+            return False
+
+        # Pull string and ObjectId variants from 'liked' arrays symmetrically
+        mongo.db.users.update_one(
+            {"_id": oid_a},
+            {"$pull": {"liked": {"$in": [str(user_b_id), oid_b]}}}
+        )
+        mongo.db.users.update_one(
+            {"_id": oid_b},
+            {"$pull": {"liked": {"$in": [str(user_a_id), oid_a]}}}
+        )
+
+        # Invalidate any pending calls between them
+        try:
+            from datetime import datetime
+            mongo.db.call_invitations.update_many(
+                {
+                    "$or": [
+                        {"caller_id": str(user_a_id), "recipient_id": str(user_b_id)},
+                        {"caller_id": str(user_b_id), "recipient_id": str(user_a_id)},
+                    ],
+                    "status": "pending",
+                },
+                {"$set": {"status": "cancelled", "updated_at": datetime.utcnow()}},
+            )
+        except Exception:
+            pass
+
+        return True
 
     @staticmethod
     def get_discover_candidates(
@@ -76,6 +132,11 @@ class Match:
         excluded = set(user.get("liked", []) + user.get("disliked", []) + [str(user_id)])
         # Include blocked users if the application supports it
         excluded.update(user.get("blocked", []))
+        try:
+            from models.restriction import Restriction
+            excluded.update(Restriction.get_restricted_user_ids(user_id))
+        except Exception:
+            pass
         
         valid_oids = []
         for x in excluded:
@@ -249,5 +310,11 @@ class Match:
     def get_mutual_matches(user_id):
         user = mongo.db.users.find_one({"_id": Match._oid(user_id)})
         if not user: return []
-        liked = [Match._oid(x) for x in user.get("liked", []) if Match._oid(x)]
-        return list(mongo.db.users.find({"_id": {"$in": liked}, "liked": user_id, "role": "user", "is_active": True}))
+        restricted_ids = set()
+        try:
+            from models.restriction import Restriction
+            restricted_ids = Restriction.get_restricted_user_ids(user_id)
+        except Exception:
+            pass
+        liked = [Match._oid(x) for x in user.get("liked", []) if Match._oid(x) and str(x) not in restricted_ids]
+        return list(mongo.db.users.find({"_id": {"$in": liked}, "liked": str(user_id), "role": "user", "is_active": True}))

@@ -5,32 +5,87 @@ let isRingtonePlaying = false;
 let syntheticRingtoneTimer = null;
 let ringtoneAudioContext = null;
 let messageSoundAudio = null;
+let isAudioUnlocked = false;
 const seenMessageIds = new Set();
+const cancelledCallIds = new Set();
 
 function getCurrentUserId() {
-    return document.body.dataset.userId || '';
+    return (document.body && document.body.dataset && document.body.dataset.userId) || '';
+}
+
+function getAudioUrls() {
+    const body = document.body;
+    return {
+        message: (body && body.dataset && body.dataset.audioMessageNotification) || '/static/audio/message_notification.mp3',
+        ringtone: (body && body.dataset && body.dataset.audioIncomingCall) || '/static/audio/incoming_call.mp3'
+    };
 }
 
 function isMessageSoundEnabled() {
     return localStorage.getItem('inclusive_msg_sound_enabled') !== 'false';
 }
 
-function playMessageNotificationSound() {
+function initMessageAudio() {
+    if (messageSoundAudio) return messageSoundAudio;
+    try {
+        const urls = getAudioUrls();
+        messageSoundAudio = new Audio(urls.message);
+        messageSoundAudio.preload = 'auto';
+        messageSoundAudio.onerror = (e) => {
+            console.warn('Could not load message_notification.mp3, using synthetic chime fallback.', e);
+            playSyntheticChime();
+        };
+    } catch (e) {
+        console.warn('Failed to initialize message sound audio:', e);
+    }
+    return messageSoundAudio;
+}
+
+function initRingtoneAudio() {
+    if (incomingRingtone) return incomingRingtone;
+    try {
+        const urls = getAudioUrls();
+        incomingRingtone = new Audio(urls.ringtone);
+        incomingRingtone.loop = true;
+        incomingRingtone.preload = 'auto';
+        incomingRingtone.onerror = (e) => {
+            console.warn('incoming_call.mp3 could not be loaded, using synthetic phone ringtone.', e);
+            startSyntheticRingtone();
+        };
+    } catch (e) {
+        console.warn('Failed to initialize incoming ringtone audio:', e);
+    }
+    return incomingRingtone;
+}
+
+function shouldPlayMessageAudio(msgId) {
+    const storageKey = 'inclusive_last_played_msg';
+    const now = Date.now();
+    try {
+        const last = JSON.parse(localStorage.getItem(storageKey) || '{}');
+        if (last && last.id === msgId && (now - last.time) < 3000) {
+            return false;
+        }
+        localStorage.setItem(storageKey, JSON.stringify({ id: msgId, time: now }));
+    } catch (e) {}
+    return true;
+}
+
+function playMessageNotificationSound(msgId) {
     if (!isMessageSoundEnabled()) return;
+    if (msgId && !shouldPlayMessageAudio(msgId)) return;
 
     try {
-        if (!messageSoundAudio) {
-            messageSoundAudio = new Audio('/static/audio/message_notification.mp3');
-            messageSoundAudio.preload = 'auto';
-            messageSoundAudio.onerror = () => {
-                console.warn('Could not load message_notification.mp3, using synthetic chime fallback.');
-                playSyntheticChime();
-            };
+        const audio = initMessageAudio();
+        if (!audio) {
+            playSyntheticChime();
+            return;
         }
-        messageSoundAudio.currentTime = 0;
-        const p = messageSoundAudio.play();
+        audio.currentTime = 0;
+        const p = audio.play();
         if (p && typeof p.catch === 'function') {
             p.catch(err => {
+                if (err && err.name === 'AbortError') return;
                 console.warn('Message notification sound blocked or failed:', err);
                 playSyntheticChime();
             });
@@ -82,19 +137,18 @@ function playRingtone() {
     isRingtonePlaying = true;
 
     try {
-        if (!incomingRingtone) {
-            incomingRingtone = new Audio('/static/audio/incoming_call.mp3');
-            incomingRingtone.loop = true;
-            incomingRingtone.preload = 'auto';
-            incomingRingtone.onerror = () => {
-                console.warn('incoming_call.mp3 could not be loaded, using synthetic phone ringtone.');
-                startSyntheticRingtone();
-            };
+        const ringtone = initRingtoneAudio();
+        if (!ringtone) {
+            startSyntheticRingtone();
+            return;
         }
-        incomingRingtone.currentTime = 0;
-        const playPromise = incomingRingtone.play();
+        ringtone.currentTime = 0;
+        const playPromise = ringtone.play();
         if (playPromise && typeof playPromise.catch === 'function') {
             playPromise.catch(error => {
+                if (!isRingtonePlaying || (error && error.name === 'AbortError')) {
+                    return;
+                }
                 console.warn('Ringtone autoplay blocked by browser policy:', error);
                 const unlockEl = document.getElementById('incoming-audio-unlock');
                 if (unlockEl) {
@@ -115,9 +169,72 @@ function unlockRingtoneAudio() {
             const unlockEl = document.getElementById('incoming-audio-unlock');
             if (unlockEl) unlockEl.classList.add('d-none');
             stopSyntheticRingtone();
-        }).catch(e => console.warn('Unlock audio failed:', e));
+        }).catch(e => {
+            if (e && e.name !== 'AbortError') {
+                console.warn('Unlock audio failed:', e);
+            }
+        });
     }
 }
+
+function unlockAudio() {
+    if (isAudioUnlocked) {
+        if (isRingtonePlaying && incomingRingtone && incomingRingtone.paused) {
+            unlockRingtoneAudio();
+        }
+        return;
+    }
+
+    try {
+        const msgAudio = initMessageAudio();
+        const ringAudio = initRingtoneAudio();
+
+        if (msgAudio && msgAudio.paused) {
+            const origMuted = msgAudio.muted;
+            msgAudio.muted = true;
+            const p = msgAudio.play();
+            if (p && typeof p.then === 'function') {
+                p.then(() => {
+                    msgAudio.pause();
+                    msgAudio.currentTime = 0;
+                    msgAudio.muted = origMuted;
+                    isAudioUnlocked = true;
+                }).catch(() => {
+                    msgAudio.muted = origMuted;
+                });
+            }
+        }
+
+        if (ringAudio && !isRingtonePlaying && ringAudio.paused) {
+            const origMuted = ringAudio.muted;
+            ringAudio.muted = true;
+            const p = ringAudio.play();
+            if (p && typeof p.then === 'function') {
+                p.then(() => {
+                    ringAudio.pause();
+                    ringAudio.currentTime = 0;
+                    ringAudio.muted = origMuted;
+                    isAudioUnlocked = true;
+                }).catch(() => {
+                    ringAudio.muted = origMuted;
+                });
+            }
+        }
+
+        if (ringtoneAudioContext && ringtoneAudioContext.state === 'suspended') {
+            ringtoneAudioContext.resume().catch(() => {});
+        }
+    } catch (e) {}
+
+    if (isRingtonePlaying && incomingRingtone && incomingRingtone.paused) {
+        unlockRingtoneAudio();
+    }
+}
+window.unlockAudio = unlockAudio;
+
+['click', 'keydown', 'touchstart', 'pointerdown'].forEach(evt => {
+    document.addEventListener(evt, unlockAudio, { passive: true });
+});
 
 function startSyntheticRingtone() {
     if (syntheticRingtoneTimer) return;
@@ -175,23 +292,160 @@ function stopSyntheticRingtone() {
     }
 }
 
-function stopRingtone() {
+function stopRingtone(callId) {
     isRingtonePlaying = false;
     if (incomingRingtone) {
-        incomingRingtone.pause();
-        incomingRingtone.currentTime = 0;
+        try {
+            incomingRingtone.pause();
+            incomingRingtone.currentTime = 0;
+        } catch (e) {}
     }
     stopSyntheticRingtone();
     const unlockEl = document.getElementById('incoming-audio-unlock');
     if (unlockEl) unlockEl.classList.add('d-none');
+
+    if (callId) {
+        try {
+            localStorage.setItem('inclusive_call_stopped', `${callId}_${Date.now()}`);
+        } catch (e) {}
+    }
+}
+window.stopRingtone = stopRingtone;
+
+window.addEventListener('storage', (e) => {
+    if (e.key === 'inclusive_call_stopped') {
+        stopRingtone();
+        const o = document.getElementById('incoming-call-overlay');
+        if (o) o.remove();
+    }
+});
+
+window.addEventListener('beforeunload', () => {
+    stopRingtone();
+});
+
+function setupSocketHandlers(socket) {
+    if (!socket || socket._inclusiveConfigured) return;
+    socket._inclusiveConfigured = true;
+
+    socket.on('connect', () => {
+        socket.emit('join_user_room', {});
+        checkPendingIncomingCall();
+    });
+
+    socket.on('connect_error', (error) => {
+        console.error('Socket.IO connection failed:', error);
+    });
+
+    socket.on('match_notification', (data) => {
+        showRealtimeNotification(data);
+    });
+
+    // Incoming message event
+    socket.on('new_message', (data) => {
+        if (!data || !data.sender_id) return;
+        // Never play or notify sender about their own message
+        if (String(data.sender_id) === String(getCurrentUserId())) return;
+
+        // Deduplication to prevent multiple sounds/toasts on reconnects
+        const msgId = data.message_id || (data.sender_id + '_' + (data.text || '').slice(0, 30));
+        if (seenMessageIds.has(msgId)) return;
+        seenMessageIds.add(msgId);
+        if (seenMessageIds.size > 200) {
+            const first = seenMessageIds.values().next().value;
+            seenMessageIds.delete(first);
+        }
+
+        // Play message sound (dedicated message chime, never incoming-call ringtone)
+        playMessageNotificationSound(msgId);
+
+        // Check if user is actively viewing this conversation
+        const isActivelyViewing = (window.ACTIVE_CHAT_PARTNER_ID && String(window.ACTIVE_CHAT_PARTNER_ID) === String(data.sender_id) && !document.hidden);
+        if (!isActivelyViewing && data.text) {
+            showRealtimeNotification({
+                type: 'message',
+                title: `New message from ${data.sender_name || 'your match'}`,
+                message: data.text,
+                partner_id: data.sender_id
+            });
+        }
+    });
+
+    // Incoming video/audio call invitation
+    socket.on('incoming_call', (data) => {
+        if (!data || !data.caller_id || String(data.caller_id) === String(getCurrentUserId())) return;
+        if (window.location.pathname.startsWith('/video/')) return;
+        showIncomingCall(data, socket);
+    });
+
+    socket.on('call_declined', (data) => {
+        if ((currentOutgoingCallId && String(data.call_id) === String(currentOutgoingCallId)) || 
+            (currentOutgoingPartnerId && String(data.user_id) === String(currentOutgoingPartnerId))) {
+            cleanupOutgoingCallUI();
+        }
+        showRealtimeNotification({
+            type: 'call',
+            title: 'Call declined',
+            message: `${data && data.user_name ? data.user_name : 'The user'} declined your call.`
+        });
+    });
+
+    socket.on('call_cancelled', (data) => {
+        if (data && data.call_id) {
+            cancelledCallIds.add(String(data.call_id));
+        }
+        const notif = document.getElementById(`call-notification-${data ? data.call_id : ''}`);
+        if (notif) {
+            const txt = notif.querySelector('.call-notif-msg');
+            if (txt) txt.textContent = "This call was cancelled.";
+            const actions = document.getElementById(`call-actions-${data.call_id}`);
+            if (actions) actions.remove();
+            const item = notif.querySelector('.dropdown-item');
+            if (item) item.classList.remove('border-primary', 'bg-light');
+            decrementNotificationBadge();
+        }
+        const old = document.getElementById('incoming-call-overlay');
+        if (old) old.remove();
+        stopRingtone(data ? data.call_id : null);
+
+        showRealtimeNotification({
+            type: 'call',
+            title: 'Missed Call',
+            message: 'A video call was cancelled by the caller.'
+        });
+    });
+
+    socket.on('call_accepted', (data) => {
+        if ((currentOutgoingCallId && String(data.call_id) === String(currentOutgoingCallId)) ||
+            (currentOutgoingPartnerId && String(data.user_id) === String(currentOutgoingPartnerId))) {
+            cleanupOutgoingCallUI();
+            window.location.href = `/video/${encodeURIComponent(data.user_id)}?outgoing=1`;
+        }
+    });
+
+    socket.on('call_terminated', (data) => {
+        cleanupOutgoingCallUI();
+        const old = document.getElementById('incoming-call-overlay');
+        if (old) old.remove();
+        stopRingtone(data ? data.call_id : null);
+    });
 }
 
-// User-interaction audio unlock listener
-document.addEventListener('click', () => {
-    if (isRingtonePlaying && incomingRingtone && incomingRingtone.paused) {
-        unlockRingtoneAudio();
-    }
-}, { passive: true });
+function getInclusiveSocket() {
+    if (window.inclusiveSocket) return window.inclusiveSocket;
+    if (typeof io === 'undefined' || !document.body || document.body.dataset.authenticated !== 'true') return null;
+
+    const socket = io({ transports: ['websocket', 'polling'] });
+    window.inclusiveSocket = socket;
+    setupSocketHandlers(socket);
+    return socket;
+}
+window.getInclusiveSocket = getInclusiveSocket;
+
+// Initialize singleton socket as early as possible
+if (typeof io !== 'undefined' && document.body && document.body.dataset.authenticated === 'true') {
+    getInclusiveSocket();
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
@@ -201,102 +455,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.addEventListener('click', function reqNotif() {
             Notification.requestPermission();
             document.removeEventListener('click', reqNotif);
-        });
+        }, { once: true });
     }
 
     if (typeof io !== 'undefined' && document.body.dataset.authenticated === 'true') {
-        const socket = io({ transports: ['websocket', 'polling'] });
-        window.inclusiveSocket = socket;
-
-        socket.on('connect', () => {
-            socket.emit('join_user_room', {});
-            checkPendingIncomingCall();
-        });
-
-        socket.on('connect_error', (error) => {
-            console.error('Socket.IO connection failed:', error);
-        });
-
-        socket.on('match_notification', (data) => {
-            showRealtimeNotification(data);
-        });
-
-        // Incoming message event
-        socket.on('new_message', (data) => {
-            if (!data || !data.sender_id) return;
-            // Never play or notify sender about their own message
-            if (String(data.sender_id) === String(getCurrentUserId())) return;
-
-            // Deduplication to prevent multiple sounds/toasts on reconnects
-            const msgId = data.message_id || (data.sender_id + '_' + (data.text || '').slice(0, 30));
-            if (seenMessageIds.has(msgId)) return;
-            seenMessageIds.add(msgId);
-            if (seenMessageIds.size > 200) {
-                const first = seenMessageIds.values().next().value;
-                seenMessageIds.delete(first);
-            }
-
-            // Play message sound (dedicated message chime, never incoming-call ringtone)
-            playMessageNotificationSound();
-
-            // Check if user is actively viewing this conversation
-            const isActivelyViewing = (window.ACTIVE_CHAT_PARTNER_ID && String(window.ACTIVE_CHAT_PARTNER_ID) === String(data.sender_id) && !document.hidden);
-            if (!isActivelyViewing && data.text) {
-                showRealtimeNotification({
-                    type: 'message',
-                    title: `New message from ${data.sender_name || 'your match'}`,
-                    message: data.text,
-                    partner_id: data.sender_id
-                });
-            }
-        });
-
-        // Incoming video/audio call invitation
-        socket.on('incoming_call', (data) => {
-            if (!data || !data.caller_id || String(data.caller_id) === String(getCurrentUserId())) return;
-            showIncomingCall(data, socket);
-        });
-
-        socket.on('call_declined', (data) => {
-            if ((currentOutgoingCallId && String(data.call_id) === String(currentOutgoingCallId)) || 
-                (currentOutgoingPartnerId && String(data.user_id) === String(currentOutgoingPartnerId))) {
-                cleanupOutgoingCallUI();
-            }
-            showRealtimeNotification({
-                type: 'call',
-                title: 'Call declined',
-                message: `${data && data.user_name ? data.user_name : 'The user'} declined your call.`
-            });
-        });
-
-        socket.on('call_cancelled', (data) => {
-            const notif = document.getElementById(`call-notification-${data.call_id}`);
-            if (notif) {
-                const txt = notif.querySelector('.call-notif-msg');
-                if (txt) txt.textContent = "This call was cancelled.";
-                const actions = document.getElementById(`call-actions-${data.call_id}`);
-                if (actions) actions.remove();
-                notif.querySelector('.dropdown-item').classList.remove('border-primary', 'bg-light');
-                decrementNotificationBadge();
-            }
-            const old = document.getElementById('incoming-call-overlay');
-            if (old) old.remove();
-            stopRingtone();
-
-            showRealtimeNotification({
-                type: 'call',
-                title: 'Missed Call',
-                message: 'A video call was cancelled by the caller.'
-            });
-        });
-
-        socket.on('call_accepted', (data) => {
-            if ((currentOutgoingCallId && String(data.call_id) === String(currentOutgoingCallId)) ||
-                (currentOutgoingPartnerId && String(data.user_id) === String(currentOutgoingPartnerId))) {
-                cleanupOutgoingCallUI();
-                window.location.href = `/video/${encodeURIComponent(data.user_id)}?outgoing=1`;
-            }
-        });
+        getInclusiveSocket();
     }
 
     // Call buttons on Discover or Chat pages
@@ -307,6 +470,10 @@ document.addEventListener('DOMContentLoaded', () => {
             startOutgoingCall(partnerId, partnerName);
         });
     });
+
+    if (window.location.pathname.startsWith('/video/')) {
+        stopRingtone();
+    }
 
     console.log('Inclusive Match AI initialized.');
 });
@@ -336,8 +503,9 @@ function showOutgoingCallUI(partnerId, partnerName) {
     document.body.appendChild(overlay);
 
     document.getElementById('outgoing-cancel-btn').onclick = () => {
-        if (window.inclusiveSocket && currentOutgoingCallId && currentOutgoingPartnerId) {
-            window.inclusiveSocket.emit('cancel_call', {
+        const socket = window.inclusiveSocket || getInclusiveSocket();
+        if (socket && currentOutgoingCallId && currentOutgoingPartnerId) {
+            socket.emit('cancel_call', {
                 call_id: currentOutgoingCallId,
                 partner_id: currentOutgoingPartnerId
             });
@@ -354,7 +522,8 @@ function cleanupOutgoingCallUI() {
 }
 
 function startOutgoingCall(partnerId, partnerName) {
-    if (!partnerId || !window.inclusiveSocket) {
+    const socket = window.inclusiveSocket || getInclusiveSocket();
+    if (!partnerId || !socket) {
         showRealtimeNotification({
             title: 'Call unavailable',
             message: 'Real-time calling is not available. Please reload the page and try again.'
@@ -364,7 +533,7 @@ function startOutgoingCall(partnerId, partnerName) {
 
     showOutgoingCallUI(partnerId, partnerName);
 
-    window.inclusiveSocket.emit(
+    socket.emit(
         'call_user',
         { partner_id: partnerId },
         (ack) => {
@@ -403,6 +572,8 @@ function decrementNotificationBadge() {
 
 function showIncomingCall(data, socket) {
     if (!data || !data.caller_id || String(data.caller_id) === String(getCurrentUserId())) return;
+    if (cancelledCallIds.has(String(data.call_id))) return;
+    if (window.location.pathname.startsWith('/video/')) return;
 
     const callId = escapeHtml(data.call_id);
     const callerName = escapeHtml(data.caller_name || 'Someone');
@@ -481,8 +652,15 @@ function showIncomingCall(data, socket) {
         }
     }
 
+    let timeoutTimer = null;
+
     const cleanup = () => {
-        stopRingtone();
+        if (timeoutTimer) {
+            clearTimeout(timeoutTimer);
+            timeoutTimer = null;
+        }
+        cancelledCallIds.add(String(data.call_id));
+        stopRingtone(data.call_id);
         const o = document.getElementById('incoming-call-overlay');
         if (o) o.remove();
         const actions = document.getElementById(`call-actions-${callId}`);
@@ -492,10 +670,23 @@ function showIncomingCall(data, socket) {
         }
     };
 
+    // Client-side auto-cleanup matching 60-second TTL
+    timeoutTimer = setTimeout(() => {
+        cleanup();
+        showRealtimeNotification({
+            type: 'call',
+            title: 'Missed Call',
+            message: 'Incoming video call expired.'
+        });
+    }, 60000);
+
     const handleDecline = (e) => {
         if (e) e.stopPropagation();
-        socket.emit('decline_call', { caller_id: data.caller_id, call_id: data.call_id });
         cleanup();
+        const activeSocket = socket || window.inclusiveSocket || getInclusiveSocket();
+        if (activeSocket) {
+            activeSocket.emit('decline_call', { caller_id: data.caller_id, call_id: data.call_id });
+        }
         const notifItem = document.getElementById(`call-notification-${callId}`);
         if (notifItem) notifItem.remove();
         showRealtimeNotification({
@@ -506,26 +697,29 @@ function showIncomingCall(data, socket) {
 
     const handleAccept = (e) => {
         if (e) e.stopPropagation();
-        socket.emit('accept_call', { caller_id: data.caller_id, call_id: data.call_id }, (ack) => {
-            if (ack && ack.ok === false) {
-                cleanup();
-                const notifItem = document.getElementById(`call-notification-${callId}`);
-                if (notifItem) {
-                    const txt = notifItem.querySelector('.call-notif-msg');
-                    if (txt) txt.textContent = "This call is no longer available.";
+        cleanup();
+        const activeSocket = socket || window.inclusiveSocket || getInclusiveSocket();
+        if (activeSocket) {
+            activeSocket.emit('accept_call', { caller_id: data.caller_id, call_id: data.call_id }, (ack) => {
+                if (ack && ack.ok === false) {
+                    const notifItem = document.getElementById(`call-notification-${callId}`);
+                    if (notifItem) {
+                        const txt = notifItem.querySelector('.call-notif-msg');
+                        if (txt) txt.textContent = "This call is no longer available.";
+                    }
+                    showRealtimeNotification({
+                        title: 'Call unavailable',
+                        message: ack.message || 'This call is no longer available.'
+                    });
+                    return;
                 }
-                showRealtimeNotification({
-                    title: 'Call unavailable',
-                    message: ack.message || 'This call is no longer available.'
-                });
-                return;
-            }
-            cleanup();
-            const notifItem = document.getElementById(`call-notification-${callId}`);
-            if (notifItem) notifItem.remove();
-            // Accept navigates to video call room, establishing the existing WebRTC connection
+                const notifItem = document.getElementById(`call-notification-${callId}`);
+                if (notifItem) notifItem.remove();
+                window.location.href = `/video/${encodeURIComponent(data.caller_id)}?incoming=1`;
+            });
+        } else {
             window.location.href = `/video/${encodeURIComponent(data.caller_id)}?incoming=1`;
-        });
+        }
     };
 
     // Modal buttons
@@ -567,7 +761,7 @@ function showRealtimeNotification(data) {
 let pendingCallRequest = false;
 
 async function checkPendingIncomingCall() {
-    if (pendingCallRequest || document.hidden) return;
+    if (pendingCallRequest || document.hidden || window.location.pathname.startsWith('/video/')) return;
     pendingCallRequest = true;
     try {
         const response = await fetch('/api/calls/pending', {
@@ -591,7 +785,8 @@ async function checkPendingIncomingCall() {
                     decrementNotificationBadge();
                     const txt = n.querySelector('.call-notif-msg');
                     if (txt) txt.textContent = "This call has ended.";
-                    n.querySelector('.dropdown-item').classList.remove('border-primary', 'bg-light');
+                    const item = n.querySelector('.dropdown-item');
+                    if (item) item.classList.remove('border-primary', 'bg-light');
                 }
             });
             if (existingOverlay) {
@@ -606,9 +801,13 @@ async function checkPendingIncomingCall() {
             return;
         }
 
+        if (cancelledCallIds.has(String(data.call_id))) return;
         if (String(data.caller_id) === String(getCurrentUserId())) return;
-        if (!existingOverlay && window.inclusiveSocket) {
-            showIncomingCall(data, window.inclusiveSocket);
+        if (!existingOverlay) {
+            const socket = window.inclusiveSocket || getInclusiveSocket();
+            if (socket) {
+                showIncomingCall(data, socket);
+            }
         }
     } catch (error) {
         console.warn('Pending call check failed:', error);

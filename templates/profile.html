@@ -453,7 +453,7 @@
         </div>
 
         {% if current_user.id == user.id %}
-        <div class="mt-4 d-flex justify-content-center align-items-center gap-3">
+        <div class="mt-4 d-flex flex-wrap justify-content-center align-items-center gap-3">
             <a href="{{ url_for('profile.edit_profile') }}" class="btn btn-outline-primary px-4 rounded-pill">Edit Profile</a>
             {% if not user.face_verified %}
             <button type="button" class="btn btn-primary px-4 py-2 fw-semibold rounded-pill shadow-sm" data-bs-toggle="modal" data-bs-target="#verifyFaceModal">
@@ -465,12 +465,108 @@
             </span>
             {% endif %}
         </div>
+
+        <!-- Legal, Privacy & Data Rights Management (DPDP Act, 2023) -->
+        <div class="card border border-light-subtle rounded-4 shadow-sm mt-5 p-4 bg-light">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <h5 class="fw-bold text-dark mb-0">
+                    <i class="bi bi-shield-lock-fill text-primary me-2"></i>Privacy, Legal &amp; Data Rights
+                </h5>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill small">
+                    DPDP Act Compliance
+                </span>
+            </div>
+            <p class="small text-muted mb-3">
+                Manage your personal data, review statutory policies, exercise your statutory data subject rights, or request permanent account erasure.
+            </p>
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 bg-white p-3 rounded-3 shadow-sm">
+                        <h6 class="fw-bold text-dark mb-1"><i class="bi bi-file-earmark-arrow-down text-indigo me-1"></i>Data Portability</h6>
+                        <p class="small text-muted mb-3">Download a machine-readable JSON copy of your personal data under DPDP Act Section 11.</p>
+                        <a href="{{ url_for('legal.export_my_data') }}" class="btn btn-sm btn-outline-primary rounded-pill mt-auto">
+                            <i class="bi bi-download me-1"></i>Export My Data
+                        </a>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 bg-white p-3 rounded-3 shadow-sm">
+                        <h6 class="fw-bold text-dark mb-1"><i class="bi bi-envelope-paper text-success me-1"></i>Grievance Redressal</h6>
+                        <p class="small text-muted mb-3">Submit a data correction, privacy inquiry, or safety complaint to our Grievance Officer.</p>
+                        <a href="{{ url_for('legal.contact_grievance') }}" class="btn btn-sm btn-outline-success rounded-pill mt-auto">
+                            <i class="bi bi-chat-square-dots me-1"></i>Grievance Portal
+                        </a>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 bg-white p-3 rounded-3 shadow-sm">
+                        <h6 class="fw-bold text-danger mb-1"><i class="bi bi-trash3 text-danger me-1"></i>Account Erasure</h6>
+                        <p class="small text-muted mb-3">Permanently purge your profile, Cloudinary photo, messages, and match connections.</p>
+                        <button type="button" class="btn btn-sm btn-outline-danger rounded-pill mt-auto" data-bs-toggle="modal" data-bs-target="#deleteAccountModal">
+                            <i class="bi bi-trash3 me-1"></i>Delete My Account
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-3 pt-3 border-top d-flex flex-wrap gap-3 small text-muted">
+                <a href="{{ url_for('legal.privacy_policy') }}" class="text-decoration-none text-secondary"><i class="bi bi-shield-check me-1"></i>Privacy Policy</a>
+                <a href="{{ url_for('legal.terms_conditions') }}" class="text-decoration-none text-secondary"><i class="bi bi-file-text me-1"></i>Terms &amp; Conditions</a>
+                <a href="{{ url_for('legal.community_guidelines') }}" class="text-decoration-none text-secondary"><i class="bi bi-people me-1"></i>Guidelines</a>
+                <a href="{{ url_for('legal.data_rights') }}" class="text-decoration-none text-secondary"><i class="bi bi-info-circle me-1"></i>Data Rights Notice</a>
+            </div>
+        </div>
         {% endif %}
         
         {% endif %}
 
     </div>
 </div>
+
+<!-- Modal for Permanent Account Deletion -->
+{% if current_user.id == user.id %}
+<div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-labelledby="deleteAccountModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold text-danger" id="deleteAccountModalLabel">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>Delete Your Account?
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('profile.delete_account') }}" method="POST">
+                <div class="modal-body py-3">
+                    <p class="text-secondary small mb-3">
+                        This action is <strong>permanent and irreversible</strong>. In accordance with your statutory privacy rights, the following actions will occur immediately:
+                    </p>
+                    <ul class="text-secondary small ps-3 mb-3">
+                        <li>Your account credentials and profile data will be permanently purged from our secure database servers.</li>
+                        <li>Your uploaded profile photo will be permanently deleted from Cloudinary.</li>
+                        <li>All private chat messages will be deleted from active databases.</li>
+                        <li>Active match connections and call invitations will be terminated.</li>
+                    </ul>
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label small fw-semibold text-dark">
+                            Confirm Password to Authorize Deletion <span class="text-danger">*</span>
+                        </label>
+                        <input type="password" class="form-control rounded-3" id="confirm_password" name="password" 
+                               placeholder="Enter your current password" required autofocus>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger rounded-pill px-4 fw-semibold">
+                        <i class="bi bi-trash3-fill me-1"></i>Permanently Delete Account
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {% if current_user.id == user.id and not user.face_verified %}
 <!-- Modal for Live Face Verification -->

@@ -1,0 +1,101 @@
+{% extends "legal/legal_base.html" %}
+
+{% block title %}Cookie Policy — InclusiveMatch AI{% endblock %}
+
+{% block legal_content %}
+<div class="legal-header">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <span class="badge bg-warning-subtle text-warning border border-warning-subtle legal-badge">Transparency Notice</span>
+        <span class="text-muted small"><i class="bi bi-clock-history me-1"></i>Version {{ versions.cookie_policy }} | Effective: {{ versions.last_updated }}</span>
+    </div>
+    <h1 class="fw-bold text-dark mb-2">Cookie & Local Storage Policy</h1>
+    <p class="text-muted lead fs-6 mb-0">InclusiveMatch AI believes in minimal, privacy-centric technology. This policy details how our platform utilizes browser cookies, local storage, and session tokens.</p>
+</div>
+
+<div class="summary-box">
+    <h6 class="fw-bold text-indigo mb-2"><i class="bi bi-check-circle-fill me-2"></i>Zero Third-Party Advertising Trackers</h6>
+    <p class="small text-secondary mb-0">We do <strong>NOT</strong> deploy third-party advertising cookies, cross-site trackers, or data-broker pixels (such as Meta Pixel or Google Ads). All cookies and client-side storage mechanisms used by InclusiveMatch AI are strictly technical and necessary for secure authentication and accessibility.</p>
+</div>
+
+<div class="toc-card">
+    <div class="toc-title"><i class="bi bi-list-nested me-2"></i>Table of Contents</div>
+    <ul class="toc-list">
+        <li><a href="#cookie-1">1. What Are Cookies & Local Storage?</a></li>
+        <li><a href="#cookie-2">2. Strictly Necessary Cookies We Use</a></li>
+        <li><a href="#cookie-3">3. Browser Local Storage & Accessibility Preferences</a></li>
+        <li><a href="#cookie-4">4. Socket.IO & Real-Time Signaling Tokens</a></li>
+        <li><a href="#cookie-5">5. Managing & Disabling Cookies</a></li>
+    </ul>
+</div>
+
+<div class="legal-body">
+    <section id="cookie-1">
+        <h2>1. What Are Cookies & Local Storage?</h2>
+        <p>A cookie is a small text file stored on your computer or mobile device when you visit a website. Local storage (such as HTML5 <code>localStorage</code>) enables web applications to store preferences locally in your browser across sessions without sending data over network headers on every HTTP request.</p>
+    </section>
+
+    <section id="cookie-2">
+        <h2>2. Strictly Necessary Cookies We Use</h2>
+        <p>Because our cookies are strictly necessary for core platform security and authentication, they do not require opt-in tracking consent under applicable privacy standards. The verified cookies used by our Flask application are:</p>
+
+        <div class="table-responsive my-3">
+            <table class="table table-bordered align-middle small">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 20%;">Cookie Name</th>
+                        <th style="width: 25%;">Purpose & Function</th>
+                        <th style="width: 20%;">Security Flags</th>
+                        <th style="width: 15%;">Lifespan</th>
+                        <th style="width: 20%;">Type</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>session</code></td>
+                        <td>Maintains your authenticated user session, CSRF security tokens, and flash notification messages.</td>
+                        <td><code>HttpOnly</code>, <code>SameSite=Lax</code>, <code>Secure</code> (in Production)</td>
+                        <td>8 Hours (or browser close)</td>
+                        <td><span class="badge bg-primary">Essential / First-Party</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>remember_token</code></td>
+                        <td>Optional persistent token generated when you explicitly select "Remember Me" during login.</td>
+                        <td><code>HttpOnly</code>, <code>SameSite=Lax</code>, <code>Secure</code></td>
+                        <td>Up to 30 Days</td>
+                        <td><span class="badge bg-primary">Essential / First-Party</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="small text-muted"><i class="bi bi-shield-lock me-1"></i><strong>Security Guarantee:</strong> The <code>HttpOnly</code> flag guarantees that scripts cannot access your session cookie via JavaScript, mitigating Cross-Site Scripting (XSS) risks. The <code>SameSite=Lax</code> flag protects against Cross-Site Request Forgery (CSRF).</p>
+    </section>
+
+    <section id="cookie-3">
+        <h2>3. Browser Local Storage & Accessibility Preferences</h2>
+        <p>To deliver accessible, personalized communication without storing unnecessary data on our central servers, your browser's local storage is used for client-side assistive toggles:</p>
+        <ul>
+            <li><strong>Audio & Haptic Notification Toggles:</strong> Remembers your preferences for incoming call audio ringtones and visual message alert popups.</li>
+            <li><strong>Text-to-Speech (TTS) Active State:</strong> Remembers whether you have enabled speech synthesis for recognized Indian Sign Language gestures during WebRTC video calls.</li>
+            <li><strong>Camera & Microphone Selections:</strong> Remembers the device IDs of your preferred webcam and microphone between calls.</li>
+        </ul>
+        <p>These values reside exclusively on your local device and are never transmitted to or monetized by third parties.</p>
+    </section>
+
+    <section id="cookie-4">
+        <h2>4. Socket.IO & Real-Time Signaling Tokens</h2>
+        <p>For instant messaging and WebRTC video call signaling, our application utilizes Flask-SocketIO. During connection establishment, ephemeral transport session identifiers (e.g., <code>io</code> or WebSocket handshake query parameters) are exchanged to maintain a persistent bi-directional channel between your browser and our server. These tokens expire automatically upon disconnection.</p>
+    </section>
+
+    <section id="cookie-5">
+        <h2>5. Managing & Disabling Cookies</h2>
+        <p>You can control or delete cookies through your browser settings. However, because our cookies are strictly essential for account authentication, disabling cookies will prevent you from logging into your account or accessing protected areas of InclusiveMatch AI.</p>
+        <p>To manage cookies in your browser:</p>
+        <ul>
+            <li><strong>Google Chrome:</strong> Settings &rarr; Privacy and security &rarr; Third-party cookies &rarr; See all site data and permissions.</li>
+            <li><strong>Mozilla Firefox:</strong> Settings &rarr; Privacy & Security &rarr; Cookies and Site Data.</li>
+            <li><strong>Apple Safari:</strong> Preferences &rarr; Privacy &rarr; Manage Website Data.</li>
+            <li><strong>Microsoft Edge:</strong> Settings &rarr; Cookies and site permissions &rarr; Manage and delete cookies and site data.</li>
+        </ul>
+    </section>
+</div>
+{% endblock %}

@@ -23,6 +23,8 @@ def run_all_checks():
     print("=" * 70)
 
     app = create_app()
+    app.config["TESTING"] = True
+    app.config["WTF_CSRF_ENABLED"] = False
     client = app.test_client()
 
     results = {}

@@ -3,6 +3,7 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from extensions import mongo
 from datetime import datetime
+from pymongo import ReturnDocument
 
 class UserModel(UserMixin):
     def __init__(self, user_doc):
@@ -97,6 +98,7 @@ class UserModel(UserMixin):
         self.face_verified_at = user_doc.get("face_verified_at")
         self.verified_profile_photo = user_doc.get("verified_profile_photo")
         self.verified_profile_photo_id = user_doc.get("verified_profile_photo_id")
+        self.policy_consent = user_doc.get("policy_consent", {})
 
     @property
     def avatar_url(self):
@@ -108,22 +110,59 @@ class UserModel(UserMixin):
             return photo
         return f"/static/uploads/{photo}"
 
-    @property
-    def is_active(self):
-        if self.block_expiry:
-            if datetime.utcnow() > self.block_expiry:
-                # Auto-unblock
-                mongo.db.users.update_one({"_id": ObjectId(self.id)}, {"$set": {"is_active": True}, "$unset": {"block_expiry": ""}})
+    def check_and_lift_restriction(self) -> bool:
+        """Atomically evaluate and lift temporary 7-day restriction if expired.
+
+        - If block_expiry is set and current time > block_expiry:
+          Atomically sets is_active=True, warning_count=0, and unsets block_expiry in MongoDB.
+          Updates instance fields: self._is_active=True, self.block_expiry=None, self.warning_count=0.
+          Returns True.
+        - If block_expiry is set and current time <= block_expiry:
+          Preserves is_active=False. Returns False.
+        - If block_expiry is not set:
+          Returns self._is_active.
+        Safe against concurrent evaluation across multiple workers.
+        """
+        if not self.block_expiry:
+            return bool(self._is_active)
+
+        now = datetime.utcnow()
+        if now > self.block_expiry:
+            # Atomic conditional update: only update if block_expiry is <= now
+            updated = mongo.db.users.find_one_and_update(
+                {
+                    "_id": ObjectId(self.id),
+                    "block_expiry": {"$lte": now}
+                },
+                {
+                    "$set": {"is_active": True, "warning_count": 0},
+                    "$unset": {"block_expiry": ""}
+                },
+                return_document=ReturnDocument.AFTER
+            )
+            if updated:
                 self._is_active = True
                 self.block_expiry = None
+                self.warning_count = 0
             else:
-                return False
-        return self._is_active
+                # Concurrent update may have already completed; synchronize instance state
+                doc = mongo.db.users.find_one({"_id": ObjectId(self.id)})
+                if doc:
+                    self._is_active = doc.get("is_active", True)
+                    self.block_expiry = doc.get("block_expiry")
+                    self.warning_count = doc.get("warning_count", 0)
+            return bool(self._is_active)
+        else:
+            return False
+
+    @property
+    def is_active(self):
+        return self.check_and_lift_restriction()
 
     def is_admin(self): return self.role == "admin"
 
     @staticmethod
-    def create_user(email, password, name, comm_prefs=None, role="user"):
+    def create_user(email, password, name, comm_prefs=None, role="user", policy_consent=None):
         if comm_prefs is None:
             comm_prefs = ["text"]
         
@@ -170,7 +209,8 @@ class UserModel(UserMixin):
             "is_verified": False,
             "face_verified_at": None,
             "verified_profile_photo": None,
-            "verified_profile_photo_id": None
+            "verified_profile_photo_id": None,
+            "policy_consent": policy_consent or {}
         }
         result = mongo.db.users.insert_one(doc)
         return str(result.inserted_id)
@@ -198,22 +238,56 @@ class UserModel(UserMixin):
 
     @staticmethod
     def delete_user(user_id):
+        """Permanently delete user profile, purge Cloudinary photo, and safely clean up related data.
+        
+        Preserves non-identifying moderation and abuse records in compliance with Indian IT rules.
+        """
         try:
             oid = ObjectId(user_id)
         except Exception:
-            return
+            return False
+
         user_doc = mongo.db.users.find_one({"_id": oid})
-        if user_doc:
-            photo_ref = user_doc.get("profile_photo_public_id") or user_doc.get("profile_photo")
-            if photo_ref:
-                try:
-                    from utils.cloudinary_storage import delete_profile_photo
-                    delete_profile_photo(photo_ref)
-                except Exception:
-                    pass
+        if not user_doc:
+            return False
+
+        # 1. Purge profile photo from Cloudinary
+        photo_ref = user_doc.get("profile_photo_public_id") or user_doc.get("profile_photo")
+        if photo_ref and photo_ref != "default.png":
+            try:
+                from utils.cloudinary_storage import delete_profile_photo
+                delete_profile_photo(photo_ref)
+            except Exception:
+                pass
+
+        # 2. Delete user account document
         mongo.db.users.delete_one({"_id": oid})
-        mongo.db.messages.delete_many({"$or": [{"sender_id": user_id}, {"receiver_id": user_id}]})
-        mongo.db.users.update_many({}, {"$pull": {"liked": user_id, "disliked": user_id}})
+
+        # 3. Purge private chat messages
+        mongo.db.messages.delete_many({"$or": [{"sender_id": str(user_id)}, {"receiver_id": str(user_id)}]})
+
+        # 4. Unlink from other users' matching arrays (liked & disliked)
+        mongo.db.users.update_many({}, {"$pull": {"liked": str(user_id), "disliked": str(user_id)}})
+
+        # 5. Delete notifications addressed to this user
+        mongo.db.notifications.delete_many({"user_id": str(user_id)})
+
+        # 6. Terminate active mutual matches
+        mongo.db.matches.update_many(
+            {"$or": [{"user_1": str(user_id)}, {"user_2": str(user_id)}], "status": "active"},
+            {"$set": {"status": "cancelled", "updated_at": datetime.utcnow()}}
+        )
+
+        # 7. Cancel any pending call invitations
+        mongo.db.call_invitations.update_many(
+            {"$or": [{"caller_id": str(user_id)}, {"recipient_id": str(user_id)}], "status": "pending"},
+            {"$set": {"status": "cancelled", "updated_at": datetime.utcnow()}}
+        )
+
+        # 8. Clean up directional restrictions initiated by this user
+        mongo.db.user_restrictions.delete_many({"restrictor_id": str(user_id)})
+
+        return True
 
     @staticmethod
     def toggle_role(user_id):
@@ -274,4 +348,20 @@ class UserModel(UserMixin):
             }
         )
         return result.modified_count > 0
+
+    @staticmethod
+    def update_password(user_id, new_password):
+        """Hash and update the user's password using the project's standard password hasher."""
+        try:
+            oid = ObjectId(user_id)
+        except Exception:
+            return False
+        hashed = generate_password_hash(new_password)
+        now = datetime.utcnow()
+        result = mongo.db.users.update_one(
+            {"_id": oid},
+            {"$set": {"password": hashed, "password_changed_at": now}}
+        )
+        return result.modified_count > 0
+
 

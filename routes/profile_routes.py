@@ -284,3 +284,34 @@ def view_profile(user_id):
         flash('User profile is not available.', 'danger')
         return redirect(url_for('main.dashboard'))
     return render_template('profile.html', user=user, interests_cats=INTEREST_CATEGORIES, edit_mode=False)
+
+
+@profile_bp.route('/profile/delete-account', methods=['POST'])
+@login_required
+def delete_account():
+    """Authenticated self-service account deletion under DPDP Act Section 12."""
+    from flask_login import logout_user
+
+    password = request.form.get('password', '')
+    if not password:
+        flash('Password confirmation is required to delete your account.', 'danger')
+        return redirect(url_for('profile.my_profile'))
+
+    # Re-authenticate user credentials before destructive action
+    if not UserModel.verify_password(current_user.password, password):
+        flash('Incorrect password. Account deletion cancelled.', 'danger')
+        return redirect(url_for('profile.my_profile'))
+
+    user_id = current_user.id
+    success = UserModel.delete_user(user_id)
+    if success:
+        logout_user()
+        flash(
+            'Your account and associated personal data have been permanently deleted in accordance with your privacy rights. Thank you for using InclusiveMatch AI.',
+            'info'
+        )
+        return redirect(url_for('main.index'))
+    else:
+        flash('Failed to delete account. Please try again or contact our Grievance Officer.', 'danger')
+        return redirect(url_for('profile.my_profile'))
+

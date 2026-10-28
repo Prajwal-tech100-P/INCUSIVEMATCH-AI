@@ -26,10 +26,12 @@
                     <a class="nav-link" href="{{ url_for('admin.users') }}"><i class="bi bi-people me-2"></i>Users</a>
                     <a class="nav-link" href="{{ url_for('admin.matches') }}"><i class="bi bi-heart me-2"></i>Matches <span class="badge text-bg-light float-end">{{ stats.match_count }}</span></a>
                     <a class="nav-link" href="{{ url_for('admin.reports') }}"><i class="bi bi-exclamation-triangle me-2"></i>Reports <span class="badge text-bg-light float-end">{{ stats.report_count }}</span></a>
+                    <a class="nav-link" href="{{ url_for('admin.grievances') }}"><i class="bi bi-envelope-paper me-2"></i>Grievances <span class="badge text-bg-light float-end">{{ stats.grievance_count }}</span></a>
                     <a class="nav-link" href="{{ url_for('admin.messages') }}"><i class="bi bi-chat-dots me-2"></i>Messages / Monitoring</a>
                     <a class="nav-link" href="{{ url_for('admin.statistics') }}"><i class="bi bi-bar-chart-line me-2"></i>Statistics</a>
                     <a class="nav-link" href="{{ url_for('admin.settings') }}"><i class="bi bi-gear me-2"></i>Settings</a>
                     <hr>
+                    <a class="nav-link text-primary" href="{{ url_for('main.dashboard') }}"><i class="bi bi-arrow-left-circle me-2"></i>Exit Admin</a>
                     <a class="nav-link text-danger" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right me-2"></i>Logout</a>
                 </nav>
             </div>
@@ -82,8 +84,11 @@
                 <div class="col-md-5">
                     <div class="card admin-card p-4 h-100">
                         <h5 class="fw-bold">Safety & Monitoring</h5>
-                        <p class="text-muted small">Review reports and monitor recent platform messages from one place.</p>
-                        <a href="{{ url_for('admin.reports') }}" class="btn btn-outline-danger rounded-pill mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Open Reports</a>
+                        <p class="text-muted small">Review safety reports, resolve user grievances, and monitor messages.</p>
+                        <div class="d-flex flex-wrap gap-2 mb-2">
+                            <a href="{{ url_for('admin.reports') }}" class="btn btn-outline-danger rounded-pill"><i class="bi bi-exclamation-triangle me-1"></i>Open Reports</a>
+                            <a href="{{ url_for('admin.grievances') }}" class="btn btn-outline-warning rounded-pill"><i class="bi bi-envelope-paper me-1"></i>Grievances ({{ stats.pending_grievances }})</a>
+                        </div>
                         <a href="{{ url_for('admin.messages') }}" class="btn btn-outline-primary rounded-pill"><i class="bi bi-chat-dots me-1"></i>Message Monitoring</a>
                     </div>
                 </div>

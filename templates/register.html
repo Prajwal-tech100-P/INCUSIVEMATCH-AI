@@ -50,7 +50,17 @@
                             </select>
                         </div>
 
-                        <div class="d-grid gap-2 mt-5">
+                        <div class="form-check mb-4 p-3 bg-light rounded-3 border">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" id="terms_consent" name="terms_consent" required>
+                            <label class="form-check-label small text-secondary" for="terms_consent">
+                                I confirm that I am at least 18 years of age, and I have read and agree to the 
+                                <a href="{{ url_for('legal.terms_conditions') }}" target="_blank" rel="noopener" class="fw-semibold text-primary text-decoration-none">Terms &amp; Conditions</a> 
+                                and acknowledge the 
+                                <a href="{{ url_for('legal.privacy_policy') }}" target="_blank" rel="noopener" class="fw-semibold text-primary text-decoration-none">Privacy Policy</a>.
+                            </label>
+                        </div>
+
+                        <div class="d-grid gap-2 mt-4">
                             <button type="submit"
                                 class="btn btn-primary btn-lg fw-bold rounded-pill hover-lift shadow-sm">Sign
                                 Up</button>

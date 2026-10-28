@@ -25,7 +25,11 @@ from __future__ import annotations
 import math
 import threading
 from collections import deque
+from enum import Enum
+import math
 from pathlib import Path
+import threading
+import time
 from typing import Dict, List, Optional, Tuple, Any
 
 import cv2
@@ -183,6 +187,186 @@ def _make_gru(**kw):
 
 
 # ---------------------------------------------------------------------------
+# Automatic Signing Activity Detection & Debounced State Machine
+# ---------------------------------------------------------------------------
+
+class SigningState(str, Enum):
+    IDLE = "IDLE"
+    POSSIBLE_SIGNING = "POSSIBLE_SIGNING"
+    SIGNING = "SIGNING"
+    POSSIBLE_TURN_END = "POSSIBLE_TURN_END"
+
+
+class SigningActivityDetector:
+    """
+    Automatic signing activity detector and turn-completion estimator.
+
+    Uses a debounced 4-state machine:
+      IDLE -> POSSIBLE_SIGNING -> SIGNING -> POSSIBLE_TURN_END -> IDLE
+
+    Distinguishes intentional signing from non-signing movements:
+      - Kinematic bounds: articulatory velocity must fall between idle threshold
+        and erratic movement threshold (ignores resting hands and sudden camera jerks).
+      - Debounced transitions: requires multiple consecutive evidence frames to enter SIGNING.
+      - Pause tolerance: brief inter-sign pauses do NOT end the turn;
+        inactivity timeout (default 1.6s) must expire before completing turn.
+      - Duplicate filtering: prevents repeated emissions of the same sign
+        within duplicate_suppress_window, while allowing legitimate repetitions after pause.
+    """
+
+    def __init__(
+        self,
+        min_active_frames: int = 3,
+        inactivity_timeout: float = 1.6,
+        velocity_idle_threshold: float = 0.0035,
+        velocity_erratic_threshold: float = 0.22,
+        duplicate_suppress_window: float = 1.0,
+    ):
+        self.min_active_frames = min_active_frames
+        self.inactivity_timeout = inactivity_timeout
+        self.velocity_idle_threshold = velocity_idle_threshold
+        self.velocity_erratic_threshold = velocity_erratic_threshold
+        self.duplicate_suppress_window = duplicate_suppress_window
+
+        self.state: SigningState = SigningState.IDLE
+        self.active_frame_count: int = 0
+        self.pause_start_time: Optional[float] = None
+        self.last_active_time: float = time.time()
+        self.last_landmarks: Optional[np.ndarray] = None
+
+        # Turn & phrase tracking
+        self.accumulated_phrase: List[str] = []
+        self.last_emitted_sign: str = ""
+        self.last_emitted_time: float = 0.0
+
+    def update(
+        self,
+        landmarks: Optional[np.ndarray],
+        prediction: str = "",
+        confidence: float = 0.0,
+        now: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        if now is None:
+            now = time.time()
+
+        turn_completed = False
+        finalized_phrase = ""
+        accepted_sign = ""
+
+        # 1. Kinematic evaluation
+        has_hands = landmarks is not None and bool(np.any(landmarks != 0.0))
+        velocity = 0.0
+
+        if has_hands and self.last_landmarks is not None and bool(np.any(self.last_landmarks != 0.0)):
+            active_mask = (landmarks[:, 0] != 0.0) & (self.last_landmarks[:, 0] != 0.0)
+            if np.any(active_mask):
+                diffs = landmarks[active_mask] - self.last_landmarks[active_mask]
+                dists = np.sqrt(np.sum(diffs ** 2, axis=-1))
+                velocity = float(np.mean(dists))
+
+        self.last_landmarks = landmarks.copy() if landmarks is not None else None
+
+        # Kinematic articulatory motion check
+        is_motion_active = (
+            has_hands and
+            (self.velocity_idle_threshold <= velocity <= self.velocity_erratic_threshold)
+        )
+
+        # Model confidence support
+        has_confident_sign = bool(prediction and confidence >= 0.15 and prediction != "UNCERTAIN")
+
+        # Frame evidence: articulatory motion or recognized sign
+        frame_evidence = is_motion_active or (has_hands and has_confident_sign)
+
+        # 2. Debounced state machine
+        if self.state == SigningState.IDLE:
+            if frame_evidence:
+                self.active_frame_count += 1
+                if self.active_frame_count >= 2 or has_confident_sign:
+                    self.state = SigningState.POSSIBLE_SIGNING
+                    self.last_active_time = now
+            else:
+                self.active_frame_count = max(0, self.active_frame_count - 1)
+
+        elif self.state == SigningState.POSSIBLE_SIGNING:
+            if frame_evidence:
+                self.active_frame_count += 1
+                self.last_active_time = now
+                if self.active_frame_count >= self.min_active_frames or has_confident_sign:
+                    self.state = SigningState.SIGNING
+                    self.pause_start_time = None
+            else:
+                self.active_frame_count = max(0, self.active_frame_count - 1)
+                if self.active_frame_count == 0:
+                    self.state = SigningState.IDLE
+
+        elif self.state == SigningState.SIGNING:
+            if frame_evidence:
+                self.last_active_time = now
+                self.pause_start_time = None
+            else:
+                # Inter-sign pause or hand temporarily lowered
+                self.state = SigningState.POSSIBLE_TURN_END
+                self.pause_start_time = now
+
+        elif self.state == SigningState.POSSIBLE_TURN_END:
+            if frame_evidence:
+                # Resumed signing within pause window: turn continues seamlessly!
+                self.state = SigningState.SIGNING
+                self.last_active_time = now
+                self.pause_start_time = None
+            else:
+                pause_duration = now - (self.pause_start_time or now)
+                if pause_duration >= self.inactivity_timeout:
+                    # Inactivity timeout expired: turn is concluded
+                    turn_completed = True
+                    finalized_phrase = " ".join(self.accumulated_phrase).strip()
+                    self.accumulated_phrase = []
+                    self.last_emitted_sign = ""
+                    self.state = SigningState.IDLE
+                    self.active_frame_count = 0
+                    self.pause_start_time = None
+
+        # 3. Sign stabilization & phrase accumulation
+        if self.state in (SigningState.SIGNING, SigningState.POSSIBLE_TURN_END) and has_confident_sign:
+            is_duplicate = (
+                prediction == self.last_emitted_sign and
+                (now - self.last_emitted_time) < self.duplicate_suppress_window
+            )
+            if not is_duplicate:
+                accepted_sign = prediction
+                self.last_emitted_sign = prediction
+                self.last_emitted_time = now
+                self.accumulated_phrase.append(prediction)
+
+        is_signing_active = self.state in (
+            SigningState.POSSIBLE_SIGNING,
+            SigningState.SIGNING,
+            SigningState.POSSIBLE_TURN_END,
+        )
+
+        return {
+            "state": self.state.value,
+            "is_signing": is_signing_active,
+            "turn_completed": turn_completed,
+            "accepted_sign": accepted_sign,
+            "phrase": " ".join(self.accumulated_phrase).strip(),
+            "finalized_phrase": finalized_phrase,
+            "velocity": round(velocity, 4),
+        }
+
+    def reset(self):
+        self.state = SigningState.IDLE
+        self.active_frame_count = 0
+        self.pause_start_time = None
+        self.last_active_time = time.time()
+        self.last_landmarks = None
+        self.accumulated_phrase = []
+        self.last_emitted_sign = ""
+        self.last_emitted_time = 0.0
+
+
+# ---------------------------------------------------------------------------
 # Main Recognizer Class
 # ---------------------------------------------------------------------------
 
@@ -223,6 +407,7 @@ class SignLanguageRecognizer:
         self.sequences: Dict[str, deque] = {}
         self.empty_streak: Dict[str, int] = {}
         self.recent_predictions: Dict[str, deque] = {}
+        self.activity_detectors: Dict[str, SigningActivityDetector] = {}
 
         # Resolve model path
         self.model_path = None
@@ -535,43 +720,95 @@ class SignLanguageRecognizer:
     # Public API
     # ------------------------------------------------------------------
 
+    def _get_activity_detector(self, user_id: str) -> SigningActivityDetector:
+        with self.lock:
+            if user_id not in self.activity_detectors:
+                self.activity_detectors[user_id] = SigningActivityDetector()
+            return self.activity_detectors[user_id]
+
     def reset_user(self, user_id: str):
         key = str(user_id)
         with self.lock:
             self.sequences.pop(key, None)
             self.empty_streak.pop(key, None)
             self.recent_predictions.pop(key, None)
+            self.activity_detectors.pop(key, None)
 
     def recognize_frame(self, frame_data: bytes, user_id: str = "anonymous") -> dict:
         """
         Decode one image frame, extract 42 hand landmarks, run ISL GCN-T inference.
+        Also drives automatic signing-activity detection and turn estimation.
 
         Returns
         -------
-        dict with keys: text, confidence, message, ready, arch
+        dict with keys:
+          - text: stabilized recognized sign (accepted token)
+          - confidence: confidence percentage (float)
+          - message: human-readable status
+          - ready: boolean
+          - arch: model architecture string
+          - signing_state: IDLE | POSSIBLE_SIGNING | SIGNING | POSSIBLE_TURN_END
+          - is_signing: boolean
+          - turn_completed: boolean
+          - phrase: current accumulated phrase during this turn
+          - finalized_phrase: final phrase string when turn completes
         """
         arr = np.frombuffer(frame_data, np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR) if arr.size else None
         if frame is None:
             return _resp("", 0.0, "Invalid image frame.", ready=False)
 
+        key = str(user_id)
+        detector = self._get_activity_detector(key)
+
         if self.model is None and self.svm is None:
-            return _resp("", 0.0, self.error or "Train or download a sign model first.", ready=False)
+            activity_info = detector.update(None, prediction="", confidence=0.0)
+            return _resp(
+                "", 0.0, self.error or "Train or download a sign model first.",
+                ready=False,
+                signing_state=activity_info["state"],
+                is_signing=activity_info["is_signing"],
+                turn_completed=activity_info["turn_completed"],
+                phrase=activity_info["phrase"],
+                finalized_phrase=activity_info["finalized_phrase"],
+            )
 
         if self.landmarker is None and self.legacy_hands is None:
-            return _resp("", 0.0, self.error or "MediaPipe landmarker unavailable.", ready=False)
+            activity_info = detector.update(None, prediction="", confidence=0.0)
+            return _resp(
+                "", 0.0, self.error or "MediaPipe landmarker unavailable.",
+                ready=False,
+                signing_state=activity_info["state"],
+                is_signing=activity_info["is_signing"],
+                turn_completed=activity_info["turn_completed"],
+                phrase=activity_info["phrase"],
+                finalized_phrase=activity_info["finalized_phrase"],
+            )
 
         joints = self._extract_landmarks(frame)
-        key = str(user_id)
 
         # Track consecutive empty frames before resetting buffer
         if joints is None:
+            activity_info = detector.update(None, prediction="", confidence=0.0)
             with self.lock:
                 streak = self.empty_streak.get(key, 0) + 1
                 self.empty_streak[key] = streak
-                if streak >= 3:
+                if streak >= 6:  # Allow brief gaps without flushing queue
                     self.sequences.pop(key, None)
-            return _resp("", 0.0, "No hand detected. Position your hands in front of camera.", ready=False)
+
+            msg = "No hand detected. Position your hands in front of camera."
+            if activity_info["turn_completed"] and activity_info["finalized_phrase"]:
+                msg = f"Signing turn completed: {activity_info['finalized_phrase']}"
+
+            return _resp(
+                "", 0.0, msg,
+                ready=False,
+                signing_state=activity_info["state"],
+                is_signing=activity_info["is_signing"],
+                turn_completed=activity_info["turn_completed"],
+                phrase=activity_info["phrase"],
+                finalized_phrase=activity_info["finalized_phrase"],
+            )
 
         # Hand detected: reset empty streak and store frame landmarks
         with self.lock:
@@ -583,66 +820,141 @@ class SignLanguageRecognizer:
         # GCN-Transformer Prediction Path
         if self.arch == "gcn_transformer":
             if len(seq) < self.MIN_WARMUP_FRAMES:
+                activity_info = detector.update(joints, prediction="", confidence=0.0)
                 return _resp(
                     "", 0.0,
                     f"Capturing sign movement ({len(seq)}/{self.MIN_WARMUP_FRAMES})…",
                     ready=False,
                     arch="GCN-Transformer",
+                    signing_state=activity_info["state"],
+                    is_signing=activity_info["is_signing"],
+                    turn_completed=activity_info["turn_completed"],
+                    phrase=activity_info["phrase"],
+                    finalized_phrase=activity_info["finalized_phrase"],
                 )
 
             try:
                 raw_label, conf = self._predict_gcnt(seq)
                 smoothed_label, smoothed_conf = self._smooth(key, raw_label, conf)
-
                 display_text = smoothed_label.replace("_", " ").title()
 
                 if smoothed_conf < self.MIN_CONFIDENCE:
+                    activity_info = detector.update(joints, prediction="UNCERTAIN", confidence=smoothed_conf)
                     return _resp(
                         "UNCERTAIN",
                         round(smoothed_conf * 100, 1),
                         "Low confidence — continue holding or repeating the sign.",
                         ready=True,
                         arch="GCN-Transformer",
+                        signing_state=activity_info["state"],
+                        is_signing=activity_info["is_signing"],
+                        turn_completed=activity_info["turn_completed"],
+                        phrase=activity_info["phrase"],
+                        finalized_phrase=activity_info["finalized_phrase"],
                     )
 
+                activity_info = detector.update(joints, prediction=display_text, confidence=smoothed_conf)
+                accepted = activity_info["accepted_sign"] or display_text
+
                 return _resp(
-                    display_text,
+                    accepted,
                     round(smoothed_conf * 100, 1),
                     f"Recognized: {display_text}",
                     ready=True,
                     arch="GCN-Transformer",
+                    signing_state=activity_info["state"],
+                    is_signing=activity_info["is_signing"],
+                    turn_completed=activity_info["turn_completed"],
+                    phrase=activity_info["phrase"],
+                    finalized_phrase=activity_info["finalized_phrase"],
                 )
             except Exception as exc:
-                return _resp("", 0.0, f"GCN-T inference error: {exc}", ready=False)
+                activity_info = detector.update(joints, prediction="", confidence=0.0)
+                return _resp(
+                    "", 0.0, f"GCN-T inference error: {exc}",
+                    ready=False,
+                    signing_state=activity_info["state"],
+                    is_signing=activity_info["is_signing"],
+                    turn_completed=activity_info["turn_completed"],
+                    phrase=activity_info["phrase"],
+                    finalized_phrase=activity_info["finalized_phrase"],
+                )
 
         # Legacy BiGRU path
         if self.arch == "gru":
             if len(seq) < self.MIN_WARMUP_FRAMES:
-                return _resp("", 0.0, f"Buffering ({len(seq)}/{self.MIN_WARMUP_FRAMES})…", ready=False)
+                activity_info = detector.update(joints, prediction="", confidence=0.0)
+                return _resp(
+                    "", 0.0, f"Buffering ({len(seq)}/{self.MIN_WARMUP_FRAMES})…",
+                    ready=False,
+                    signing_state=activity_info["state"],
+                    is_signing=activity_info["is_signing"],
+                    turn_completed=activity_info["turn_completed"],
+                    phrase=activity_info["phrase"],
+                    finalized_phrase=activity_info["finalized_phrase"],
+                )
             try:
                 raw_label, conf = self._predict_gru(seq)
                 smoothed_label, smoothed_conf = self._smooth(key, raw_label, conf)
                 display_text = smoothed_label.replace("_", " ").title()
+                activity_info = detector.update(joints, prediction=display_text, confidence=smoothed_conf)
+                accepted = activity_info["accepted_sign"] or display_text
                 return _resp(
-                    display_text, round(smoothed_conf * 100, 1),
-                    f"Recognized: {display_text}", ready=True, arch="BiGRU"
+                    accepted, round(smoothed_conf * 100, 1),
+                    f"Recognized: {display_text}", ready=True, arch="BiGRU",
+                    signing_state=activity_info["state"],
+                    is_signing=activity_info["is_signing"],
+                    turn_completed=activity_info["turn_completed"],
+                    phrase=activity_info["phrase"],
+                    finalized_phrase=activity_info["finalized_phrase"],
                 )
             except Exception as exc:
-                return _resp("", 0.0, f"GRU inference error: {exc}", ready=False)
+                activity_info = detector.update(joints, prediction="", confidence=0.0)
+                return _resp(
+                    "", 0.0, f"GRU inference error: {exc}", ready=False,
+                    signing_state=activity_info["state"],
+                    is_signing=activity_info["is_signing"],
+                    turn_completed=activity_info["turn_completed"],
+                    phrase=activity_info["phrase"],
+                    finalized_phrase=activity_info["finalized_phrase"],
+                )
 
         # SVM fallback
         if self.svm is not None:
             try:
                 label, conf = self._predict_svm(joints)
                 display_text = label.replace("_", " ").title()
+                activity_info = detector.update(joints, prediction=display_text, confidence=conf)
+                accepted = activity_info["accepted_sign"] or display_text
                 return _resp(
-                    display_text, round(conf * 100, 1),
-                    f"Recognized: {display_text}", ready=True, arch="SVM"
+                    accepted, round(conf * 100, 1),
+                    f"Recognized: {display_text}", ready=True, arch="SVM",
+                    signing_state=activity_info["state"],
+                    is_signing=activity_info["is_signing"],
+                    turn_completed=activity_info["turn_completed"],
+                    phrase=activity_info["phrase"],
+                    finalized_phrase=activity_info["finalized_phrase"],
                 )
             except Exception as exc:
-                return _resp("", 0.0, f"SVM inference error: {exc}", ready=False)
+                activity_info = detector.update(joints, prediction="", confidence=0.0)
+                return _resp(
+                    "", 0.0, f"SVM inference error: {exc}", ready=False,
+                    signing_state=activity_info["state"],
+                    is_signing=activity_info["is_signing"],
+                    turn_completed=activity_info["turn_completed"],
+                    phrase=activity_info["phrase"],
+                    finalized_phrase=activity_info["finalized_phrase"],
+                )
 
-        return _resp("", 0.0, self.error or "No model available.", ready=False)
+        activity_info = detector.update(None, prediction="", confidence=0.0)
+        return _resp(
+            "", 0.0, self.error or "No model available.", ready=False,
+            signing_state=activity_info["state"],
+            is_signing=activity_info["is_signing"],
+            turn_completed=activity_info["turn_completed"],
+            phrase=activity_info["phrase"],
+            finalized_phrase=activity_info["finalized_phrase"],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -656,8 +968,22 @@ def _resp(
     *,
     ready: Optional[bool] = None,
     arch: str = "",
+    signing_state: str = "IDLE",
+    is_signing: bool = False,
+    turn_completed: bool = False,
+    phrase: str = "",
+    finalized_phrase: str = "",
 ) -> dict:
-    out: dict = {"text": text, "confidence": confidence, "message": message}
+    out: dict = {
+        "text": text,
+        "confidence": confidence,
+        "message": message,
+        "signing_state": signing_state,
+        "is_signing": is_signing,
+        "turn_completed": turn_completed,
+        "phrase": phrase,
+        "finalized_phrase": finalized_phrase,
+    }
     if ready is not None:
         out["ready"] = ready
     if arch:

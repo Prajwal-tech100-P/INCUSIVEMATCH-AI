@@ -37,10 +37,21 @@
           <!-- Status Badge -->
           <div id="status" class="position-absolute top-0 start-0 m-3 badge bg-secondary" style="z-index:15;">Ready to call</div>
 
-          <!-- Live On-Screen Closed Caption Banner -->
-          <div id="live-caption-banner" class="position-absolute bottom-0 start-50 translate-middle-x mb-4 px-4 py-2 rounded-pill text-white text-center fw-bold shadow-lg d-none" style="background: rgba(15, 23, 42, 0.90); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.25); z-index: 25; max-width: 85%; font-size: 1.15rem; letter-spacing: 0.3px;">
-            <span id="caption-speaker" class="badge bg-primary me-2">🤟 Sign AI</span>
-            <span id="caption-text">Listening for signs...</span>
+          <!-- Automatic Signing Activity Indicator (Remote Peer) -->
+          <div id="remote-signing-indicator" class="position-absolute top-0 start-50 translate-middle-x mt-3 px-3 py-1 rounded-pill text-white shadow d-none" style="background: rgba(13, 110, 253, 0.90); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.35); z-index: 22; font-size: 0.95rem; font-weight: 600; letter-spacing: 0.2px;">
+            <span class="spinner-grow spinner-grow-sm me-1 text-light" role="status" aria-hidden="true" style="width: 0.7rem; height: 0.7rem;"></span>
+            <span id="remote-signing-text">🧏 {{ partner.name }} is signing…</span>
+          </div>
+
+          <!-- Live On-Screen Movie-Style Subtitle Overlay -->
+          <div id="live-caption-banner" class="position-absolute bottom-0 start-50 translate-middle-x mb-4 px-4 py-2 rounded-4 text-white text-center shadow-lg d-none" style="background: rgba(10, 15, 29, 0.92); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.25); z-index: 25; max-width: 88%; min-width: 260px; font-size: 1.15rem; line-height: 1.4; box-shadow: 0 8px 32px rgba(0,0,0,0.6);">
+            <div class="d-flex align-items-center justify-content-center gap-2 mb-1">
+              <span id="caption-speaker" class="badge bg-primary px-2 py-1 rounded-pill" style="font-size: 0.75rem;">🤟 ISL Sign</span>
+              <span id="caption-type" class="badge bg-secondary-subtle text-light border border-secondary-subtle px-2 py-1 rounded-pill" style="font-size: 0.7rem;">Live</span>
+            </div>
+            <div id="caption-text" class="fw-bold" style="letter-spacing: 0.2px; text-shadow: 0 2px 4px rgba(0,0,0,0.85);">
+              Listening for captions...
+            </div>
           </div>
         </div>
 
@@ -51,6 +62,7 @@
           <button id="camera" class="btn btn-light rounded-pill" disabled><i class="bi bi-camera-video me-1"></i> Camera Off</button>
           <button id="toggle-sign-ai" class="btn btn-success rounded-pill"><i class="bi bi-hand-index-thumb me-1"></i> Sign AI: ON</button>
           <button id="toggle-cc" class="btn btn-light rounded-pill"><i class="bi bi-badge-cc me-1"></i> Captions: ON</button>
+          <button id="toggle-tts" class="btn btn-outline-light rounded-pill" title="Speak recognized signs using Speech Synthesis (default OFF)"><i class="bi bi-volume-mute me-1"></i> Speak Recognized Text: OFF</button>
           <button id="hangup" class="btn btn-danger rounded-pill ms-auto"><i class="bi bi-telephone-x me-1"></i> End Call</button>
         </div>
         <div id="permissionHelp" class="px-3 pb-3 small text-warning d-none"></div>
@@ -67,20 +79,25 @@
           </span>
         </div>
         <div class="small text-muted mb-3 d-flex align-items-center gap-1">
-          <i class="bi bi-cpu"></i> GCN-Transformer · 29 Indian Sign Language Signs
+          <i class="bi bi-hand-index-thumb"></i> Indian Sign Language Recognition Active
         </div>
 
         <!-- Translation Mode Settings -->
         <div class="bg-light p-2 rounded-3 mb-3 border">
-          <label class="form-label small fw-semibold text-muted mb-1">Recognition Source</label>
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <label class="form-label small fw-semibold text-muted mb-0">Recognition Source</label>
+            <span id="speech-status-pill" class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill small" style="font-size:0.7rem;">
+              <i class="bi bi-mic-fill me-1"></i> Speech STT Ready
+            </span>
+          </div>
           <select id="sign-source" class="form-select form-select-sm mb-2">
             <option value="auto" selected>Auto (Translate Both Users)</option>
             <option value="local">Translate My Signs (Local Camera)</option>
             <option value="remote">Translate Partner's Signs (Remote Video)</option>
           </select>
           <div class="form-check form-switch mb-1">
-            <input class="form-check-input" type="checkbox" id="speak-sign" checked>
-            <label class="form-check-label small" for="speak-sign">🔊 Speak recognized signs (TTS)</label>
+            <input class="form-check-input" type="checkbox" id="speak-sign">
+            <label class="form-check-label small" for="speak-sign" id="speak-sign-label">🔇 Speak Recognized Text: OFF</label>
           </div>
           <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" id="broadcast-captions" checked>
@@ -117,7 +134,13 @@
 <script>
 // WebRTC and Sign Recognition configuration
 const ICE_SERVERS = JSON.parse(document.getElementById("webrtc-ice-servers")?.textContent || "[]");
-const socket = io({ transports: ["websocket", "polling"] });
+const socket = window.inclusiveSocket || (typeof getInclusiveSocket === "function" ? getInclusiveSocket() : io({ transports: ["websocket", "polling"] }));
+if (!window.inclusiveSocket) {
+    window.inclusiveSocket = socket;
+}
+if (typeof stopRingtone === "function") {
+    stopRingtone();
+}
 const PARTNER_ID = "{{ partner.id }}";
 const PARTNER_NAME = "{{ partner.name|e }}";
 const MY_ID = "{{ current_user.id }}";
@@ -146,17 +169,23 @@ if (unmuteRemoteBtn) {
   };
 }
 
-// Sign recognition elements
+// Sign recognition & accessibility elements
 const toggleSignAiBtn = document.getElementById("toggle-sign-ai");
 const toggleCcBtn = document.getElementById("toggle-cc");
+const toggleTtsBtn = document.getElementById("toggle-tts");
 const signStatusPill = document.getElementById("sign-status-pill");
+const speechStatusPill = document.getElementById("speech-status-pill");
 const signSourceSelect = document.getElementById("sign-source");
 const signOutput = document.getElementById("sign-output");
 const speakSign = document.getElementById("speak-sign");
+const speakSignLabel = document.getElementById("speak-sign-label");
 const broadcastCaptions = document.getElementById("broadcast-captions");
 const liveCaptionBanner = document.getElementById("live-caption-banner");
 const captionSpeaker = document.getElementById("caption-speaker");
+const captionType = document.getElementById("caption-type");
 const captionText = document.getElementById("caption-text");
+const remoteSigningIndicator = document.getElementById("remote-signing-indicator");
+const remoteSigningText = document.getElementById("remote-signing-text");
 const transcriptList = document.getElementById("transcript-list");
 const transcriptEmpty = document.getElementById("transcript-empty");
 const btnClearTranscript = document.getElementById("btn-clear-transcript");
@@ -169,13 +198,21 @@ let makingOffer = false;
 let pendingCandidates = [];
 let ended = false;
 
-// Sign recognition runtime state
+// Accessibility runtime state
 let signAiEnabled = true;
 let ccEnabled = true;
+let ttsEnabled = false; // Requirement: Speak Recognized Text is OFF by default
 let signBusy = false;
-let lastSpoken = "";
-let lastSpokenAt = 0;
+let localSigningActive = false;
+let lastSpokenUtterance = "";
+let lastSpokenTime = 0;
 let captionHideTimeout = null;
+let isSpeakingSynthesized = false; // Audio feedback loop prevention flag
+
+// Web Speech API
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let speechRecognizer = null;
+let speechActive = false;
 
 function setStatus(text) { statusEl.textContent = text; }
 function showPermissionHelp(text) { permissionHelp.textContent = text; permissionHelp.classList.remove("d-none"); }
@@ -232,7 +269,6 @@ function createPeer() {
       await remoteVideo.play();
     } catch (error) {
       console.warn("[WebRTC] Remote video playback requires user interaction:", error);
-      // Fallback: browser blocked unmuted autoplay. Play muted and offer unmute button.
       try {
         remoteVideo.muted = true;
         await remoteVideo.play();
@@ -254,7 +290,6 @@ function createPeer() {
   };
 
   pc.oniceconnectionstatechange = () => {
-    console.log("[WebRTC] iceConnectionState:", pc.iceConnectionState);
     if (pc.iceConnectionState === "failed") {
       setStatus("Network connection failed");
     } else if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
@@ -305,6 +340,9 @@ async function ensureMedia() {
     startBtn.textContent = "Camera & Mic Ready";
     setStatus(peerPresent ? "Ready — connecting…" : `Waiting for ${PARTNER_NAME}…`);
 
+    // Initialize speech recognition alongside audio stream
+    startSpeechRecognition();
+
     if (peerPresent && isInitiator()) {
       await makeOffer();
     }
@@ -350,6 +388,92 @@ async function flushCandidates() {
 }
 
 // -------------------------------------------------------------------------
+// Speech-to-Text Recognition (Web Speech API)
+// -------------------------------------------------------------------------
+
+function startSpeechRecognition() {
+  if (!SpeechRecognition) {
+    if (speechStatusPill) {
+      speechStatusPill.className = "badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill small";
+      speechStatusPill.innerHTML = '<i class="bi bi-info-circle me-1"></i> STT Not Supported in Browser';
+    }
+    return;
+  }
+  if (speechRecognizer) {
+    try { speechRecognizer.start(); } catch (e) {}
+    return;
+  }
+  try {
+    speechRecognizer = new SpeechRecognition();
+    speechRecognizer.continuous = true;
+    speechRecognizer.interimResults = true;
+    speechRecognizer.lang = navigator.language || "en-US";
+
+    let lastFinalSpeech = "";
+
+    speechRecognizer.onstart = () => {
+      speechActive = true;
+      if (speechStatusPill) {
+        speechStatusPill.className = "badge bg-success-subtle text-success border border-success-subtle rounded-pill small";
+        speechStatusPill.innerHTML = '<i class="bi bi-mic-fill me-1"></i> Live STT Active';
+      }
+    };
+
+    speechRecognizer.onresult = (event) => {
+      // Audio feedback prevention: ignore mic transcription while TTS speech is active
+      if (isSpeakingSynthesized) return;
+
+      let interim = "";
+      let finalTranscript = "";
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const item = event.results[i];
+        if (item.isFinal) {
+          finalTranscript += item[0].transcript;
+        } else {
+          interim += item[0].transcript;
+        }
+      }
+
+      const activeText = (finalTranscript || interim).trim();
+      if (!activeText) return;
+
+      const isFinal = Boolean(finalTranscript);
+      if (isFinal && activeText === lastFinalSpeech) return; // Deduplicate
+      if (isFinal) lastFinalSpeech = activeText;
+
+      displayCaption("You", activeText, "speech", isFinal);
+      if (isFinal) appendTranscript("You", activeText, "speech");
+
+      if (broadcastCaptions && broadcastCaptions.checked) {
+        socket.emit("speech_caption", {
+          partner_id: PARTNER_ID,
+          text: activeText,
+          is_final: isFinal,
+        });
+      }
+    };
+
+    speechRecognizer.onerror = (event) => {
+      if (event.error !== "no-speech" && event.error !== "aborted") {
+        console.warn("Speech recognition notice:", event.error);
+      }
+    };
+
+    speechRecognizer.onend = () => {
+      speechActive = false;
+      if (!ended && stream && muteBtn && !muteBtn.textContent.includes("Unmute")) {
+        try { speechRecognizer.start(); } catch (e) {}
+      }
+    };
+
+    speechRecognizer.start();
+  } catch (err) {
+    console.warn("Could not start Web Speech API:", err);
+  }
+}
+
+// -------------------------------------------------------------------------
 // Socket Events
 // -------------------------------------------------------------------------
 
@@ -365,9 +489,7 @@ socket.on("call_ready", async data => {
   peerPresent = true;
   remoteUserId = announcedUserId;
 
-  // Mutual peer-presence acknowledgement to prevent offer deadlocks
   socket.emit("signal", { partner_id: PARTNER_ID, type: "peer_present" });
-
   setStatus(stream ? "Both users ready — connecting…" : `Your match is ready. Start Camera & Mic.`);
   if (stream && isInitiator()) {
     await makeOffer();
@@ -430,18 +552,60 @@ socket.on("peer_left", () => {
   remoteUserId = null;
   if (remoteVideo) remoteVideo.srcObject = null;
   if (remotePlaceholder) remotePlaceholder.classList.remove("d-none");
+  if (remoteSigningIndicator) remoteSigningIndicator.classList.add("d-none");
   if (pc) { pc.close(); pc = null; }
   pendingCandidates = [];
   setStatus("The other user left the call.");
 });
 
+socket.on("call_terminated", data => {
+  cleanupCall();
+  setStatus("This connection has ended. Returning to dashboard…");
+  setTimeout(() => {
+    window.location.href = "{{ url_for('main.dashboard') }}";
+  }, 1500);
+});
+
 // Partner relayed sign caption
 socket.on("sign_caption", data => {
+  if (!data || (!data.text && !data.phrase)) return;
+  const speaker = data.speaker || PARTNER_NAME;
+  const text = data.text || data.phrase;
+  displayCaption(speaker, text, "sign", data.is_final, data.confidence);
+  appendTranscript(speaker, text, "sign", data.confidence);
+
+  // If receiving participant enabled Speak Recognized Text, speak finalized turn text
+  if (data.is_final) {
+    speakFinalizedSign(text);
+  }
+});
+
+// Partner relayed live speech subtitle
+socket.on("speech_caption", data => {
   if (!data || !data.text) return;
   const speaker = data.speaker || PARTNER_NAME;
-  displayCaption(speaker, data.text, data.confidence);
-  appendTranscript(speaker, data.text, data.confidence);
-  speakRecognizedSign(data.text);
+  displayCaption(speaker, data.text, "speech", data.is_final);
+  if (data.is_final) {
+    appendTranscript(speaker, data.text, "speech");
+  }
+});
+
+// Partner signing activity indicator update
+socket.on("signing_status", data => {
+  if (!data) return;
+  const speaker = data.speaker || PARTNER_NAME;
+  if (data.is_signing) {
+    if (remoteSigningIndicator) {
+      remoteSigningIndicator.classList.remove("d-none");
+      if (remoteSigningText) {
+        remoteSigningText.textContent = `🧏 ${speaker} is signing…`;
+      }
+    }
+  } else {
+    if (remoteSigningIndicator) {
+      remoteSigningIndicator.classList.add("d-none");
+    }
+  }
 });
 
 // -------------------------------------------------------------------------
@@ -459,6 +623,11 @@ muteBtn.onclick = () => {
   if (!track) return;
   track.enabled = !track.enabled;
   muteBtn.innerHTML = track.enabled ? '<i class="bi bi-mic me-1"></i> Mute' : '<i class="bi bi-mic-mute me-1"></i> Unmute';
+  if (!track.enabled && speechRecognizer && speechActive) {
+    try { speechRecognizer.stop(); } catch (e) {}
+  } else if (track.enabled && speechRecognizer && !speechActive) {
+    try { speechRecognizer.start(); } catch (e) {}
+  }
 };
 
 cameraBtn.onclick = () => {
@@ -484,6 +653,10 @@ toggleSignAiBtn.onclick = () => {
     signStatusPill.innerHTML = '<i class="bi bi-pause-circle me-1" style="font-size:7px;"></i> Paused';
     signOutput.textContent = "Sign recognition paused.";
     liveCaptionBanner.classList.add("d-none");
+    if (localSigningActive) {
+      localSigningActive = false;
+      socket.emit("signing_status", { partner_id: PARTNER_ID, state: "IDLE", is_signing: false });
+    }
   }
 };
 
@@ -499,9 +672,56 @@ toggleCcBtn.onclick = () => {
   }
 };
 
+function setTtsState(enabled) {
+  ttsEnabled = Boolean(enabled);
+  if (speakSign) speakSign.checked = ttsEnabled;
+  if (speakSignLabel) {
+    speakSignLabel.innerHTML = ttsEnabled
+      ? '🔊 Speak Recognized Text: ON'
+      : '🔇 Speak Recognized Text: OFF';
+  }
+  if (toggleTtsBtn) {
+    if (ttsEnabled) {
+      toggleTtsBtn.className = "btn btn-info text-dark rounded-pill";
+      toggleTtsBtn.innerHTML = '<i class="bi bi-volume-up-fill me-1"></i> Speak Recognized Text: ON';
+    } else {
+      toggleTtsBtn.className = "btn btn-outline-light rounded-pill";
+      toggleTtsBtn.innerHTML = '<i class="bi bi-volume-mute me-1"></i> Speak Recognized Text: OFF';
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+      isSpeakingSynthesized = false;
+    }
+  }
+}
+
+if (toggleTtsBtn) {
+  toggleTtsBtn.onclick = () => {
+    setTtsState(!ttsEnabled);
+  };
+}
+
+if (speakSign) {
+  speakSign.onchange = () => {
+    setTtsState(speakSign.checked);
+  };
+}
+
 function cleanupCall() {
   if (ended) return;
   ended = true;
+  if (speechRecognizer) {
+    try { speechRecognizer.stop(); } catch (e) {}
+    speechRecognizer = null;
+  }
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  isSpeakingSynthesized = false;
+  if (remoteSigningIndicator) {
+    remoteSigningIndicator.classList.add("d-none");
+  }
+  if (liveCaptionBanner) {
+    liveCaptionBanner.classList.add("d-none");
+  }
   if (stream) {
     stream.getTracks().forEach(track => {
       try { track.stop(); } catch (e) {}
@@ -516,6 +736,7 @@ function cleanupCall() {
   if (localVideo) localVideo.srcObject = null;
   pendingCandidates = [];
   peerPresent = false;
+  localSigningActive = false;
 }
 
 hangupBtn.onclick = () => {
@@ -533,31 +754,75 @@ window.addEventListener("beforeunload", () => {
 // Sign Recognition & Real-Time Captions Pipeline
 // -------------------------------------------------------------------------
 
-function speakRecognizedSign(text) {
-  if (!speakSign || !speakSign.checked || !window.speechSynthesis || !text || text === "UNCERTAIN") return;
+function speakFinalizedSign(text) {
+  if (!ttsEnabled || !window.speechSynthesis || !text) return;
+  const clean = text.trim();
+  if (!clean || clean === "UNCERTAIN") return;
+
   const now = Date.now();
-  if (text === lastSpoken && now - lastSpokenAt < 3500) return;
-  lastSpoken = text;
-  lastSpokenAt = now;
+  if (clean === lastSpokenUtterance && now - lastSpokenTime < 3500) return;
+  lastSpokenUtterance = clean;
+  lastSpokenTime = now;
+
   window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
+  const utterance = new SpeechSynthesisUtterance(clean);
   utterance.rate = 0.95;
+
+  utterance.onstart = () => {
+    isSpeakingSynthesized = true;
+  };
+  utterance.onend = () => {
+    isSpeakingSynthesized = false;
+  };
+  utterance.onerror = () => {
+    isSpeakingSynthesized = false;
+  };
+
   window.speechSynthesis.speak(utterance);
 }
 
-function displayCaption(speaker, text, confidence) {
+function speakRecognizedSign(text) {
+  return speakFinalizedSign(text);
+}
+
+function displayCaption(speaker, text, type, isFinal = true, confidence = null) {
   if (!ccEnabled) return;
-  captionSpeaker.textContent = speaker;
-  captionText.textContent = `${text} (${Number(confidence || 0).toFixed(1)}%)`;
-  liveCaptionBanner.classList.remove("d-none");
+  const isSpeech = (type === "speech");
+  const isMe = (speaker === "You" || speaker === MY_NAME);
+
+  if (captionSpeaker) {
+    captionSpeaker.className = `badge ${isMe ? 'bg-primary' : 'bg-info text-dark'} px-2 py-1 rounded-pill`;
+    captionSpeaker.innerHTML = isSpeech ? `<i class="bi bi-mic me-1"></i> ${speaker}` : `<i class="bi bi-hand-index-thumb me-1"></i> ${speaker}`;
+  }
+
+  if (captionType) {
+    if (isSpeech) {
+      captionType.className = isFinal ? "badge bg-secondary px-2 py-1 rounded-pill" : "badge bg-dark border border-secondary text-warning px-2 py-1 rounded-pill";
+      captionType.textContent = isFinal ? "Speech" : "Speaking…";
+    } else {
+      captionType.className = isFinal ? "badge bg-success px-2 py-1 rounded-pill" : "badge bg-primary px-2 py-1 rounded-pill";
+      captionType.textContent = isFinal ? "Final Sign Turn" : "Live Sign";
+    }
+  }
+
+  if (captionText) {
+    if (isSpeech) {
+      captionText.innerHTML = isFinal ? text : `<span class="text-white-50 fst-italic">${text}…</span>`;
+    } else {
+      const confStr = confidence ? ` <span class="badge bg-dark bg-opacity-50 text-white-50" style="font-size:0.75rem;">${Number(confidence).toFixed(1)}%</span>` : "";
+      captionText.innerHTML = `${text}${confStr}`;
+    }
+  }
+
+  if (liveCaptionBanner) liveCaptionBanner.classList.remove("d-none");
 
   if (captionHideTimeout) clearTimeout(captionHideTimeout);
   captionHideTimeout = setTimeout(() => {
-    liveCaptionBanner.classList.add("d-none");
-  }, 4000);
+    if (liveCaptionBanner) liveCaptionBanner.classList.add("d-none");
+  }, 4500);
 }
 
-function appendTranscript(speaker, text, confidence) {
+function appendTranscript(speaker, text, type, confidence = null) {
   if (transcriptEmpty) transcriptEmpty.style.display = "none";
   const now = new Date();
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -566,23 +831,30 @@ function appendTranscript(speaker, text, confidence) {
   li.className = "mb-2 pb-1 border-bottom border-light";
   const isMe = (speaker === "You" || speaker === MY_NAME);
   const badgeColor = isMe ? "bg-primary" : "bg-info text-dark";
+  const typeBadge = type === "speech" ? '<span class="badge bg-secondary-subtle text-secondary ms-1" style="font-size:0.65rem;">Speech</span>' : '<span class="badge bg-primary-subtle text-primary ms-1" style="font-size:0.65rem;">Sign</span>';
+  const confText = confidence ? `<span class="text-muted fw-normal" style="font-size:0.75rem;"> (${Number(confidence).toFixed(1)}%)</span>` : "";
 
   li.innerHTML = `
     <div class="d-flex justify-content-between align-items-center mb-1">
-      <span class="badge ${badgeColor} rounded-pill" style="font-size:0.7rem;">${speaker}</span>
+      <div>
+        <span class="badge ${badgeColor} rounded-pill" style="font-size:0.7rem;">${speaker}</span>
+        ${typeBadge}
+      </div>
       <span class="text-muted" style="font-size:0.7rem;">${timeStr}</span>
     </div>
-    <div class="fw-semibold text-dark">${text} <span class="text-muted fw-normal" style="font-size:0.75rem;">(${Number(confidence || 0).toFixed(1)}%)</span></div>
+    <div class="fw-semibold text-dark">${text}${confText}</div>
   `;
 
-  transcriptList.appendChild(li);
-  const container = document.getElementById("transcript-container");
-  container.scrollTop = container.scrollHeight;
+  if (transcriptList) {
+    transcriptList.appendChild(li);
+    const container = document.getElementById("transcript-container");
+    if (container) container.scrollTop = container.scrollHeight;
+  }
 }
 
 if (btnClearTranscript) {
   btnClearTranscript.onclick = () => {
-    transcriptList.innerHTML = "";
+    if (transcriptList) transcriptList.innerHTML = "";
     if (transcriptEmpty) transcriptEmpty.style.display = "block";
   };
 }
@@ -590,7 +862,7 @@ if (btnClearTranscript) {
 async function runSignRecognition() {
   if (!signAiEnabled || signBusy) return;
 
-  const mode = signSourceSelect.value;
+  const mode = signSourceSelect ? signSourceSelect.value : "auto";
   let targetVideo = null;
   let isLocalSource = false;
 
@@ -601,13 +873,13 @@ async function runSignRecognition() {
     targetVideo = remoteVideo;
     isLocalSource = false;
   } else {
-    // Mode is auto: prefer remote video if active, otherwise local video
-    if (remoteVideo && remoteVideo.srcObject && remoteVideo.readyState >= 2 && remoteVideo.videoWidth >= 2) {
-      targetVideo = remoteVideo;
-      isLocalSource = false;
-    } else if (localVideo && localVideo.srcObject && localVideo.readyState >= 2 && localVideo.videoWidth >= 2) {
+    // Mode is auto: prefer local video if user's camera is active to recognize local signs
+    if (localVideo && localVideo.srcObject && localVideo.readyState >= 2 && localVideo.videoWidth >= 2) {
       targetVideo = localVideo;
       isLocalSource = true;
+    } else if (remoteVideo && remoteVideo.srcObject && remoteVideo.readyState >= 2 && remoteVideo.videoWidth >= 2) {
+      targetVideo = remoteVideo;
+      isLocalSource = false;
     }
   }
 
@@ -636,21 +908,33 @@ async function runSignRecognition() {
         if (!res.ok) return;
         const result = await res.json();
 
+        // 1. Automatic signing status synchronization
+        if (isLocalSource && Boolean(result.is_signing) !== localSigningActive) {
+          localSigningActive = Boolean(result.is_signing);
+          socket.emit("signing_status", {
+            partner_id: PARTNER_ID,
+            state: result.signing_state || (localSigningActive ? "SIGNING" : "IDLE"),
+            is_signing: localSigningActive
+          });
+        }
+
+        const speakerName = isLocalSource ? "You" : PARTNER_NAME;
+
+        // 2. Continuous recognized sign output
         if (result.text && result.text !== "UNCERTAIN") {
           const conf = Number(result.confidence || 0).toFixed(1);
-          const speakerName = isLocalSource ? "You" : PARTNER_NAME;
-
           signOutput.innerHTML = `<span class="badge bg-primary me-1">${speakerName}</span> <strong class="text-dark">${result.text}</strong> <span class="text-muted small">(${conf}%)</span>`;
-          displayCaption(speakerName, result.text, conf);
-          appendTranscript(speakerName, result.text, conf);
-          speakRecognizedSign(result.text);
+          displayCaption(speakerName, result.text, "sign", false, conf);
+          appendTranscript(speakerName, result.text, "sign", conf);
 
-          // Broadcast to partner if we recognized local signs
+          // Broadcast to partner if local camera is the source
           if (isLocalSource && broadcastCaptions && broadcastCaptions.checked) {
             socket.emit("sign_caption", {
               partner_id: PARTNER_ID,
               text: result.text,
-              confidence: result.confidence
+              phrase: result.phrase || result.text,
+              confidence: result.confidence,
+              is_final: false
             });
           }
         } else if (result.text === "UNCERTAIN") {
@@ -658,6 +942,27 @@ async function runSignRecognition() {
           signOutput.textContent = `Uncertain sign (${conf}%) — please continue signing`;
         } else if (result.message) {
           signOutput.textContent = result.message;
+        }
+
+        // 3. Turn completion handling
+        if (result.turn_completed && result.finalized_phrase) {
+          displayCaption(speakerName, result.finalized_phrase, "sign", true, result.confidence);
+          appendTranscript(speakerName, `[Turn End] ${result.finalized_phrase}`, "sign", result.confidence);
+
+          if (isLocalSource && broadcastCaptions && broadcastCaptions.checked) {
+            socket.emit("sign_caption", {
+              partner_id: PARTNER_ID,
+              text: result.finalized_phrase,
+              phrase: result.finalized_phrase,
+              confidence: result.confidence,
+              is_final: true
+            });
+            socket.emit("signing_status", {
+              partner_id: PARTNER_ID,
+              state: "IDLE",
+              is_signing: false
+            });
+          }
         }
       } catch (err) {
         console.warn("Sign recognition frame error:", err);
@@ -670,7 +975,7 @@ async function runSignRecognition() {
   }
 }
 
-// 200ms recognition interval gives high responsiveness
-setInterval(runSignRecognition, 200);
+// 220ms continuous recognition interval
+setInterval(runSignRecognition, 220);
 </script>
 {% endblock %}

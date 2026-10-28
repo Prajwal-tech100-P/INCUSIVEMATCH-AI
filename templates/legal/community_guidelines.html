@@ -1,0 +1,148 @@
+{% extends "legal/legal_base.html" %}
+
+{% block title %}Community Guidelines — InclusiveMatch AI{% endblock %}
+
+{% block legal_content %}
+<div class="legal-header">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <span class="badge bg-success-subtle text-success border border-success-subtle legal-badge">Community Safety Standard</span>
+        <span class="text-muted small"><i class="bi bi-clock-history me-1"></i>Version {{ versions.community_guidelines }} | Effective: {{ versions.last_updated }}</span>
+    </div>
+    <h1 class="fw-bold text-dark mb-2">Community Guidelines & Member Etiquette</h1>
+    <p class="text-muted lead fs-6 mb-0">InclusiveMatch AI was built to foster an authentic, safe, and empowering space for persons with disabilities, the Deaf and Hard-of-Hearing community, and genuine allies. These guidelines establish the standards of conduct expected of every member.</p>
+</div>
+
+<div class="summary-box">
+    <h6 class="fw-bold text-success mb-2"><i class="bi bi-heart-fill me-2"></i>Our Guiding Principles</h6>
+    <p class="small text-secondary mb-0">Treat every person with dignity and respect. Respect different communication modalities—whether Indian Sign Language, text, or speech. Never cross boundaries or coerce others. Prioritize mutual safety and authentic connection above all else.</p>
+</div>
+
+<div class="toc-card">
+    <div class="toc-title"><i class="bi bi-list-nested me-2"></i>Table of Contents</div>
+    <ul class="toc-list">
+        <li><a href="#guide-1">1. The Five Pillars of Community</a></li>
+        <li><a href="#guide-2">2. Prohibited Behaviors</a></li>
+        <li><a href="#guide-3">3. Understanding the 3 Safety Actions</a></li>
+        <li><a href="#guide-4">4. How Automated NLP Moderation Works</a></li>
+        <li><a href="#guide-5">5. Investigation & Admin Actions</a></li>
+        <li><a href="#guide-6">6. Appeals & Manual Review Process</a></li>
+    </ul>
+</div>
+
+<div class="legal-body">
+    <section id="guide-1">
+        <h2>1. The Five Pillars of Our Community</h2>
+        <ol class="ps-3">
+            <li><strong>Radical Inclusion & Accessibility:</strong> We celebrate neurological, physical, and sensory diversity. Respect other members' communication pacing, assistive tools, and preferred communication modes (Sign Language, Text, Speech-to-Text).</li>
+            <li><strong>Uncompromising Consent:</strong> All communication must be consensual. No member is obligated to match, respond, accept a call, or share personal details. "No" always means "no".</li>
+            <li><strong>Authenticity & Honesty:</strong> Present yourself truthfully. We encourage verified profile badges through live face verification to ensure an environment free of catfishing and deceptive profiles.</li>
+            <li><strong>Zero Tolerance for Abuse:</strong> Harassment, threats, ableist insults, and discrimination have no place in our community.</li>
+            <li><strong>Kindness in Parting:</strong> Connections do not always work out. Part ways gracefully, without hostility, passive aggression, or vindictive behavior.</li>
+        </ol>
+    </section>
+
+    <section id="guide-2">
+        <h2>2. Prohibited Behaviors</h2>
+        <p>The following behaviors result in immediate warning strikes, temporary restrictions, or permanent account bans:</p>
+
+        <div class="row g-3 my-2">
+            <div class="col-md-6">
+                <div class="card h-100 border-0 bg-light p-3 rounded-3">
+                    <h6 class="fw-bold text-danger mb-2"><i class="bi bi-exclamation-octagon-fill me-2"></i>Threats & Violence</h6>
+                    <p class="small text-muted mb-0">Any threat of physical harm, battery, stalking, extortion, or intimidation. Masking violent threats behind emojis or "just kidding" is strictly caught and penalized by our zero-tolerance safety rules.</p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100 border-0 bg-light p-3 rounded-3">
+                    <h6 class="fw-bold text-danger mb-2"><i class="bi bi-person-x-fill me-2"></i>Harassment & Bullying</h6>
+                    <p class="small text-muted mb-0">Repeated unsolicited messaging after being told to stop, name-calling, belittling, or using alternate accounts to contact someone who restricted or parted ways with you.</p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100 border-0 bg-light p-3 rounded-3">
+                    <h6 class="fw-bold text-danger mb-2"><i class="bi bi-shield-slash-fill me-2"></i>Hate Speech & Ableism</h6>
+                    <p class="small text-muted mb-0">Disparaging, mocking, or insulting anyone based on disability, medical condition, caste, religion, race, gender identity, or sexual orientation.</p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100 border-0 bg-light p-3 rounded-3">
+                    <h6 class="fw-bold text-danger mb-2"><i class="bi bi-cash-coin me-2"></i>Scams & Commercial Solicitation</h6>
+                    <p class="small text-muted mb-0">Asking for money, gift cards, investments, cryptocurrency, or promoting external products, services, or commercial webcam links.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="guide-3">
+        <h2>3. Understanding the 3 Safety Actions</h2>
+        <p>Our platform provides three distinct, verified safety tools. Here is what each tool actually does in the backend:</p>
+
+        <div class="table-responsive my-3">
+            <table class="table table-bordered align-middle small">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 20%;">Action</th>
+                        <th style="width: 25%;">When to Use</th>
+                        <th style="width: 35%;">What Actually Happens in the Backend</th>
+                        <th style="width: 20%;">Is the Other User Notified?</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong class="text-danger"><i class="bi bi-flag-fill me-1"></i>Report User</strong></td>
+                        <td>When someone violates community guidelines, threatens you, or behaves inappropriately.</td>
+                        <td>Stores a formal incident report in our secure safety database with your reason, reporter ID, and target ID. Automatically alerts platform administrators for human review.</td>
+                        <td><span class="badge bg-secondary">No</span> (Reports are completely confidential).</td>
+                    </tr>
+                    <tr>
+                        <td><strong class="text-warning"><i class="bi bi-slash-circle-fill me-1"></i>Restrict User</strong></td>
+                        <td>When you want to permanently cut all contact with someone immediately.</td>
+                        <td>Creates a persistent directional record in our safety database. Automatically dissolves the mutual match, terminates any pending call invitations, and blocks private messaging and video calling in both directions.</td>
+                        <td><span class="badge bg-secondary">No</span> (They simply can no longer message or call you).</td>
+                    </tr>
+                    <tr>
+                        <td><strong class="text-primary"><i class="bi bi-heartbreak me-1"></i>Part Ways</strong></td>
+                        <td>When you feel you are not compatible and want to amicably end the connection.</td>
+                        <td>Removes the active match status between you and the other user in our platform database. The private chat room is closed. No penalty or warning is issued to either party.</td>
+                        <td><span class="badge bg-secondary">No</span> (The chat thread cleanly disappears from their messages).</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section id="guide-4">
+        <h2>4. How Automated NLP Moderation Works</h2>
+        <p>InclusiveMatch AI utilizes an automated Natural Language Processing moderation engine to protect members from abusive text in real-time:</p>
+        <ul>
+            <li><strong>Context-Aware Intelligence:</strong> Our system is trained to distinguish harmless jokes, gaming hyperbole (e.g. <em>"I'm going to kill you in Ludo 🎮"</em>), and friendly teasing from genuine hostility.</li>
+            <li><strong>Automated Warnings:</strong> If an outgoing message is classified as abusive, threatening, or harassing, the message is blocked from delivery, and a warning is logged.</li>
+            <li><strong>Automated 7-Day Restriction:</strong> Receiving <strong>5 warnings</strong> automatically restricts the sender's account for 7 days.</li>
+            <li><strong>Probabilistic Nature:</strong> AI models make estimates and can occasionally produce false positives or false negatives. An AI classification score is an operational safeguard, not definitive proof of bad intent.</li>
+        </ul>
+    </section>
+
+    <section id="guide-5">
+        <h2>5. Investigation & Admin Actions</h2>
+        <p>When a report is filed, our human administrative team reviews the incident. Administrators have the authority to take the following actions under platform policy:</p>
+        <ul>
+            <li><strong>Warning Issued:</strong> An administrative warning is applied to the reported user's record.</li>
+            <li><strong>Message Removed:</strong> Offending content is deleted from active database records.</li>
+            <li><strong>One-Week Account Block:</strong> The account is locked for 7 days (<code>is_active=False</code> with <code>block_expiry</code>).</li>
+            <li><strong>Permanent Account Deactivation:</strong> For severe violations (extortion, physical threats, illegal material, repeat harassment), the account is permanently deactivated.</li>
+            <li><strong>Dismissal:</strong> If the report is determined to be unfounded or filed in bad faith, it is dismissed without penalty.</li>
+        </ul>
+    </section>
+
+    <section id="guide-6">
+        <h2>6. Appeals & Manual Review Process</h2>
+        <p>If you believe a warning was issued in error or that an automated 7-day restriction was triggered by an algorithmic false positive, you have the right to request a human administrative appeal:</p>
+        <ol>
+            <li>Navigate to the <a href="{{ url_for('legal.contact_grievance') }}" class="fw-semibold">Contact & Grievance Portal</a>.</li>
+            <li>Select the category <strong>"Privacy Complaint or Violation"</strong> or <strong>"General Legal / Moderation Inquiry"</strong>.</li>
+            <li>Provide your registered email address, approximate timestamp of the incident, and a brief explanation of why the message was a false positive or benign context.</li>
+            <li>Our administrative team will review the flagged message snippet and logs. If a false positive is confirmed, the warning strike will be expunged and any restriction lifted.</li>
+        </ol>
+    </section>
+</div>
+{% endblock %}

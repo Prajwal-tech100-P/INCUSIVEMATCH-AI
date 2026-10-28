@@ -1,0 +1,140 @@
+{% extends "legal/legal_base.html" %}
+
+{% block title %}Account Deletion & Data Rights — InclusiveMatch AI{% endblock %}
+
+{% block legal_content %}
+<div class="legal-header">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle legal-badge">Data Rights & Lifecycle</span>
+        <span class="text-muted small"><i class="bi bi-clock-history me-1"></i>Version {{ versions.data_rights }} | Effective: {{ versions.last_updated }}</span>
+    </div>
+    <h1 class="fw-bold text-dark mb-2">Account Deletion, Retention & Data Subject Rights</h1>
+    <p class="text-muted lead fs-6 mb-0">You maintain complete ownership and control over your digital personal data. This policy details your statutory data rights under the <strong>Digital Personal Data Protection Act, 2023 (DPDP Act)</strong> and the step-by-step account deletion process.</p>
+</div>
+
+<div class="summary-box">
+    <h6 class="fw-bold text-indigo mb-2"><i class="bi bi-person-gear me-2"></i>Self-Service Data Controls</h6>
+    <p class="small text-secondary mb-2">You can manage your data directly from your account without waiting for administrative intervention:</p>
+    <div class="d-flex flex-wrap gap-2 mt-2">
+        {% if current_user.is_authenticated %}
+            <a href="{{ url_for('legal.export_my_data') }}" class="btn btn-sm btn-outline-primary rounded-pill"><i class="bi bi-download me-1"></i>Download My Personal Data Export (JSON)</a>
+            <a href="{{ url_for('profile.edit_profile') }}" class="btn btn-sm btn-outline-secondary rounded-pill"><i class="bi bi-pencil me-1"></i>Edit Profile / Correct Data</a>
+        {% else %}
+            <a href="{{ url_for('auth.login') }}" class="btn btn-sm btn-primary rounded-pill"><i class="bi bi-box-arrow-in-right me-1"></i>Log in to Access Data Controls</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="toc-card">
+    <div class="toc-title"><i class="bi bi-list-nested me-2"></i>Table of Contents</div>
+    <ul class="toc-list">
+        <li><a href="#rights-1">1. Your Five Statutory Data Rights</a></li>
+        <li><a href="#rights-2">2. How to Delete Your Account</a></li>
+        <li><a href="#rights-3">3. What Data Is Deleted Immediately</a></li>
+        <li><a href="#rights-4">4. Legitimate Legal & Safety Retention Exceptions</a></li>
+        <li><a href="#rights-5">5. Requesting Data Correction or Erasure</a></li>
+        <li><a href="#rights-6">6. Nomination of Data Rights Representative</a></li>
+    </ul>
+</div>
+
+<div class="legal-body">
+    <section id="rights-1">
+        <h2>1. Your Five Statutory Data Rights (DPDP Act, 2023)</h2>
+        <p>The Digital Personal Data Protection Act, 2023 guarantees you the following enforceable rights as a Data Principal:</p>
+        <ol class="ps-3">
+            <li><strong>Right to Access Summary of Personal Data (Section 11):</strong> You may request a clear summary of all digital personal data processed by InclusiveMatch AI. You can generate an instant, machine-readable JSON data export directly from your account.</li>
+            <li><strong>Right to Correction & Updating (Section 12):</strong> You may correct inaccurate or misleading personal data, complete incomplete data, or update your information at any time.</li>
+            <li><strong>Right to Erasure (Section 12):</strong> You have the right to demand the erasure of your personal data when it is no longer required for the purpose for which it was collected.</li>
+            <li><strong>Right of Grievance Redressal (Section 13):</strong> You have the right to readily accessible grievance resolution mechanisms provided by our Data Protection Grievance Officer.</li>
+            <li><strong>Right to Nominate (Section 14):</strong> You have the right to designate an individual who shall exercise your data rights in the event of death or incapacity.</li>
+        </ol>
+    </section>
+
+    <section id="rights-2">
+        <h2>2. How to Delete Your Account</h2>
+        <p>InclusiveMatch AI provides an authenticated, self-service account deletion workflow directly within your profile settings:</p>
+        <ol class="ps-3">
+            <li>Log into your InclusiveMatch AI account.</li>
+            <li>Navigate to your <a href="{{ url_for('profile.my_profile') }}">Profile Page</a> and scroll to the <strong>Privacy & Account Management</strong> section.</li>
+            <li>Click on <strong>"Delete My Account"</strong> to open the security confirmation modal.</li>
+            <li>Enter your current password to verify your identity and prevent accidental or unauthorized deletion.</li>
+            <li>Confirm deletion. The system immediately executes the backend cleanup protocol and logs you out.</li>
+        </ol>
+    </section>
+
+    <section id="rights-3">
+        <h2>3. What Data Is Deleted Immediately</h2>
+        <p>When an account deletion is executed by our backend:</p>
+        <div class="table-responsive my-3">
+            <table class="table table-bordered align-middle small">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 25%;">Data Asset</th>
+                        <th style="width: 45%;">Deletion Action Taken</th>
+                        <th style="width: 30%;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>User Profile Document</strong></td>
+                        <td>Permanently deleted from active user database records (name, email, password hash, bio, location, interests, preferences).</td>
+                        <td><span class="badge bg-success">Permanently Purged</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Profile Photograph</strong></td>
+                        <td>Permanently deleted from Cloudinary's cloud storage via API call with immediate CDN cache invalidation.</td>
+                        <td><span class="badge bg-success">Permanently Purged</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Private Chat Messages</strong></td>
+                        <td>All messages sent by or addressed to the user are deleted from active messaging database records.</td>
+                        <td><span class="badge bg-success">Permanently Purged</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Match Discovery Links</strong></td>
+                        <td>The user ID is unlinked and removed from all other members' matching preference records.</td>
+                        <td><span class="badge bg-success">Unlinked Immediately</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Mutual Match Records</strong></td>
+                        <td>Active match threads in platform database records are terminated.</td>
+                        <td><span class="badge bg-success">Closed</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section id="rights-4">
+        <h2>4. Legitimate Legal & Safety Retention Exceptions</h2>
+        <p>In strict compliance with Section 8(7) of the DPDP Act, 2023 and Rule 3(1)(h) of the Information Technology (Intermediary Guidelines) Rules, 2021, certain minimal records are retained for legitimate safety and legal purposes:</p>
+        <ul>
+            <li><strong>Abuse Reports & Investigation Records:</strong> If an account is the subject of an unresolved safety complaint, sexual harassment report, or cybercrime investigation, records in safety reports archives are preserved in secure, access-restricted administrator archives. This prevents abusive bad actors from evading accountability simply by deleting their profile.</li>
+            <li><strong>Banned Perpetrator Hashes:</strong> For users who have been permanently banned for severe threats or illegal conduct, an encrypted, non-reversible cryptographic hash of the email address is maintained in an exclusion register to prevent ban circumvention.</li>
+            <li><strong>Statutory Preservation Period:</strong> Safety audit records are maintained strictly for <span class="config-placeholder">[DATA_RETENTION_PERIOD_DAYS, e.g., 180 days]</span> as required by Indian intermediary regulations, after which they are permanently expunged.</li>
+        </ul>
+    </section>
+
+    <section id="rights-5">
+        <h2>5. Requesting Data Correction or Erasure</h2>
+        <p>If you prefer not to use self-service account deletion, or if you need to submit a formal statutory request regarding your personal data:</p>
+        <ol class="ps-3">
+            <li>Visit our <a href="{{ url_for('legal.contact_grievance') }}" class="fw-semibold">Contact & Grievance Portal</a>.</li>
+            <li>Select the relevant category:
+                <ul>
+                    <li><em>"Data Access Request (DPDP Act)"</em></li>
+                    <li><em>"Data Correction or Updating (DPDP Act)"</em></li>
+                    <li><em>"Data Deletion / Erasure Request"</em></li>
+                </ul>
+            </li>
+            <li>Provide your registered email address and detailed instructions.</li>
+            <li>Our Grievance Redressal team will authenticate your identity and fulfill your request within the statutory timeframe (acknowledgment within 24 hours; completion within 15 days).</li>
+        </ol>
+    </section>
+
+    <section id="rights-6">
+        <h2>6. Nomination of Data Rights Representative</h2>
+        <p>Under Section 14 of the DPDP Act, 2023, you have the right to nominate any individual who shall, in the event of death or incapacity, exercise your data rights. To register a nomination, submit a formal request via the Grievance Portal detailing your registered account information and the full legal name and contact details of your designated nominee.</p>
+    </section>
+</div>
+{% endblock %}

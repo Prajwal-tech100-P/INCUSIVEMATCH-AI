@@ -1,0 +1,213 @@
+{% extends "legal/legal_base.html" %}
+
+{% block title %}Privacy Policy & Personal Data Notice — InclusiveMatch AI{% endblock %}
+
+{% block legal_content %}
+<div class="legal-header">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle legal-badge">Digital Personal Data Protection Notice</span>
+        <span class="text-muted small"><i class="bi bi-clock-history me-1"></i>Version {{ versions.privacy_policy }} | Last Updated: {{ versions.last_updated }}</span>
+    </div>
+    <h1 class="fw-bold text-dark mb-2">Privacy Policy & Notice of Digital Personal Data Processing</h1>
+    <p class="text-muted lead fs-6 mb-0">InclusiveMatch AI operates on a "Privacy-by-Design" architecture. This document discloses our verified data handling practices under the <strong>Digital Personal Data Protection Act, 2023 (DPDP Act)</strong> and the <strong>Information Technology Act, 2000</strong>.</p>
+</div>
+
+<div class="summary-box">
+    <h6 class="fw-bold text-indigo mb-2"><i class="bi bi-info-circle-fill me-2"></i>Plain-Language Privacy Summary</h6>
+    <ul class="mb-0 ps-3 small text-secondary">
+        <li><strong>We do not record video or audio calls:</strong> Live video/audio streams are transmitted directly peer-to-peer (or via relays) using secure encrypted protocols. Our servers never record, record-store, or tap media streams.</li>
+        <li><strong>We do not store sign language camera frames:</strong> Live video frames submitted for assistive sign language recognition are processed in-memory for landmark estimation and immediately discarded.</li>
+        <li><strong>Messages are not end-to-end encrypted:</strong> Private messages are stored securely in our encrypted database so you and your matches can read conversation history, and are analyzed in real-time by automated moderation to protect members from threats and harassment.</li>
+        <li><strong>No data selling or third-party behavioral ads:</strong> We do not sell your personal data or deploy third-party advertising trackers.</li>
+    </ul>
+</div>
+
+<div class="toc-card">
+    <div class="toc-title"><i class="bi bi-list-nested me-2"></i>Table of Contents</div>
+    <ul class="toc-list">
+        <li><a href="#section-1">1. Statutory Context & Legal Basis</a></li>
+        <li><a href="#section-2">2. Data We Collect & Verified Storage</a></li>
+        <li><a href="#section-3">3. Communication & Media Processing</a></li>
+        <li><a href="#section-4">4. AI Models & Algorithmic Processing</a></li>
+        <li><a href="#section-5">5. Infrastructure & Third-Party Processors</a></li>
+        <li><a href="#section-6">6. Data Retention & Deletion Schedule</a></li>
+        <li><a href="#section-7">7. Your Data Subject Rights (DPDP Act)</a></li>
+        <li><a href="#section-8">8. Data Security & Storage Architecture</a></li>
+        <li><a href="#section-9">9. Contact & Grievance Redressal Officer</a></li>
+    </ul>
+</div>
+
+<div class="legal-body">
+    <section id="section-1">
+        <h2>1. Statutory Context & Legal Basis</h2>
+        <p>This Privacy Policy governs the processing of digital personal data by InclusiveMatch AI (referred to as the "Platform", "Data Fiduciary", "we", or "us"). We process personal data in compliance with:</p>
+        <ul>
+            <li><strong>Digital Personal Data Protection Act, 2023 (DPDP Act, 2023)</strong> and applicable rules notified thereunder.</li>
+            <li><strong>Information Technology Act, 2000</strong>, including the Information Technology (Intermediary Guidelines and Digital Media Ethics Code) Rules, 2021.</li>
+            <li><strong>Rights of Persons with Disabilities Act, 2016 (RPwD Act)</strong>, ensuring accessible privacy disclosures and non-discriminatory communication options.</li>
+        </ul>
+        <p>The legal basis for processing your data is your explicit, affirmative consent provided at registration, which may be withdrawn at any time subject to account termination.</p>
+    </section>
+
+    <section id="section-2">
+        <h2>2. Data We Collect & Verified Implementation</h2>
+        <p>In accordance with the principle of <em>Data Minimisation</em>, we only collect digital personal data necessary to provide an accessible matchmaking and communication platform.</p>
+
+        <div class="table-responsive my-3">
+            <table class="table table-bordered table-hover align-middle small">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 22%;">Category</th>
+                        <th style="width: 28%;">Data Elements</th>
+                        <th style="width: 15%;">Necessity</th>
+                        <th style="width: 20%;">Storage Location</th>
+                        <th style="width: 15%;">Access Scope</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Account Credentials</strong></td>
+                        <td>Full name, email address, securely hashed password credentials, role.</td>
+                        <td><span class="badge bg-danger-subtle text-danger">Mandatory</span></td>
+                        <td>Encrypted User Database</td>
+                        <td>Authentication systems; platform admins.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Communication Preferences</strong></td>
+                        <td>Sign Language, Text Messaging, or Spoken Word (Speech-to-Text).</td>
+                        <td><span class="badge bg-danger-subtle text-danger">Mandatory</span></td>
+                        <td>User Profile Database</td>
+                        <td>Displayed to prospective matches for accessibility pairing.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Profile Demographics</strong></td>
+                        <td>Age, gender identity, marital status, relationship goals, biography, hobbies/interests.</td>
+                        <td><span class="badge bg-secondary-subtle text-secondary">Optional</span></td>
+                        <td>User Profile Database</td>
+                        <td>Public to authenticated users in Discover feed.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Profile Photographs</strong></td>
+                        <td>User photograph file (PNG/JPEG/WEBP/GIF, max 5MB).</td>
+                        <td><span class="badge bg-secondary-subtle text-secondary">Optional</span></td>
+                        <td>Cloudinary via HTTPS CDN; URL in User Database</td>
+                        <td>Public to authenticated matches; used for optional face verification.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Location Information</strong></td>
+                        <td>Manual text display (City/State/Country) OR browser coordinates (latitude/longitude).</td>
+                        <td><span class="badge bg-secondary-subtle text-secondary">Optional</span></td>
+                        <td>User Profile Database</td>
+                        <td><strong>Privacy safeguard:</strong> Exact coordinates are never displayed publicly; only the city/state display string is shown on profile.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Private Chat Messages</strong></td>
+                        <td>Message text, sender ID, recipient ID, timestamp, read status.</td>
+                        <td><span class="badge bg-info-subtle text-info">Operational</span></td>
+                        <td>Encrypted Messaging Database</td>
+                        <td>Sender, recipient, and automated moderation engine.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Safety & Moderation Logs</strong></td>
+                        <td>Violating message snippets, toxicity category scores, warning counts, restriction expiry.</td>
+                        <td><span class="badge bg-warning-subtle text-warning">Safety / Legal</span></td>
+                        <td>Safety & Audit Database</td>
+                        <td>Automated moderation engine; platform safety admins.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section id="section-3">
+        <h2>3. Communication & Media Processing</h2>
+        <h3>Real-Time Audio & Video Calls</h3>
+        <p>InclusiveMatch AI supports peer-to-peer real-time video communication for accessible dating:</p>
+        <ul>
+            <li><strong>Peer-to-Peer Transmission:</strong> Video and audio streams are exchanged directly between participant browsers using secure real-time protocols with end-to-end transport encryption.</li>
+            <li><strong>No Call Recording:</strong> Our server acts solely as a signaling intermediary to connect participant browsers. <strong>Our backend does not record, tap, transcode, or save any audio or video stream.</strong></li>
+            <li><strong>Call Metadata:</strong> We store minimal signaling session records (caller ID, recipient ID, call status, timestamp). These records expire automatically upon call conclusion or expiration.</li>
+        </ul>
+
+        <h3>Indian Sign Language (ISL) Video Frame Processing</h3>
+        <p>When you enable real-time sign language recognition during a video call:</p>
+        <ul>
+            <li>Your browser captures single video frames from your local webcam and transmits them over secure HTTPS to the recognition service.</li>
+            <li>The server runs real-time computer vision landmark analysis to evaluate sign language sequences in volatile memory.</li>
+            <li><strong>Immediate Frame Disposal:</strong> The received raw image buffer is processed strictly in volatile RAM and is discarded immediately after landmark classification. <strong>Camera frames are never written to disk or stored in persistent databases.</strong></li>
+        </ul>
+
+        <h3>Speech-to-Text (STT) and Text-to-Speech (TTS)</h3>
+        <p>Spoken communication accessibility uses the browser's native Web Speech API (<code>SpeechRecognition</code> and <code>SpeechSynthesis</code>). Audio capture and synthesis are executed locally inside your web browser. Transcribed subtitle text is relayed ephemerally to your matched partner during the active call session and is not logged on the server.</p>
+    </section>
+
+    <section id="section-4">
+        <h2>4. AI Models & Algorithmic Processing</h2>
+        <p>InclusiveMatch AI uses artificial intelligence exclusively for accessibility enhancement, compatibility discovery, and member protection:</p>
+        <ul>
+            <li><strong>AI Compatibility Recommender:</strong> Automated compatibility matching evaluates profile affinity based on mutual interests, communication preference overlap, and age preferences. Recommendation scores are ephemeral heuristics; we do not employ automated decision-making that produces legal consequences.</li>
+            <li><strong>Safety Moderation:</strong> Outgoing chat messages are screened in real-time by an automated natural language moderation engine assessing six safety categories (<code>toxic</code>, <code>severe_toxic</code>, <code>insult</code>, <code>threat</code>, <code>harassment</code>, <code>hate</code>). The system applies context-aware rules to protect friendly banter, gaming idioms, and playful teasing while strictly blocking genuine threats.</li>
+            <li><strong>Face Verification:</strong> Users can optionally verify their profile photo using automated facial comparison to ensure profile photo authenticity. The live webcam capture is compared with the reference profile photo in-memory, and only a verification status flag is recorded in the user profile.</li>
+        </ul>
+    </section>
+
+    <section id="section-5">
+        <h2>5. Infrastructure & Third-Party Processors</h2>
+        <p>We work exclusively with reputable cloud infrastructure providers that maintain strict industry certifications (ISO 27001, SOC 2):</p>
+        <ul>
+            <li><strong>Managed Cloud Database:</strong> Enterprise cloud database infrastructure hosting personal profile records, encrypted at rest and in transit.</li>
+            <li><strong>Cloudinary:</strong> Persistent cloud media storage for profile photos. Uploaded images are delivered via Cloudinary's secure HTTPS CDN. When you delete a photo or account, it is deleted from Cloudinary via its management API.</li>
+            <li><strong>Hosting / Reverse Proxy:</strong> Flask application deployment utilizing TLS/HTTPS encryption, strict Content Security Policy, and HTTP security headers (<code>X-Content-Type-Options: nosniff</code>, <code>X-Frame-Options: SAMEORIGIN</code>).</li>
+            <li><strong>STUN / TURN Servers:</strong> Secure STUN/TURN servers used exclusively for NAT traversal to establish direct peer-to-peer WebRTC connections.</li>
+        </ul>
+    </section>
+
+    <section id="section-6">
+        <h2>6. Data Retention & Deletion Schedule</h2>
+        <p>In accordance with Section 8(7) of the DPDP Act, personal data is retained only for as long as necessary to fulfill the purpose for which it was collected or to comply with statutory legal and safety obligations:</p>
+        <ul>
+            <li><strong>Active Accounts:</strong> Profile data and private messages are retained for the lifetime of your active account.</li>
+            <li><strong>Account Deletion:</strong> Upon authenticated request, your account is immediately deactivated, your profile photo is deleted from Cloudinary, your private messages are removed, and your references are unlinked from discovery.</li>
+            <li><strong>Legal & Safety Preservation Exception:</strong> In compliance with Rule 3(1)(h) of the Information Technology (Intermediary Guidelines) Rules, 2021, records of serious abuse reports, active 7-day safety bans, and administrative sanctions are preserved in secure, access-controlled audit logs for a statutory period of <span class="config-placeholder">[DATA_RETENTION_PERIOD_DAYS, e.g., 180 days]</span> to prevent banned perpetrators from immediately recreating accounts.</li>
+            <li><strong>Ephemeral Call Signaling:</strong> Call session records expire automatically upon call completion.</li>
+        </ul>
+    </section>
+
+    <section id="section-7">
+        <h2>7. Your Data Subject Rights (DPDP Act, 2023)</h2>
+        <p>Under Chapter III of the Digital Personal Data Protection Act, 2023, you possess the following enforceable statutory rights:</p>
+        <ol>
+            <li><strong>Right to Access Information (Section 11):</strong> You have the right to obtain a summary of your personal data processed by us and the identities of data processors. You can download an instant, machine-readable JSON copy of your personal data directly from your <a href="{{ url_for('legal.export_my_data') }}" class="fw-semibold">Data Rights Dashboard</a>.</li>
+            <li><strong>Right to Correction & Updating (Section 12):</strong> You can correct, update, or complete inaccurate personal data at any time via the <a href="{{ url_for('profile.edit_profile') }}">Edit Profile</a> interface or by submitting a Data Correction request.</li>
+            <li><strong>Right to Erasure (Section 12):</strong> You have the right to request the erasure of your personal data unless retention is mandated by law. You can execute an automated, permanent account deletion from your account settings.</li>
+            <li><strong>Right of Grievance Redressal (Section 13):</strong> You have the right to readily available means of grievance redressal regarding any violation of your privacy rights.</li>
+            <li><strong>Right to Nominate (Section 14):</strong> You have the right to nominate an individual who, in the event of death or incapacity, shall exercise your data rights.</li>
+        </ol>
+    </section>
+
+    <section id="section-8">
+        <h2>8. Data Security & Storage Architecture</h2>
+        <p>We deploy rigorous technical and organizational security measures to protect your digital personal data:</p>
+        <ul>
+            <li><strong>Cryptographic Password Hashing:</strong> Passwords are never stored in plaintext; we utilize industry-standard cryptographic hashing with unique per-user salts.</li>
+            <li><strong>HTTPS & Transport Encryption:</strong> All client-server traffic is strictly encrypted using TLS 1.3/1.2 with HSTS preloading enabled in production.</li>
+            <li><strong>Session Hardening:</strong> Authentication cookies are configured with <code>HttpOnly</code>, <code>SameSite=Lax</code>, and <code>Secure</code> flags to prevent cross-site scripting (XSS) and cross-site request forgery (CSRF).</li>
+            <li><strong>Atomic Warning Deduplication:</strong> Concurrency controls and database deduplication safeguard safety warnings across multi-threaded workers.</li>
+        </ul>
+    </section>
+
+    <section id="section-9">
+        <h2>9. Contact & Grievance Redressal Officer</h2>
+        <p>In compliance with Section 13 of the DPDP Act, 2023 and Rule 3(2) of the Information Technology (Intermediary Guidelines) Rules, 2021, our designated Grievance Officer handles all privacy inquiries, data rights requests, and statutory complaints:</p>
+
+        <div class="card border border-primary-subtle rounded-3 p-3 bg-light">
+            <h6 class="fw-bold text-dark mb-2"><i class="bi bi-person-badge text-primary me-2"></i>Grievance Redressal Mechanism</h6>
+            <p class="mb-1"><strong>Data Fiduciary Entity:</strong> <span class="config-placeholder">[INCLUSIVEMATCH_AI_ORGANIZATION_NAME]</span></p>
+            <p class="mb-1"><strong>Designated Grievance Officer:</strong> <span class="config-placeholder">[NAME_OF_GRIEVANCE_OFFICER]</span></p>
+            <p class="mb-1"><strong>Official Contact Email:</strong> <span class="config-placeholder">[GRIEVANCE_OFFICER_EMAIL, e.g., grievance@inclusivematch.ai]</span></p>
+            <p class="mb-1"><strong>Registered Office Address:</strong> <span class="config-placeholder">[PHYSICAL_OFFICE_ADDRESS, e.g., Technology Park, Bengaluru, Karnataka, India]</span></p>
+            <p class="mb-0 small text-muted mt-2"><i class="bi bi-shield-check me-1"></i>You may submit an online grievance directly through our <a href="{{ url_for('legal.contact_grievance') }}" class="fw-bold">Contact & Grievance Portal</a>. We acknowledge all grievances within 24 hours and resolve them within 15 days.</p>
+        </div>
+    </section>
+</div>
+{% endblock %}

@@ -1,0 +1,145 @@
+{% extends "legal/legal_base.html" %}
+
+{% block title %}Terms & Conditions — InclusiveMatch AI{% endblock %}
+
+{% block legal_content %}
+<div class="legal-header">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <span class="badge bg-indigo text-white legal-badge" style="background-color: #4f46e5;">Draft Terms for Legal Review</span>
+        <span class="text-muted small"><i class="bi bi-clock-history me-1"></i>Version {{ versions.terms_conditions }} | Effective Date: {{ versions.last_updated }}</span>
+    </div>
+    <h1 class="fw-bold text-dark mb-2">Terms and Conditions of Service</h1>
+    <p class="text-muted lead fs-6 mb-0">These Terms govern your access to and use of InclusiveMatch AI. Please read them carefully. By creating an account or accessing the platform, you agree to be bound by these Terms.</p>
+</div>
+
+<div class="summary-box">
+    <h6 class="fw-bold text-indigo mb-2"><i class="bi bi-shield-exclamation me-2"></i>Important Legal Notice</h6>
+    <p class="small text-secondary mb-0">These Terms constitute a preliminary legal draft designed for the InclusiveMatch AI academic and demonstration platform under the laws of India. Prior to commercial public launch, these terms must be formally reviewed, finalized, and executed by a qualified legal professional.</p>
+</div>
+
+<div class="toc-card">
+    <div class="toc-title"><i class="bi bi-list-nested me-2"></i>Table of Contents</div>
+    <ul class="toc-list">
+        <li><a href="#terms-1">1. Eligibility & Minimum Age</a></li>
+        <li><a href="#terms-2">2. Account Registration & Security</a></li>
+        <li><a href="#terms-3">3. Acceptable Use & Conduct</a></li>
+        <li><a href="#terms-4">4. Respectful Accessible Dating</a></li>
+        <li><a href="#terms-5">5. User-Generated Content</a></li>
+        <li><a href="#terms-6">6. AI Recommendations & Limitations</a></li>
+        <li><a href="#terms-7">7. Moderation, Warnings & 7-Day Restriction</a></li>
+        <li><a href="#terms-8">8. Termination & Account Deletion</a></li>
+        <li><a href="#terms-9">9. Disclaimers & Technical Availability</a></li>
+        <li><a href="#terms-10">10. Intellectual Property</a></li>
+        <li><a href="#terms-11">11. Governing Law & Dispute Resolution</a></li>
+        <li><a href="#terms-12">12. Changes to Terms & Contact</a></li>
+    </ul>
+</div>
+
+<div class="legal-body">
+    <section id="terms-1">
+        <h2>1. Eligibility & Minimum Age</h2>
+        <p>To register, access, or use InclusiveMatch AI, you represent and warrant that:</p>
+        <ul>
+            <li>You are at least <strong>18 years of age</strong> (the age of majority under the Indian Majority Act, 1875 and capacity to contract under the Indian Contract Act, 1872).</li>
+            <li>You possess the full legal capacity to enter into a legally binding agreement.</li>
+            <li>You have not been previously banned, suspended, or restricted from our platform for severe safety or misconduct violations.</li>
+            <li>You are not prohibited by applicable local, state, or national laws from using dating or communication services.</li>
+        </ul>
+    </section>
+
+    <section id="terms-2">
+        <h2>2. Account Registration & Security</h2>
+        <p>When creating an account:</p>
+        <ul>
+            <li>You must provide accurate, current, and truthful registration information (name, valid email address, and communication preference).</li>
+            <li>You are solely responsible for maintaining the confidentiality of your login credentials (email and password). You agree to notify us immediately of any unauthorized access to your account.</li>
+            <li>You may not create more than one account, share your account credentials with third parties, or transfer your account to another individual.</li>
+        </ul>
+    </section>
+
+    <section id="terms-3">
+        <h2>3. Acceptable Use & Zero-Tolerance Violations</h2>
+        <p>InclusiveMatch AI enforces a strict zero-tolerance policy against harmful, dangerous, or malicious conduct. You agree that you will NOT:</p>
+        <ul>
+            <li>Transmit genuine physical threats, expressions of violence, extortion, or intimidation against any member.</li>
+            <li>Engage in stalking, persistent unwanted contact after being asked to cease, or targeted harassment.</li>
+            <li>Publish hate speech, caste-based abuse, religious disparagement, ableist slurs, or discrimination based on disability, gender, or sexual orientation.</li>
+            <li>Transmit non-consensual sexually explicit content, pornography, or solicit commercial sexual services.</li>
+            <li>Engage in fraudulent activities, romance scams, financial solicitation, or phishing.</li>
+            <li>Impersonate any person or entity, or misrepresent your true identity, age, or background.</li>
+            <li>Attempt to probe, reverse engineer, scan, or compromise our software architecture, APIs, or database systems.</li>
+        </ul>
+    </section>
+
+    <section id="terms-4">
+        <h2>4. Respectful Accessible Dating</h2>
+        <p>InclusiveMatch AI is dedicated to providing an accessible, empowering space for persons with disabilities, the Deaf community, and allies. Members are expected to:</p>
+        <ul>
+            <li>Honor and respect individual communication modalities (Indian Sign Language, text chat, or speech-to-text).</li>
+            <li>Respect boundaries: If another user declines a call, discontinues a conversation, or chooses to "Part Ways", you must accept their decision immediately without retribution.</li>
+            <li>Maintain consent throughout all interactions, whether messaging or video calls.</li>
+        </ul>
+    </section>
+
+    <section id="terms-5">
+        <h2>5. User-Generated Content</h2>
+        <p>You retain ownership of any photographs, biography text, messages, or comments you submit to InclusiveMatch AI. However, by uploading content, you grant the Platform a non-exclusive, worldwide, royalty-free license to store, display, transcode, and process your content solely for the purpose of operating the platform.</p>
+        <p>You warrant that your content does not infringe the intellectual property rights, privacy rights, or publicity rights of any third party.</p>
+    </section>
+
+    <section id="terms-6">
+        <h2>6. AI Recommendations & Technical Limitations</h2>
+        <p>Our platform incorporates assistive artificial intelligence features, including automated compatibility matching, sign language gesture recognition, and real-time safety moderation. You acknowledge that:</p>
+        <ul>
+            <li><strong>Matchmaking Heuristics:</strong> AI compatibility scores are automated mathematical representations of shared interests and preferences. They do not constitute guarantees of personal compatibility, interpersonal safety, or romantic success.</li>
+            <li><strong>Assistive Sign Recognition:</strong> Indian Sign Language (ISL) recognition is an assistive communication aid for conversational interactions. It is not a certified translation service and may encounter misclassifications depending on lighting and camera angles.</li>
+            <li><strong>Automated Text Moderation:</strong> Our automated safety models screen text probabilistically. While tuned with context-aware exemptions for friendly teasing and idioms, automated classifiers may produce false positives or false negatives. Classification results are not definitive judicial determinations of personal conduct.</li>
+        </ul>
+    </section>
+
+    <section id="terms-7">
+        <h2>7. Moderation, Warnings & 7-Day Restriction Policy</h2>
+        <p>To safeguard our community, our platform enforces an automated escalation protocol:</p>
+        <ul>
+            <li><strong>Automated Warnings:</strong> If an outgoing message is classified as abusive, threatening, or harassing by our NLP engine, the message is blocked, and the sender receives a warning strike.</li>
+            <li><strong>7-Day Temporary Restriction:</strong> A member who accumulates <strong>five (5) harmful-language warnings</strong> is automatically placed on an immediate <strong>7-day restriction</strong>. During this restriction, the member is blocked from sending private messages, initiating video calls, or appearing in the Discover matching feed.</li>
+            <li><strong>Idempotent Expiry:</strong> At the conclusion of the 7-day period, the restriction expires automatically upon subsequent login, resetting the active warning counter.</li>
+            <li><strong>Administrative Suspension / Termination:</strong> Platform administrators review reported misconduct and reserve the right to permanently deactivate or ban accounts involved in egregious threats, scams, or illegal conduct.</li>
+        </ul>
+    </section>
+
+    <section id="terms-8">
+        <h2>8. Termination & Account Deletion</h2>
+        <p>You may terminate your account at any time through the self-service Account Deletion feature in your profile settings. Upon deletion:</p>
+        <ul>
+            <li>Your account is immediately deactivated and removed from active discovery.</li>
+            <li>Your profile photo is permanently purged from our Cloudinary image repository.</li>
+            <li>Your private messages and match connections are deleted from active databases.</li>
+            <li>Statutory safety logs (such as unresolved misconduct reports) may be retained in encrypted, access-restricted archives for compliance with Indian law.</li>
+        </ul>
+    </section>
+
+    <section id="terms-9">
+        <h2>9. Disclaimers & Technical Availability</h2>
+        <p>InclusiveMatch AI is provided on an <strong>"AS-IS" and "AS-AVAILABLE"</strong> basis without warranties of any kind, whether express, statutory, or implied.</p>
+        <p>We do not warrant that service will be uninterrupted, error-free, or entirely secure. To the maximum extent permitted by applicable Indian law, the Platform and its developers disclaim all liability for indirect, incidental, punitive, or consequential damages arising from member conduct or technical interruptions.</p>
+    </section>
+
+    <section id="terms-10">
+        <h2>10. Intellectual Property</h2>
+        <p>All software code, user interface designs, machine learning architectures, trademarks, logos, and graphics associated with InclusiveMatch AI are the intellectual property of the project creators or licensed open-source contributors.</p>
+    </section>
+
+    <section id="terms-11">
+        <h2>11. Governing Law & Dispute Resolution</h2>
+        <p>These Terms and any disputes arising out of your use of InclusiveMatch AI shall be governed by and construed in accordance with the substantive laws of <strong>India</strong>, including the Information Technology Act, 2000 and the Digital Personal Data Protection Act, 2023.</p>
+        <p>Any legal proceedings, claims, or disputes shall be subject to the exclusive jurisdiction of the competent courts situated at <span class="config-placeholder">[CITY_JURISDICTION, e.g., Bengaluru, Karnataka, India]</span>.</p>
+    </section>
+
+    <section id="terms-12">
+        <h2>12. Changes to Terms & Contact</h2>
+        <p>We reserve the right to modify these Terms. If a material change occurs, we will provide notice through in-app notifications or require renewed consent upon subsequent login. Continued use of the platform following notification constitutes acceptance of updated terms.</p>
+        <p>For questions or formal legal notices, contact our Grievance mechanism at <span class="config-placeholder">[GRIEVANCE_OFFICER_EMAIL]</span> or via the <a href="{{ url_for('legal.contact_grievance') }}">Contact & Grievance Portal</a>.</p>
+    </section>
+</div>
+{% endblock %}

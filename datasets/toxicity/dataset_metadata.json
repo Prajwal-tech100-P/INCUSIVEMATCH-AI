@@ -1,0 +1,44 @@
+{
+  "dataset_name": "InclusiveMatch AI Toxicity & Safety Dataset v2.0",
+  "categories": [
+    "toxic",
+    "severe_toxic",
+    "insult",
+    "threat",
+    "harassment",
+    "hate"
+  ],
+  "total_samples": 6397,
+  "split_counts": {
+    "train": 4477,
+    "validation": 959,
+    "test": 961
+  },
+  "category_counts": {
+    "toxic": 3673,
+    "severe_toxic": 98,
+    "insult": 2019,
+    "threat": 439,
+    "harassment": 258,
+    "hate": 1689
+  },
+  "benign_count": 2724,
+  "sources": {
+    "google_civil_comments": {
+      "license": "CC0 (Public Domain)",
+      "description": "Jigsaw Unintended Bias in Toxicity Classification (real-world forum comments)"
+    },
+    "davidson_hate_speech": {
+      "license": "MIT License",
+      "description": "Davidson et al. (2017) Automated Hate Speech and Offensive Language"
+    },
+    "project_seed_v1": {
+      "license": "Project Internal",
+      "description": "Original handcrafted seed examples"
+    },
+    "curated_domain_data": {
+      "license": "Project Internal",
+      "description": "Targeted inclusive dating, compliments with 'you/you are', figurative negatives with 'shoot/kill/hate', disability/LGBTQ+ expressions"
+    }
+  }
+}

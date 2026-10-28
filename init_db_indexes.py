@@ -532,6 +532,94 @@ def initialize_indexes(mongo_uri: Optional[str] = None, dry_run: bool = False) -
         )
     )
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # 9. USER RESTRICTIONS COLLECTION
+    # ─────────────────────────────────────────────────────────────────────────
+    logger.info("--- Inspecting collection: 'user_restrictions' ---")
+    restrictions_col = db.user_restrictions
+
+    # Unique compound index to ensure idempotency and prevent duplicate restrictions
+    results.append(
+        safe_create_index(
+            restrictions_col,
+            [
+                ("restrictor_id", pymongo.ASCENDING),
+                ("restricted_user_id", pymongo.ASCENDING),
+            ],
+            name="idx_user_restrictions_unique",
+            unique=True,
+            dry_run=dry_run,
+        )
+    )
+
+    # Index for fast lookup of whether a user is restricted
+    results.append(
+        safe_create_index(
+            restrictions_col,
+            [("restricted_user_id", pymongo.ASCENDING)],
+            name="idx_user_restrictions_restricted",
+            dry_run=dry_run,
+        )
+    )
+
+    # Index for fast lookup of restrictions initiated by a user
+    results.append(
+        safe_create_index(
+            restrictions_col,
+            [("restrictor_id", pymongo.ASCENDING)],
+            name="idx_user_restrictions_restrictor",
+            dry_run=dry_run,
+        )
+    )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 10. PASSWORD RESETS COLLECTION
+    # ─────────────────────────────────────────────────────────────────────────
+    logger.info("--- Inspecting collection: 'password_resets' ---")
+    password_resets_col = db.password_resets
+
+    # Unique index on token_hash prevents collision and ensures single-use integrity
+    results.append(
+        safe_create_index(
+            password_resets_col,
+            [("token_hash", pymongo.ASCENDING)],
+            name="idx_password_resets_token_hash",
+            unique=True,
+            dry_run=dry_run,
+        )
+    )
+
+    # Index on user_id for fast user lookups and cleanup
+    results.append(
+        safe_create_index(
+            password_resets_col,
+            [("user_id", pymongo.ASCENDING)],
+            name="idx_password_resets_user_id",
+            dry_run=dry_run,
+        )
+    )
+
+    # Index on email and created_at for rate limiting lookups
+    results.append(
+        safe_create_index(
+            password_resets_col,
+            [("email", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="idx_password_resets_email_created_at",
+            dry_run=dry_run,
+        )
+    )
+
+    # TTL index on expires_at for automated token expiration
+    results.append(
+        safe_create_index(
+            password_resets_col,
+            [("expires_at", pymongo.ASCENDING)],
+            name="idx_password_resets_expires_at",
+            expireAfterSeconds=0,
+            dry_run=dry_run,
+        )
+    )
+
     # Summary report
     created_count = sum(1 for r in results if r.get("status") == "created")
     exists_count = sum(1 for r in results if r.get("status") == "exists")

@@ -34,6 +34,8 @@ def dashboard():
         "message_count":mongo.db.messages.count_documents({}),
         "match_count":_mutual_match_count(),
         "report_count":mongo.db.reports.count_documents({}),
+        "grievance_count":mongo.db.grievances.count_documents({}),
+        "pending_grievances":mongo.db.grievances.count_documents({"status":"pending"}),
         "unread_message_count":mongo.db.messages.count_documents({"is_read":False}),
     }
     return render_template("admin/dashboard.html",stats=stats)
@@ -172,6 +174,8 @@ def statistics():
         "message_count": mongo.db.messages.count_documents({}),
         "message_count_7d": mongo.db.messages.count_documents({"timestamp": {"$gte": seven_days_ago}}),
         "report_count": mongo.db.reports.count_documents({}),
+        "grievance_count": mongo.db.grievances.count_documents({}),
+        "pending_grievances": mongo.db.grievances.count_documents({"status": "pending"}),
         "unread_notifications": mongo.db.notifications.count_documents({"is_read": False}),
     }
     return render_template("admin/statistics.html", stats=stats)
@@ -238,3 +242,76 @@ def toggle_role(user_id):
     if user_id==current_user.id:
         flash("You cannot change your own role.","danger"); return redirect(url_for("admin.users"))
     UserModel.toggle_role(user_id); flash("User role updated.","success"); return redirect(url_for("admin.users"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GRIEVANCE MANAGEMENT (ADMIN CONTROL CENTER)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@admin_bp.route("/grievances")
+@admin_required
+def grievances():
+    """List and manage all filed user grievances, data rights, and statutory requests."""
+    all_grievances = list(mongo.db.grievances.find().sort("created_at", -1))
+    for g in all_grievances:
+        dt = g.get("created_at")
+        if isinstance(dt, datetime):
+            ist_dt = dt + timedelta(hours=5, minutes=30)
+            g["formatted_date"] = ist_dt.strftime("%d %b %Y, %I:%M %p")
+        else:
+            g["formatted_date"] = str(dt) if dt else "N/A"
+
+        rdt = g.get("resolved_at")
+        if isinstance(rdt, datetime):
+            ist_rdt = rdt + timedelta(hours=5, minutes=30)
+            g["formatted_resolved_date"] = ist_rdt.strftime("%d %b %Y, %I:%M %p")
+        else:
+            g["formatted_resolved_date"] = str(rdt) if rdt else ""
+
+        udt = g.get("updated_at")
+        if isinstance(udt, datetime):
+            ist_udt = udt + timedelta(hours=5, minutes=30)
+            g["formatted_updated_date"] = ist_udt.strftime("%d %b %Y, %I:%M %p")
+        else:
+            g["formatted_updated_date"] = ""
+
+    return render_template("admin/grievances.html", grievances=all_grievances)
+
+
+@admin_bp.route("/grievances/<grievance_id>/status", methods=["POST"])
+@admin_required
+def update_grievance_status(grievance_id):
+    """Update grievance status (pending, in_progress, resolved, dismissed) and record admin response."""
+    new_status = request.form.get("status", "").strip().lower()
+    response_notes = request.form.get("response_notes", "").strip()
+
+    valid_statuses = ["pending", "in_progress", "resolved", "dismissed"]
+    if new_status not in valid_statuses:
+        flash("Invalid grievance status.", "danger")
+        return redirect(url_for("admin.grievances"))
+
+    try:
+        from bson import ObjectId
+        query = {"_id": ObjectId(grievance_id)} if ObjectId.is_valid(grievance_id) else {"tracking_id": grievance_id}
+        grievance = mongo.db.grievances.find_one(query)
+        if not grievance:
+            flash("Grievance record not found.", "danger")
+            return redirect(url_for("admin.grievances"))
+
+        update_data = {
+            "status": new_status,
+            "updated_at": datetime.utcnow()
+        }
+        if response_notes:
+            update_data["resolution_notes"] = response_notes
+        if new_status == "resolved":
+            update_data["resolved_at"] = datetime.utcnow()
+
+        mongo.db.grievances.update_one(query, {"$set": update_data})
+        flash(f"Grievance {grievance.get('tracking_id', grievance_id)} status updated to {new_status.replace('_', ' ').title()}.", "success")
+    except Exception as e:
+        import logging
+        logging.error(f"Error updating grievance {grievance_id}: {e}")
+        flash("Database error while updating grievance status.", "danger")
+
+    return redirect(url_for("admin.grievances"))

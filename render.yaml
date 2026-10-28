@@ -34,3 +34,18 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+      - key: BREVO_SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: BREVO_SMTP_PORT
+        value: "587"
+      - key: BREVO_SMTP_LOGIN
+        sync: false
+      - key: BREVO_SMTP_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: InclusiveMatch AI
+      - key: APP_BASE_URL
+        value: https://incusivematch-ai.onrender.com
+
