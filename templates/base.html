@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>{% block title %}Inclusive Match AI{% endblock %}</title>
     <meta name="description" content="AI-powered accessible dating platform for the Deaf and Hard-of-Hearing community.">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -18,20 +18,20 @@
       data-audio-incoming-call="{{ url_for('static', filename='audio/incoming_call.mp3') }}">
     <a href="#main-content" class="visually-hidden-focusable">Skip to main content</a>
 
-    <nav class="navbar navbar-expand-lg navbar-light bg-white sticky-top shadow-sm py-3">
+    <nav class="navbar navbar-expand-lg navbar-light bg-white sticky-top shadow-sm py-2 py-lg-3">
         <div class="container">
-            {% set is_admin_section = (request.blueprint == 'admin' or (request.path and request.path.startswith('/admin')) or (request.endpoint and request.endpoint.startswith('admin.'))) %}
+            {% set is_admin_section = (request.blueprint == 'admin' or (request.endpoint and request.endpoint.startswith('admin.')) or (request.path and (request.path == '/admin' or request.path.startswith('/admin/')))) %}
             <a class="navbar-brand fw-bold fs-5 text-dark d-flex align-items-center" href="{% if is_admin_section %}{{ url_for('admin.dashboard') }}{% else %}/{% endif %}">
                 <i class="bi bi-heart-pulse-fill text-primary me-2"></i>InclusiveMatch AI
                 {% if is_admin_section %}
                 <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-2 fs-6 fw-semibold py-1 px-2 rounded-3">Admin Portal</span>
                 {% endif %}
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler border-0 shadow-none p-2" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation" id="navbarTogglerBtn">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto align-items-lg-center {% if not is_admin_section %}desktop-nav-links{% endif %}">
+                <ul class="navbar-nav ms-auto align-items-lg-center">
                     {% if current_user.is_authenticated %}
                         {% if not is_admin_section %}
                         <li class="nav-item">
@@ -42,6 +42,10 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('community.home') }}"><span class="me-1">🤟</span>Community</a>
+                        </li>
+                        {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link text-primary fw-semibold" href="{{ url_for('main.dashboard') }}"><i class="bi bi-arrow-left-circle me-1"></i>Exit Admin</a>
                         </li>
                         {% endif %}
                         <li class="nav-item dropdown">
@@ -86,9 +90,17 @@
                             </ul>
                         </li>
                     {% else %}
-                        <li class="nav-item ms-lg-2 mt-2 mt-lg-0 d-flex gap-2">
-                            <a class="btn btn-outline-secondary rounded-pill px-4" href="{{ url_for('auth.login') }}">Login</a>
-                            <a class="btn btn-primary rounded-pill px-4" href="{{ url_for('auth.register') }}">Sign Up</a>
+                        <li class="nav-item ms-lg-2 mt-3 mt-lg-0 d-flex flex-column flex-sm-row gap-2">
+                            <a class="btn btn-outline-secondary rounded-pill px-4 text-center" href="{{ url_for('auth.login') }}">Login</a>
+                            <a class="btn btn-primary rounded-pill px-4 text-center" href="{{ url_for('auth.register') }}">Sign Up</a>
+                        </li>
+                        <li class="nav-item d-lg-none mt-3 pt-3 border-top">
+                            <div class="d-flex flex-wrap gap-3 small text-muted px-2">
+                                <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted">Home</a>
+                                <a href="{{ url_for('legal.privacy_policy') }}" class="text-decoration-none text-muted">Privacy</a>
+                                <a href="{{ url_for('legal.terms_conditions') }}" class="text-decoration-none text-muted">Terms</a>
+                                <a href="{{ url_for('legal.contact_grievance') }}" class="text-decoration-none text-muted">Support</a>
+                            </div>
                         </li>
                     {% endif %}
                 </ul>
@@ -195,7 +207,7 @@
     {% endif %}
 
     <!-- Mobile Bottom Navigation -->
-    {% if current_user.is_authenticated and not (request.blueprint == 'admin' or (request.path and request.path.startswith('/admin')) or (request.endpoint and request.endpoint.startswith('admin.'))) %}
+    {% if current_user.is_authenticated and not (request.blueprint == 'admin' or (request.endpoint and request.endpoint.startswith('admin.')) or (request.path and (request.path == '/admin' or request.path.startswith('/admin/')))) %}
     <nav class="mobile-bottom-nav">
         <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}">
             <i class="bi bi-compass"></i>
