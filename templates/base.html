@@ -20,9 +20,10 @@
 
     <nav class="navbar navbar-expand-lg navbar-light bg-white sticky-top shadow-sm py-3">
         <div class="container">
+            {% set is_admin_section = (request.blueprint == 'admin' or (request.path and request.path.startswith('/admin')) or (request.endpoint and request.endpoint.startswith('admin.'))) %}
             <a class="navbar-brand fw-bold fs-5 text-dark d-flex align-items-center" href="/">
                 <i class="bi bi-heart-pulse-fill text-primary me-2"></i>InclusiveMatch AI
-                {% if request.blueprint == 'admin' %}
+                {% if is_admin_section %}
                 <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-2 fs-6 fw-semibold py-1 px-2 rounded-3">Admin Portal</span>
                 {% endif %}
             </a>
@@ -30,9 +31,9 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto align-items-lg-center {% if request.blueprint != 'admin' %}desktop-nav-links{% endif %}">
+                <ul class="navbar-nav ms-auto align-items-lg-center {% if not is_admin_section %}desktop-nav-links{% endif %}">
                     {% if current_user.is_authenticated %}
-                        {% if request.blueprint != 'admin' %}
+                        {% if not is_admin_section %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('main.dashboard') }}"><i class="bi bi-compass me-1"></i>Discover</a>
                         </li>
@@ -69,7 +70,7 @@
                                 {% endif %}
                             </ul>
                         </li>
-                        {% if current_user.is_admin() %}
+                        {% if current_user.is_admin() and not is_admin_section %}
                         <li class="nav-item">
                             <a class="nav-link text-warning fw-semibold" href="{{ url_for('admin.dashboard') }}"><i class="bi bi-shield-lock me-1"></i>Admin</a>
                         </li>
@@ -198,7 +199,7 @@
     {% endif %}
 
     <!-- Mobile Bottom Navigation -->
-    {% if current_user.is_authenticated and request.blueprint != 'admin' %}
+    {% if current_user.is_authenticated and not (request.blueprint == 'admin' or (request.path and request.path.startswith('/admin')) or (request.endpoint and request.endpoint.startswith('admin.'))) %}
     <nav class="mobile-bottom-nav">
         <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}">
             <i class="bi bi-compass"></i>
