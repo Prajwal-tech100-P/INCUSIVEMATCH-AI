@@ -425,7 +425,16 @@ def authenticated_socket_connect(auth=None):
 
 @socketio.on("disconnect")
 def on_disconnect(reason=None):
-    """Mark user offline on Socket.IO disconnect."""
+    """Mark user offline and clean up any active calls on Socket.IO disconnect."""
+    from flask import request
     from flask_login import current_user as socket_user
-    if socket_user.is_authenticated:
+    sid = getattr(request, "sid", None)
+    user_id = getattr(socket_user, "id", None) if getattr(socket_user, "is_authenticated", False) else None
+    if sid:
+        try:
+            from routes.video_routes import handle_video_disconnect
+            handle_video_disconnect(sid, user_id=user_id)
+        except Exception:
+            pass
+    if socket_user and getattr(socket_user, "is_authenticated", False):
         OnlineTracker.set_offline(socket_user.id)
