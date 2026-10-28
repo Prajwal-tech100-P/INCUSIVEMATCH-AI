@@ -21,7 +21,7 @@
     <nav class="navbar navbar-expand-lg navbar-light bg-white sticky-top shadow-sm py-3">
         <div class="container">
             {% set is_admin_section = (request.blueprint == 'admin' or (request.path and request.path.startswith('/admin')) or (request.endpoint and request.endpoint.startswith('admin.'))) %}
-            <a class="navbar-brand fw-bold fs-5 text-dark d-flex align-items-center" href="/">
+            <a class="navbar-brand fw-bold fs-5 text-dark d-flex align-items-center" href="{% if is_admin_section %}{{ url_for('admin.dashboard') }}{% else %}/{% endif %}">
                 <i class="bi bi-heart-pulse-fill text-primary me-2"></i>InclusiveMatch AI
                 {% if is_admin_section %}
                 <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-2 fs-6 fw-semibold py-1 px-2 rounded-3">Admin Portal</span>
@@ -42,10 +42,6 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('community.home') }}"><span class="me-1">🤟</span>Community</a>
-                        </li>
-                        {% else %}
-                        <li class="nav-item">
-                            <a class="nav-link text-primary fw-semibold" href="{{ url_for('main.dashboard') }}"><i class="bi bi-arrow-left-circle me-1"></i>Exit Admin</a>
                         </li>
                         {% endif %}
                         <li class="nav-item dropdown">

@@ -112,9 +112,9 @@ def login():
                 ):
                     next_page = None
 
-            return redirect(
-                next_page or url_for('main.dashboard')
-            )
+            if user.is_admin():
+                return redirect(next_page or url_for('admin.dashboard'))
+            return redirect(next_page or url_for('main.dashboard'))
 
         else:
             flash(
