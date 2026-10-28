@@ -26,6 +26,8 @@ class Config:
     else:
         SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_urlsafe(48)
 
+    TEMPLATES_AUTO_RELOAD = True
+
     MONGO_URI = os.environ.get(
         "MONGO_URI",
         "mongodb://localhost:27017/inclusive_match_db"
