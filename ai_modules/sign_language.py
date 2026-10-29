@@ -22,18 +22,20 @@ Model paths (searched in order)
 
 from __future__ import annotations
 
+import logging
 import math
+import os
 import threading
 from collections import deque
 from enum import Enum
-import math
 from pathlib import Path
-import threading
 import time
 from typing import Dict, List, Optional, Tuple, Any
 
 import cv2
 import numpy as np
+
+logger = logging.getLogger("ai_modules.sign_language")
 
 
 # ---------------------------------------------------------------------------
@@ -404,6 +406,7 @@ class SignLanguageRecognizer:
         self.mean: Optional[np.ndarray] = None
         self.std: Optional[np.ndarray] = None
         self.lock = threading.Lock()
+        self.debug = os.environ.get("SIGN_AI_DEBUG", "0").lower() in ("1", "true", "yes")
         self.sequences: Dict[str, deque] = {}
         self.empty_streak: Dict[str, int] = {}
         self.recent_predictions: Dict[str, deque] = {}
@@ -599,42 +602,98 @@ class SignLanguageRecognizer:
         Extract (42, 2) float32 landmark array from BGR image:
         Hand 1 at nodes 0..20, Hand 2 at nodes 21..41.
         Returns None if no hand detected.
+
+        Consistent handedness ordering:
+        - When 1 hand is detected: mapped to Hand 1 (joints 0..20), Hand 2 left all zero.
+        - When 2 hands are detected: Right hand placed at Hand 1 (joints 0..20) and
+          Left hand at Hand 2 (joints 21..41) using MediaPipe handedness.
         """
+        if frame_bgr is None or not hasattr(frame_bgr, "size") or frame_bgr.size == 0 or frame_bgr.ndim != 3:
+            return None
+
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
         # 1. New MediaPipe Tasks API
         if self.landmarker is not None:
-            import mediapipe as mp
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-            with self.lock:
-                result = self.landmarker.detect(mp_image)
+            try:
+                import mediapipe as mp
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                with self.lock:
+                    result = self.landmarker.detect(mp_image)
 
-            if not result or not result.hand_landmarks:
+                if not result or not result.hand_landmarks:
+                    return None
+
+                joints = np.zeros((_NUM_NODES, 2), dtype=np.float32)
+                num_hands = len(result.hand_landmarks)
+
+                if num_hands == 1:
+                    for lm_idx, lm in enumerate(result.hand_landmarks[0][:_LANDMARKS_PER_HAND]):
+                        joints[lm_idx, 0] = float(lm.x)
+                        joints[lm_idx, 1] = float(lm.y)
+                else:
+                    hands_with_meta = []
+                    for h_idx in range(min(num_hands, 2)):
+                        lms = result.hand_landmarks[h_idx]
+                        cat = ""
+                        if result.handedness and h_idx < len(result.handedness) and result.handedness[h_idx]:
+                            cat = getattr(result.handedness[h_idx][0], "category_name", "")
+                        hands_with_meta.append((cat, lms))
+
+                    if len(hands_with_meta) == 2 and hands_with_meta[0][0] == "Left" and hands_with_meta[1][0] == "Right":
+                        hands_with_meta.reverse()
+
+                    for h_idx, (_, lms) in enumerate(hands_with_meta[:2]):
+                        offset = h_idx * _LANDMARKS_PER_HAND
+                        for lm_idx, lm in enumerate(lms[:_LANDMARKS_PER_HAND]):
+                            joints[offset + lm_idx, 0] = float(lm.x)
+                            joints[offset + lm_idx, 1] = float(lm.y)
+
+                return joints
+            except Exception as exc:
+                if getattr(self, "debug", False):
+                    logger.debug("[SignRecognizer] landmarker.detect error: %s", exc)
                 return None
-
-            joints = np.zeros((_NUM_NODES, 2), dtype=np.float32)
-            for hand_idx, hand_landmarks in enumerate(result.hand_landmarks[:2]):
-                offset = hand_idx * _LANDMARKS_PER_HAND
-                for lm_idx, lm in enumerate(hand_landmarks[:_LANDMARKS_PER_HAND]):
-                    joints[offset + lm_idx, 0] = float(lm.x)
-                    joints[offset + lm_idx, 1] = float(lm.y)
-            return joints
 
         # 2. Legacy MediaPipe solutions API
         if self.legacy_hands is not None:
-            with self.lock:
-                result = self.legacy_hands.process(rgb)
+            try:
+                with self.lock:
+                    result = self.legacy_hands.process(rgb)
 
-            if not result or not result.multi_hand_landmarks:
+                if not result or not result.multi_hand_landmarks:
+                    return None
+
+                joints = np.zeros((_NUM_NODES, 2), dtype=np.float32)
+                num_hands = len(result.multi_hand_landmarks)
+
+                if num_hands == 1:
+                    for lm_idx, lm in enumerate(result.multi_hand_landmarks[0].landmark[:_LANDMARKS_PER_HAND]):
+                        joints[lm_idx, 0] = float(lm.x)
+                        joints[lm_idx, 1] = float(lm.y)
+                else:
+                    hands_with_meta = []
+                    for h_idx in range(min(num_hands, 2)):
+                        lms = result.multi_hand_landmarks[h_idx]
+                        cat = ""
+                        if result.multi_handedness and h_idx < len(result.multi_handedness):
+                            cat = result.multi_handedness[h_idx].classification[0].label
+                        hands_with_meta.append((cat, lms))
+
+                    if len(hands_with_meta) == 2 and hands_with_meta[0][0] == "Left" and hands_with_meta[1][0] == "Right":
+                        hands_with_meta.reverse()
+
+                    for h_idx, (_, lms) in enumerate(hands_with_meta[:2]):
+                        offset = h_idx * _LANDMARKS_PER_HAND
+                        for lm_idx, lm in enumerate(lms.landmark[:_LANDMARKS_PER_HAND]):
+                            joints[offset + lm_idx, 0] = float(lm.x)
+                            joints[offset + lm_idx, 1] = float(lm.y)
+
+                return joints
+            except Exception as exc:
+                if getattr(self, "debug", False):
+                    logger.debug("[SignRecognizer] legacy_hands.process error: %s", exc)
                 return None
-
-            joints = np.zeros((_NUM_NODES, 2), dtype=np.float32)
-            for hand_idx, hand_landmarks in enumerate(result.multi_hand_landmarks[:2]):
-                offset = hand_idx * _LANDMARKS_PER_HAND
-                for lm_idx, lm in enumerate(hand_landmarks.landmark[:_LANDMARKS_PER_HAND]):
-                    joints[offset + lm_idx, 0] = float(lm.x)
-                    joints[offset + lm_idx, 1] = float(lm.y)
-            return joints
 
         return None
 
@@ -854,10 +913,10 @@ class SignLanguageRecognizer:
                     )
 
                 activity_info = detector.update(joints, prediction=display_text, confidence=smoothed_conf)
-                accepted = activity_info["accepted_sign"] or display_text
+                new_token = activity_info.get("accepted_sign", "")
 
                 return _resp(
-                    accepted,
+                    display_text,
                     round(smoothed_conf * 100, 1),
                     f"Recognized: {display_text}",
                     ready=True,
@@ -867,6 +926,7 @@ class SignLanguageRecognizer:
                     turn_completed=activity_info["turn_completed"],
                     phrase=activity_info["phrase"],
                     finalized_phrase=activity_info["finalized_phrase"],
+                    new_token=new_token,
                 )
             except Exception as exc:
                 activity_info = detector.update(joints, prediction="", confidence=0.0)
@@ -973,6 +1033,7 @@ def _resp(
     turn_completed: bool = False,
     phrase: str = "",
     finalized_phrase: str = "",
+    new_token: str = "",
 ) -> dict:
     out: dict = {
         "text": text,
@@ -983,6 +1044,7 @@ def _resp(
         "turn_completed": turn_completed,
         "phrase": phrase,
         "finalized_phrase": finalized_phrase,
+        "new_token": new_token,
     }
     if ready is not None:
         out["ready"] = ready

@@ -227,8 +227,8 @@
                                             <span class="badge bg-indigo-subtle text-indigo rounded-pill d-flex align-items-center px-2 py-1" style="background-color: #eef2ff; color: #4f46e5;"><i class="bi bi-lightning-fill text-warning me-1"></i>{{ candidate.get('_match_score', 0) }}% Match</span>
                                         </div>
                                         <div class="text-muted small mt-1">
-                                            <span>{{ candidate.get('age', '25') }} • {{ candidate.get('gender', 'Male') }}</span><br>
-                                            <span><i class="bi bi-geo-alt me-1"></i>{{ candidate.get('location') if candidate.get('location') is string else (candidate.get('location') or {}).get('city', 'Unknown') }}</span>
+                                            <span>{{ candidate.get('age', '18') }} • {{ candidate.get('gender', 'Not Specified') }}</span><br>
+                                            <span><i class="bi bi-geo-alt me-1"></i>{{ candidate.get('location') if candidate.get('location') is string else (candidate.get('location') or {}).get('city', 'Unknown') }}</span>{% if candidate.get('relationship_goal') %}<span class="badge bg-light text-secondary rounded-pill border ms-2"><i class="bi bi-heart me-1 text-danger"></i>{{ candidate.get('relationship_goal') }}</span>{% endif %}
                                         </div>
                                     </div>
                                 </div>
@@ -245,9 +245,9 @@
                                 </div>
                                 
                                 <div class="text-muted small mb-2 d-none d-md-flex align-items-center">
-                                    <span>{{ candidate.get('age', '25') }} • {{ candidate.get('gender', 'Male') }}</span>
+                                    <span>{{ candidate.get('age', '18') }} • {{ candidate.get('gender', 'Not Specified') }}</span>
                                     <span class="mx-2">•</span>
-                                    <span><i class="bi bi-geo-alt me-1"></i>{{ candidate.get('location') if candidate.get('location') is string else (candidate.get('location') or {}).get('city', 'Unknown') }}</span>
+                                    <span><i class="bi bi-geo-alt me-1"></i>{{ candidate.get('location') if candidate.get('location') is string else (candidate.get('location') or {}).get('city', 'Unknown') }}</span>{% if candidate.get('relationship_goal') %}<span class="badge bg-light text-secondary rounded-pill border ms-2"><i class="bi bi-heart me-1 text-danger"></i>{{ candidate.get('relationship_goal') }}</span>{% endif %}
                                 </div>
 
                                 <!-- Desktop Interests with Mutual Highlighting -->
@@ -267,10 +267,10 @@
                                 <!-- Action Buttons -->
                                 <div class="mt-auto d-flex justify-content-between align-items-center pt-3 border-top">
                                     <div class="d-flex gap-1 text-primary align-items-center" style="font-size: 0.9rem;">
-                                        {% if 'text' in (candidate.get('comm_prefs') or []) or candidate.get('comm_pref') == 'text' %}
+                                        {% set c_comm = ((candidate.get('communication_preferences') or candidate.get('comm_prefs') or []) | join(' ') | lower) + ' ' + (candidate.get('comm_pref', '') | lower) %}{% if 'text' in c_comm %}
                                             <i class="bi bi-chat-text bg-light p-1 rounded text-muted" title="Text Chat"></i>
                                         {% endif %}
-                                        {% if 'sign_language' in (candidate.get('comm_prefs') or []) or candidate.get('comm_pref') == 'sign' %}
+                                        {% if 'sign' in c_comm %}
                                             <i class="bi bi-camera-video bg-light p-1 rounded text-muted" title="Sign Language"></i>
                                         {% endif %}
                                     </div>

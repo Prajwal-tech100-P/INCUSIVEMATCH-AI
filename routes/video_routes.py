@@ -90,12 +90,35 @@ def video_call(partner_id):
 @login_required
 def recognize_sign():
     if "frame" not in request.files:
-        return jsonify(text="", confidence=0, message="No frame supplied."), 400
-    frame = request.files["frame"].read()
+        return jsonify(text="", confidence=0, message="No frame supplied.", ready=False), 400
+    frame_file = request.files["frame"]
+    frame = frame_file.read()
+    if not frame or len(frame) == 0:
+        return jsonify(text="", confidence=0, message="Empty frame supplied.", ready=False), 400
     if len(frame) > 2 * 1024 * 1024:
-        return jsonify(text="", confidence=0, message="Frame is too large."), 413
-    result = recognizer.recognize_frame(frame, user_id=current_user.id)
-    return jsonify(result)
+        return jsonify(text="", confidence=0, message="Frame is too large.", ready=False), 413
+
+    source = request.form.get("source", "").strip()
+    session_key = f"{current_user.id}_{source}" if source in ("local", "remote") else str(current_user.id)
+    try:
+        result = recognizer.recognize_frame(frame, user_id=session_key)
+        return jsonify(result)
+    except Exception as exc:
+        current_app.logger.error("Sign recognition error: %s", exc)
+        return jsonify(text="", confidence=0, message=f"Recognition error: {exc}", ready=False), 200
+
+
+@video_bp.route("/api/sign/reset", methods=["POST"])
+@login_required
+def reset_sign():
+    source = request.form.get("source", "").strip()
+    uid = str(current_user.id)
+    recognizer.reset_user(uid)
+    recognizer.reset_user(f"{uid}_local")
+    recognizer.reset_user(f"{uid}_remote")
+    if source:
+        recognizer.reset_user(f"{uid}_{source}")
+    return jsonify(ok=True)
 
 
 @socketio.on("call_user")
@@ -103,6 +126,11 @@ def call_user(data):
     """Create a short-lived authenticated invitation and notify the recipient."""
     if not current_user.is_authenticated:
         return {"ok": False, "message": "Please log in again."}
+
+    # Verify sender restriction
+    current_user.check_and_lift_restriction()
+    if current_user.block_expiry and datetime.utcnow() < current_user.block_expiry:
+        return {"ok": False, "message": "Your account is temporarily restricted from initiating calls."}
 
     data = data or {}
     partner_id = str(data.get("partner_id", "")).strip()
@@ -119,6 +147,9 @@ def call_user(data):
     if not partner or not Match.are_matched(current_user.id, partner_id):
         return {"ok": False, "message": "You can only call an active mutual match."}
 
+    from models.message import OnlineTracker
+    recipient_online = OnlineTracker.is_online(partner_id)
+
     call_id = CallInvitation.create(current_user.id, partner_id)
     socketio.emit(
         "incoming_call",
@@ -128,10 +159,11 @@ def call_user(data):
             "caller_name": current_user.name,
             "caller_avatar": getattr(current_user, "avatar_url", "/static/uploads/default.png"),
             "message": f"{current_user.name} is calling you.",
+            "recipient_online": recipient_online,
         },
         to=f"user:{partner_id}",
     )
-    return {"ok": True, "call_id": call_id, "message": "Calling the user."}
+    return {"ok": True, "call_id": call_id, "message": "Calling the user.", "recipient_online": recipient_online}
 
 
 @socketio.on("cancel_call")
@@ -144,9 +176,11 @@ def cancel_call(data):
     call_id = str(data.get("call_id", "")).strip()
     
     if not partner_id or not call_id:
-        return {"ok": False}
+        return {"ok": False, "message": "Missing partner_id or call_id."}
 
-    CallInvitation.cancel(call_id, current_user.id)
+    ok = CallInvitation.cancel(call_id, current_user.id)
+    if not ok:
+        return {"ok": False, "message": "Call not found, already handled, or unauthorized."}
 
     socketio.emit(
         "call_cancelled",
@@ -367,6 +401,13 @@ def _handle_call_termination(data, reason="hangup"):
         emit("call_ended", termination_payload, to=f"user:{partner_id}")
         emit("call_terminated", termination_payload, to=f"user:{partner_id}")
 
+    # Reset sign recognition sessions for leaving participant
+    uid_str = str(current_user.id) if current_user.is_authenticated else ""
+    if uid_str:
+        recognizer.reset_user(uid_str)
+        recognizer.reset_user(f"{uid_str}_local")
+        recognizer.reset_user(f"{uid_str}_remote")
+
     leave_room(room)
     return {"ok": True, "message": "Call ended successfully.", "call_id": resolved_call_id}
 
@@ -404,6 +445,10 @@ def handle_video_disconnect(sid, user_id=None):
         socketio.emit("call_ended", payload, to=room)
         socketio.emit("call_terminated", payload, to=room)
         socketio.emit("peer_left", {"user_id": uid, "reason": "disconnected"}, to=room)
+    if uid:
+        recognizer.reset_user(str(uid))
+        recognizer.reset_user(f"{uid}_local")
+        recognizer.reset_user(f"{uid}_remote")
     if partner_id:
         socketio.emit("call_ended", payload, to=f"user:{partner_id}")
         socketio.emit("call_terminated", payload, to=f"user:{partner_id}")

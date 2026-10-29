@@ -483,10 +483,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let currentOutgoingCallId = null;
 let currentOutgoingPartnerId = null;
+let outgoingTimeoutTimer = null;
 
 function showOutgoingCallUI(partnerId, partnerName) {
     const old = document.getElementById('outgoing-call-overlay');
     if (old) old.remove();
+
+    if (outgoingTimeoutTimer) {
+        clearTimeout(outgoingTimeoutTimer);
+        outgoingTimeoutTimer = null;
+    }
 
     const overlay = document.createElement('div');
     overlay.id = 'outgoing-call-overlay';
@@ -505,6 +511,23 @@ function showOutgoingCallUI(partnerId, partnerName) {
     `;
     document.body.appendChild(overlay);
 
+    // Auto-cancel and notify after 60-second TTL if recipient doesn't answer
+    outgoingTimeoutTimer = setTimeout(() => {
+        const socket = window.inclusiveSocket || getInclusiveSocket();
+        if (socket && currentOutgoingCallId && currentOutgoingPartnerId) {
+            socket.emit('cancel_call', {
+                call_id: currentOutgoingCallId,
+                partner_id: currentOutgoingPartnerId
+            });
+        }
+        cleanupOutgoingCallUI();
+        showRealtimeNotification({
+            type: 'call',
+            title: 'Call Unanswered',
+            message: `${partnerName} did not answer the call.`
+        });
+    }, 60000);
+
     document.getElementById('outgoing-cancel-btn').onclick = () => {
         const socket = window.inclusiveSocket || getInclusiveSocket();
         if (socket && currentOutgoingCallId && currentOutgoingPartnerId) {
@@ -518,6 +541,10 @@ function showOutgoingCallUI(partnerId, partnerName) {
 }
 
 function cleanupOutgoingCallUI() {
+    if (outgoingTimeoutTimer) {
+        clearTimeout(outgoingTimeoutTimer);
+        outgoingTimeoutTimer = null;
+    }
     const overlay = document.getElementById('outgoing-call-overlay');
     if (overlay) overlay.remove();
     currentOutgoingCallId = null;
@@ -656,11 +683,33 @@ function showIncomingCall(data, socket) {
     }
 
     let timeoutTimer = null;
+    let backgroundNotif = null;
+
+    if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+            backgroundNotif = new Notification(`Incoming Video Call from ${callerName}`, {
+                body: 'Click to view and answer the call.',
+                icon: data.caller_avatar || '/static/uploads/default.png',
+                tag: `call-${callId}`,
+                requireInteraction: true
+            });
+            backgroundNotif.onclick = () => {
+                window.focus();
+                backgroundNotif.close();
+            };
+        } catch (e) {
+            console.warn('System notification error:', e);
+        }
+    }
 
     const cleanup = () => {
         if (timeoutTimer) {
             clearTimeout(timeoutTimer);
             timeoutTimer = null;
+        }
+        if (backgroundNotif) {
+            try { backgroundNotif.close(); } catch (e) {}
+            backgroundNotif = null;
         }
         cancelledCallIds.add(String(data.call_id));
         stopRingtone(data.call_id);

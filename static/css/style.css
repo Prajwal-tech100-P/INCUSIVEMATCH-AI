@@ -181,7 +181,15 @@ html, body {
 }
 
 /* Touch targets: practical tap area >= 44x44px */
-.btn, .nav-link, .form-check-label, .dropdown-item {
+.btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.nav-link, .form-check-label, .dropdown-item {
     min-height: 44px;
     display: inline-flex;
     align-items: center;

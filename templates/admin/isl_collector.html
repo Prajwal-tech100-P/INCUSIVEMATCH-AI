@@ -1,0 +1,480 @@
+{% extends "base.html" %}
+{% block title %}ISL Dataset Studio - Inclusive Match AI{% endblock %}
+
+{% block extra_head %}
+<style>
+.admin-shell { min-height: 75vh; }
+.admin-card { border: 0; border-radius: 20px; box-shadow: 0 10px 30px rgba(15,23,42,.06); }
+.studio-video-container {
+    position: relative;
+    background: #0f172a;
+    border-radius: 16px;
+    overflow: hidden;
+    min-height: 380px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#webcam-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+}
+.studio-overlay-badge {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    background: rgba(15, 23, 42, 0.75);
+    color: #fff;
+    padding: 6px 14px;
+    border-radius: 30px;
+    font-size: 0.85rem;
+    backdrop-filter: blur(4px);
+    z-index: 10;
+}
+.studio-countdown-overlay {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.65);
+    color: #fff;
+    font-size: 5rem;
+    font-weight: 800;
+    z-index: 20;
+}
+.rec-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ef4444;
+    animation: pulse 1s infinite;
+}
+@keyframes pulse {
+    0% { transform: scale(0.95); opacity: 0.7; }
+    50% { transform: scale(1.2); opacity: 1; }
+    100% { transform: scale(0.95); opacity: 0.7; }
+}
+.class-chip {
+    font-size: 0.8rem;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: #f1f5f9;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.class-chip:hover, .class-chip.active {
+    background: #6366f1;
+    color: #fff;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid container-xl py-4 admin-shell">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1">
+                    <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard') }}">Admin</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">ISL Dataset Studio</li>
+                </ol>
+            </nav>
+            <h2 class="fw-bold mb-1">Indian Sign Language Dataset Studio</h2>
+            <p class="text-muted mb-0">Record webcam landmark sequences, expand sign vocabulary, and manage training data.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button id="btn-sync-benchmark" class="btn btn-outline-primary rounded-pill px-3" onclick="syncBenchmarkData()">
+                <i class="bi bi-cloud-arrow-down me-1"></i>Sync Benchmark (608 samples)
+            </button>
+            <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-secondary rounded-pill px-3">
+                <i class="bi bi-arrow-left me-1"></i>Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Alert Banner -->
+    <div id="studio-alert" class="alert d-none rounded-4 mb-4" role="alert"></div>
+
+    <div class="row g-4">
+        <!-- Left: Camera Preview & Recording Canvas -->
+        <div class="col-lg-7">
+            <div class="card admin-card p-3 h-100">
+                <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-camera-video me-2 text-primary"></i>Webcam Stream</h5>
+                    <span id="camera-status-badge" class="badge bg-secondary rounded-pill">Initializing...</span>
+                </div>
+
+                <div class="studio-video-container mb-3">
+                    <video id="webcam-preview" autoplay playsinline muted></video>
+                    <div id="countdown-overlay" class="studio-countdown-overlay">3</div>
+                    <div class="studio-overlay-badge">
+                        <span id="overlay-sign-label" class="fw-bold">Sign: NONE</span>
+                        <span id="overlay-rec-badge" class="ms-2 d-none"><span class="rec-indicator me-1"></span>REC</span>
+                    </div>
+                </div>
+
+                <!-- Capture Controls -->
+                <div class="p-3 bg-light rounded-4">
+                    <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-3">
+                        <div class="d-flex gap-2 align-items-center">
+                            <button id="btn-start-record" class="btn btn-primary rounded-pill px-4" onclick="startCountdownAndRecord()">
+                                <i class="bi bi-record-circle me-1"></i>Start Recording
+                            </button>
+                            <button id="btn-stop-record" class="btn btn-outline-danger rounded-pill px-3 d-none" onclick="stopRecording()">
+                                <i class="bi bi-stop-circle me-1"></i>Stop
+                            </button>
+                        </div>
+                        <div class="text-muted small">
+                            Target: <span id="target-frames-display" class="fw-bold">45</span> frames (~1.5s at 30 FPS)
+                        </div>
+                    </div>
+
+                    <!-- Progress bar -->
+                    <div class="progress mb-2 d-none" id="rec-progress-container" style="height: 10px; border-radius: 8px;">
+                        <div id="rec-progress-bar" class="progress-bar bg-danger progress-bar-striped progress-bar-animated" style="width: 0%"></div>
+                    </div>
+
+                    <!-- Recording Result Review -->
+                    <div id="review-panel" class="d-none mt-3 p-3 bg-white rounded-3 border">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-bold text-success"><i class="bi bi-check-circle me-1"></i>Sequence Captured</span>
+                            <span id="review-frames-count" class="badge bg-primary rounded-pill">0 frames</span>
+                        </div>
+                        <p class="small text-muted mb-3" id="review-quality-msg">Ready to save into dataset.</p>
+                        <div class="d-flex gap-2">
+                            <button id="btn-save-recording" class="btn btn-success rounded-pill px-3 btn-sm" onclick="saveCapturedSequence()">
+                                <i class="bi bi-cloud-upload me-1"></i>Save to Dataset
+                            </button>
+                            <button class="btn btn-outline-secondary rounded-pill px-3 btn-sm" onclick="discardCapturedSequence()">
+                                <i class="bi bi-trash me-1"></i>Discard
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Sign Class Management & Dataset Summary -->
+        <div class="col-lg-5">
+            <div class="card admin-card p-4 mb-4">
+                <h5 class="fw-bold mb-3"><i class="bi bi-tag me-2 text-primary"></i>Select Sign to Record</h5>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small text-muted">Choose Active Class</label>
+                    <select id="class-select" class="form-select rounded-3 py-2" onchange="onClassSelected()">
+                        <!-- Populated by JavaScript -->
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small text-muted">Or Introduce New Sign</label>
+                    <div class="input-group">
+                        <input type="text" id="new-class-input" class="form-control rounded-start-3" placeholder="e.g. good_morning, happy">
+                        <button class="btn btn-outline-primary" type="button" onclick="addNewClass()">
+                            <i class="bi bi-plus-circle me-1"></i>Add
+                        </button>
+                    </div>
+                </div>
+
+                <div class="p-3 bg-light rounded-4">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="text-muted small">Current Class Samples:</span>
+                        <span id="current-class-sample-badge" class="badge bg-indigo rounded-pill text-bg-primary fs-6">0</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <span class="text-muted small">Total Dataset Samples:</span>
+                        <span id="total-samples-badge" class="fw-bold text-dark">0</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <span class="text-muted small">Total Supported Classes:</span>
+                        <span id="total-classes-badge" class="fw-bold text-dark">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Class Navigator -->
+            <div class="card admin-card p-4">
+                <h6 class="fw-bold mb-2">Class Vocabulary Directory</h6>
+                <p class="text-muted small mb-3">Click any sign to select it for recording:</p>
+                <div id="class-chips-container" class="d-flex flex-wrap gap-2" style="max-height: 250px; overflow-y: auto;">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let videoEl = document.getElementById("webcam-preview");
+let currentMediaStream = null;
+let isRecording = false;
+let recordedFrames = [];
+let targetFrames = 45;
+let animationFrameId = null;
+
+// Off-screen canvas for capturing image frames
+let captureCanvas = document.createElement("canvas");
+let captureCtx = captureCanvas.getContext("2d");
+
+async function initWebcam() {
+    try {
+        currentMediaStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
+            audio: false
+        });
+        videoEl.srcObject = currentMediaStream;
+        await videoEl.play();
+        document.getElementById("camera-status-badge").className = "badge bg-success rounded-pill";
+        document.getElementById("camera-status-badge").innerText = "Camera Active";
+    } catch (err) {
+        console.error("Camera access error:", err);
+        document.getElementById("camera-status-badge").className = "badge bg-danger rounded-pill";
+        document.getElementById("camera-status-badge").innerText = "Camera Blocked";
+        showAlert("Camera access denied or unavailable: " + err.message, "danger");
+    }
+}
+
+async function loadDatasetSummary() {
+    try {
+        const res = await fetch("/admin/api/isl/classes");
+        const data = await res.json();
+        if (data.ok) {
+            updateClassSelect(data.classes, data.summary);
+            document.getElementById("total-samples-badge").innerText = data.summary.total_samples || 0;
+            document.getElementById("total-classes-badge").innerText = data.summary.num_classes || 0;
+        }
+    } catch (err) {
+        console.error("Failed to load dataset classes:", err);
+    }
+}
+
+function updateClassSelect(classes, summary) {
+    const sel = document.getElementById("class-select");
+    const chips = document.getElementById("class-chips-container");
+    const prevVal = sel.value;
+    sel.innerHTML = "";
+    chips.innerHTML = "";
+
+    classes.forEach(c => {
+        const count = (summary.classes && summary.classes[c]) ? summary.classes[c] : 0;
+        const opt = document.createElement("option");
+        opt.value = c;
+        opt.textContent = `${c} (${count} samples)`;
+        sel.appendChild(opt);
+
+        // Chip
+        const chip = document.createElement("span");
+        chip.className = "class-chip" + (c === sel.value ? " active" : "");
+        chip.textContent = `${c} [${count}]`;
+        chip.onclick = () => {
+            sel.value = c;
+            onClassSelected();
+        };
+        chips.appendChild(chip);
+    });
+
+    if (prevVal && classes.includes(prevVal)) {
+        sel.value = prevVal;
+    }
+    onClassSelected();
+}
+
+function onClassSelected() {
+    const sel = document.getElementById("class-select");
+    const selected = sel.value;
+    document.getElementById("overlay-sign-label").innerText = "Sign: " + selected.toUpperCase();
+
+    // Update chip active states
+    document.querySelectorAll(".class-chip").forEach(ch => {
+        if (ch.textContent.startsWith(selected + " ")) {
+            ch.classList.add("active");
+        } else {
+            ch.classList.remove("active");
+        }
+    });
+
+    // Update current count badge
+    const optText = sel.options[sel.selectedIndex]?.text || "";
+    const match = optText.match(/\((\d+)\s+samples\)/);
+    const count = match ? match[1] : 0;
+    document.getElementById("current-class-sample-badge").innerText = count;
+}
+
+async function addNewClass() {
+    const input = document.getElementById("new-class-input");
+    const val = input.value.trim().toLowerCase().replace(/\s+/g, "_");
+    if (!val) return;
+
+    try {
+        const res = await fetch("/admin/api/isl/add-class", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ class_name: val })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            input.value = "";
+            showAlert(`Class '${val}' created successfully!`, "success");
+            await loadDatasetSummary();
+            document.getElementById("class-select").value = val;
+            onClassSelected();
+        } else {
+            showAlert(data.message || "Could not add class.", "danger");
+        }
+    } catch (err) {
+        showAlert("Request error adding class.", "danger");
+    }
+}
+
+function startCountdownAndRecord() {
+    if (!videoEl.srcObject) {
+        showAlert("Camera not started.", "warning");
+        return;
+    }
+    const overlay = document.getElementById("countdown-overlay");
+    overlay.style.display = "flex";
+    let count = 2;
+    overlay.innerText = count;
+
+    const timer = setInterval(() => {
+        count--;
+        if (count > 0) {
+            overlay.innerText = count;
+        } else {
+            clearInterval(timer);
+            overlay.style.display = "none";
+            startRecordingFrames();
+        }
+    }, 700);
+}
+
+function startRecordingFrames() {
+    isRecording = true;
+    recordedFrames = [];
+    document.getElementById("overlay-rec-badge").classList.remove("d-none");
+    document.getElementById("btn-start-record").classList.add("d-none");
+    document.getElementById("btn-stop-record").classList.remove("d-none");
+    document.getElementById("rec-progress-container").classList.remove("d-none");
+    document.getElementById("review-panel").classList.add("d-none");
+
+    captureCanvas.width = videoEl.videoWidth || 640;
+    captureCanvas.height = videoEl.videoHeight || 480;
+
+    const interval = setInterval(() => {
+        if (!isRecording || recordedFrames.length >= targetFrames) {
+            clearInterval(interval);
+            finishRecording();
+            return;
+        }
+        captureCtx.drawImage(videoEl, 0, 0, captureCanvas.width, captureCanvas.height);
+        const dataUrl = captureCanvas.toDataURL("image/jpeg", 0.75);
+        recordedFrames.push(dataUrl);
+
+        // Update progress bar
+        const pct = Math.round((recordedFrames.length / targetFrames) * 100);
+        document.getElementById("rec-progress-bar").style.width = pct + "%";
+    }, 35); // ~28-30 FPS
+}
+
+function stopRecording() {
+    isRecording = false;
+}
+
+function finishRecording() {
+    isRecording = false;
+    document.getElementById("overlay-rec-badge").classList.add("d-none");
+    document.getElementById("btn-start-record").classList.remove("d-none");
+    document.getElementById("btn-stop-record").classList.add("d-none");
+    document.getElementById("rec-progress-container").classList.add("d-none");
+
+    if (recordedFrames.length < 10) {
+        showAlert("Recording too short. Please try again.", "warning");
+        return;
+    }
+
+    document.getElementById("review-panel").classList.remove("d-none");
+    document.getElementById("review-frames-count").innerText = `${recordedFrames.length} frames captured`;
+    document.getElementById("review-quality-msg").innerText = "Ready to extract landmarks and save.";
+}
+
+function discardCapturedSequence() {
+    recordedFrames = [];
+    document.getElementById("review-panel").classList.add("d-none");
+}
+
+async function saveCapturedSequence() {
+    const className = document.getElementById("class-select").value;
+    if (!className || recordedFrames.length === 0) return;
+
+    const btn = document.getElementById("btn-save-recording");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Processing...';
+
+    try {
+        const res = await fetch("/admin/api/isl/save-recording", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                class_name: className,
+                frames: recordedFrames
+            })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showAlert(`Saved sample for '${className}'! Active frames: ${data.active_frames}/${data.total_frames}`, "success");
+            discardCapturedSequence();
+            await loadDatasetSummary();
+        } else {
+            showAlert(data.message || "Failed to save sequence.", "danger");
+        }
+    } catch (err) {
+        console.error("Save error:", err);
+        showAlert("Error uploading recording.", "danger");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Save to Dataset';
+    }
+}
+
+async function syncBenchmarkData() {
+    const btn = document.getElementById("btn-sync-benchmark");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Syncing...';
+
+    try {
+        const res = await fetch("/admin/api/isl/sync", { method: "POST" });
+        const data = await res.json();
+        if (data.ok) {
+            showAlert(`Benchmark sync complete! ${data.synced_count} samples synced.`, "success");
+            await loadDatasetSummary();
+        } else {
+            showAlert(data.message || "Sync failed.", "danger");
+        }
+    } catch (err) {
+        showAlert("Network error during sync.", "danger");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-cloud-arrow-down me-1"></i>Sync Benchmark (608 samples)';
+    }
+}
+
+function showAlert(msg, type) {
+    const el = document.getElementById("studio-alert");
+    el.className = `alert alert-${type} rounded-4 mb-4`;
+    el.innerText = msg;
+    el.classList.remove("d-none");
+    setTimeout(() => { el.classList.add("d-none"); }, 6000);
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+    initWebcam();
+    loadDatasetSummary();
+});
+</script>
+{% endblock %}
+

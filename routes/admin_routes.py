@@ -315,3 +315,149 @@ def update_grievance_status(grievance_id):
         flash("Database error while updating grievance status.", "danger")
 
     return redirect(url_for("admin.grievances"))
+
+
+
+# ---------------------------------------------------------------------------
+# Indian Sign Language (ISL) Dataset Studio & Management Endpoints
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/isl-studio")
+@admin_bp.route("/isl-collector")
+@admin_required
+def isl_studio():
+    """Protected admin interface for ISL webcam recording and dataset collection."""
+    from ai_modules.isl_dataset_manager import ISLDatasetManager
+    mgr = ISLDatasetManager()
+    summary = mgr.get_summary()
+    return render_template("admin/isl_collector.html", summary=summary)
+
+
+@admin_bp.route("/api/isl/classes", methods=["GET"])
+@admin_required
+def api_isl_classes():
+    """Returns list of supported classes and sample counts."""
+    from ai_modules.isl_dataset_manager import ISLDatasetManager
+    mgr = ISLDatasetManager()
+    summary = mgr.get_summary()
+    classes = mgr.get_supported_classes()
+    return {
+        "ok": True,
+        "classes": classes,
+        "summary": summary
+    }
+
+
+@admin_bp.route("/api/isl/add-class", methods=["POST"])
+@admin_required
+def api_isl_add_class():
+    """Registers a new ISL vocabulary class."""
+    from flask import jsonify
+    data = request.get_json(silent=True) or {}
+    class_name = str(data.get("class_name", "")).strip()
+    if not class_name:
+        return jsonify(ok=False, message="Class name is required."), 400
+
+    from ai_modules.isl_dataset_manager import ISLDatasetManager
+    mgr = ISLDatasetManager()
+    try:
+        norm_class = mgr.add_class(class_name)
+        return jsonify(ok=True, class_name=norm_class, message=f"Class '{norm_class}' added successfully.")
+    except Exception as exc:
+        return jsonify(ok=False, message=str(exc)), 400
+
+
+@admin_bp.route("/api/isl/save-recording", methods=["POST"])
+@admin_required
+def api_isl_save_recording():
+    """
+    Extracts MediaPipe landmarks from uploaded webcam frame bundle
+    and saves sequence into datasets/isl_custom/<class_name>/<rec_id>.npy.
+    """
+    import base64
+    import cv2
+    import numpy as np
+    from flask import jsonify
+    from ai_modules.isl_dataset_manager import ISLDatasetManager
+    from ai_modules.sign_language import SignLanguageRecognizer
+
+    data = request.get_json(silent=True) or {}
+    class_name = str(data.get("class_name", "")).strip()
+    if not class_name:
+        return jsonify(ok=False, message="Class name is required."), 400
+
+    mgr = ISLDatasetManager()
+    recognizer = SignLanguageRecognizer()
+
+    # Case A: Raw landmark array passed directly
+    if "landmarks" in data and isinstance(data["landmarks"], list):
+        lms_arr = np.array(data["landmarks"], dtype=np.float32)
+        ok, msg, info = mgr.save_recording(
+            class_name=class_name,
+            landmark_sequence=lms_arr,
+            signer_id=f"admin_{current_user.id}",
+            source="admin_studio_direct"
+        )
+        status_code = 200 if ok else 400
+        return jsonify(ok=ok, message=msg, **info), status_code
+
+    # Case B: Frame bundle (base64 image URLs)
+    frames_b64 = data.get("frames", [])
+    if not frames_b64 or not isinstance(frames_b64, list):
+        return jsonify(ok=False, message="No frames provided."), 400
+
+    extracted_landmarks = []
+    active_count = 0
+
+    for f_item in frames_b64:
+        if not isinstance(f_item, str) or not f_item:
+            continue
+        try:
+            if "," in f_item:
+                f_item = f_item.split(",", 1)[1]
+            img_bytes = base64.b64decode(f_item)
+            nparr = np.frombuffer(img_bytes, np.uint8)
+            frame_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if frame_bgr is None:
+                continue
+
+            joints = recognizer._extract_landmarks(frame_bgr)
+            if joints is not None:
+                extracted_landmarks.append(joints.reshape(84).astype(np.float32))
+                active_count += 1
+            else:
+                extracted_landmarks.append(np.zeros(84, dtype=np.float32))
+        except Exception:
+            extracted_landmarks.append(np.zeros(84, dtype=np.float32))
+
+    if len(extracted_landmarks) < 8:
+        return jsonify(ok=False, message=f"Only {len(extracted_landmarks)} frames processed. Minimum 8 required."), 400
+
+    if active_count < 5:
+        return jsonify(
+            ok=False,
+            message=f"Only {active_count} frames had detected hands. Please ensure both hands or signing hand are clearly visible."
+        ), 400
+
+    seq_arr = np.stack(extracted_landmarks, axis=0)
+    ok, msg, info = mgr.save_recording(
+        class_name=class_name,
+        landmark_sequence=seq_arr,
+        signer_id=f"admin_{current_user.id}",
+        source="admin_studio_webcam"
+    )
+
+    status_code = 200 if ok else 400
+    return jsonify(ok=ok, message=msg, **info), status_code
+
+
+@admin_bp.route("/api/isl/sync", methods=["POST"])
+@admin_required
+def api_isl_sync():
+    """Syncs existing benchmark dataset (608 samples) into datasets/isl_custom/."""
+    from flask import jsonify
+    from ai_modules.isl_dataset_manager import ISLDatasetManager
+    mgr = ISLDatasetManager()
+    res = mgr.sync_from_external_landmarks()
+    status_code = 200 if res.get("ok") else 500
+    return jsonify(res), status_code

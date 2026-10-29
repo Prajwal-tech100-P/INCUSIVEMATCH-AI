@@ -38,6 +38,7 @@ class UserModel(UserMixin):
         self._is_active = user_doc.get("is_active", True)
         self.liked = user_doc.get("liked", [])
         self.disliked = user_doc.get("disliked", [])
+        self.blocked = user_doc.get("blocked", [])
         
         # Profile fields
         self.age = user_doc.get("age", 18)

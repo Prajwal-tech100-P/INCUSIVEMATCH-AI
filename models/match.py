@@ -21,38 +21,66 @@ except ImportError:
 except Exception:
     ai_recommender = None
 
+
 class Match:
     @staticmethod
     def _oid(value):
-        try: return ObjectId(value)
-        except Exception: return None
+        try:
+            return ObjectId(str(value))
+        except Exception:
+            return None
 
     @staticmethod
     def like(user_id, target_id):
-        if str(user_id) == str(target_id): return False
+        if str(user_id) == str(target_id):
+            return False
         try:
             from models.restriction import Restriction
             if Restriction.is_restricted_either(user_id, target_id):
                 return False
         except Exception:
             pass
+
         target = Match._oid(target_id)
-        if not target: return False
-        result = mongo.db.users.update_one(
-            {"_id": Match._oid(user_id), "role": "user", "is_active": True},
+        u_oid = Match._oid(user_id)
+        if not target or not u_oid:
+            return False
+
+        # Verify target user exists and is an active regular user
+        target_user = mongo.db.users.find_one({"_id": target, "role": "user", "is_active": {"$ne": False}})
+        if not target_user:
+            return False
+
+        # Verify current user exists and is active
+        curr_user = mongo.db.users.find_one({"_id": u_oid, "role": "user", "is_active": {"$ne": False}})
+        if not curr_user:
+            return False
+
+        # Enforce bidirectional blocking
+        u_blocked = [str(x) for x in curr_user.get("blocked", [])]
+        t_blocked = [str(x) for x in target_user.get("blocked", [])]
+        if str(target_id) in u_blocked or str(user_id) in t_blocked:
+            return False
+
+        mongo.db.users.update_one(
+            {"_id": u_oid},
             {"$addToSet": {"liked": str(target_id)}, "$pull": {"disliked": str(target_id)}}
         )
-        return result.modified_count > 0
+        return True
 
     @staticmethod
     def dislike(user_id, target_id):
+        if str(user_id) == str(target_id):
+            return False
         target = Match._oid(target_id)
-        if not target or str(user_id) == str(target_id): return False
-        result = mongo.db.users.update_one(
-            {"_id": Match._oid(user_id), "role": "user"},
+        u_oid = Match._oid(user_id)
+        if not target or not u_oid:
+            return False
+        mongo.db.users.update_one(
+            {"_id": u_oid, "role": "user"},
             {"$addToSet": {"disliked": str(target_id)}, "$pull": {"liked": str(target_id)}}
         )
-        return result.modified_count > 0
+        return True
 
     @staticmethod
     def is_mutual(user_a_id, user_b_id):
@@ -64,12 +92,23 @@ class Match:
                 return False
         except Exception:
             pass
+
         oid_a = Match._oid(user_a_id)
         oid_b = Match._oid(user_b_id)
-        a = mongo.db.users.find_one({"_id": oid_a, "role": "user"})
-        b = mongo.db.users.find_one({"_id": oid_b, "role": "user"})
+        if not oid_a or not oid_b:
+            return False
+
+        a = mongo.db.users.find_one({"_id": oid_a, "role": "user", "is_active": {"$ne": False}})
+        b = mongo.db.users.find_one({"_id": oid_b, "role": "user", "is_active": {"$ne": False}})
         if not a or not b:
             return False
+
+        # Bidirectional block check
+        a_blocked = [str(x) for x in a.get("blocked", [])]
+        b_blocked = [str(x) for x in b.get("blocked", [])]
+        if str(user_b_id) in a_blocked or str(user_a_id) in b_blocked:
+            return False
+
         a_liked = [str(x) for x in a.get("liked", [])]
         b_liked = [str(x) for x in b.get("liked", [])]
         return str(user_b_id) in a_liked and str(user_a_id) in b_liked
@@ -127,44 +166,61 @@ class Match:
     ):
         import logging
         user = mongo.db.users.find_one({"_id": Match._oid(user_id)})
-        if not user: return []
-        
-        excluded = set(user.get("liked", []) + user.get("disliked", []) + [str(user_id)])
-        # Include blocked users if the application supports it
-        excluded.update(user.get("blocked", []))
+        if not user:
+            return []
+
+        uid_str = str(user_id)
+        excluded = set([uid_str])
+        excluded.update(str(x) for x in user.get("liked", []))
+        excluded.update(str(x) for x in user.get("disliked", []))
+        excluded.update(str(x) for x in user.get("blocked", []))
         try:
             from models.restriction import Restriction
-            excluded.update(Restriction.get_restricted_user_ids(user_id))
+            excluded.update(str(r) for r in Restriction.get_restricted_user_ids(user_id))
         except Exception:
             pass
-        
-        valid_oids = []
-        for x in excluded:
-            oid = Match._oid(x)
-            if oid: valid_oids.append(oid)
-            
-        total_users = mongo.db.users.count_documents({})
-        
-        # Base query: only filter out admins and explicitly inactive users.
+
+        # Bidirectional block safety: Exclude users who have blocked the current user
+        try:
+            blocked_by_others = mongo.db.users.find({"blocked": uid_str}, {"_id": 1, "blocked": 1})
+            for b in blocked_by_others:
+                if uid_str in [str(x) for x in b.get("blocked", [])]:
+                    excluded.add(str(b["_id"]))
+        except Exception:
+            pass
+
+        valid_oids = [Match._oid(x) for x in excluded if Match._oid(x)]
+
+        # Base query: active regular users not in exclusion list
         query = {
-            "_id": {"$nin": valid_oids}, 
+            "_id": {"$nin": valid_oids},
             "role": {"$in": ["user", None]},
             "is_active": {"$ne": False}
         }
+
+        # Communication preference filter with space and underscore tolerance
         if comm_pref and str(comm_pref).strip().lower() not in {"any", "all", ""}:
-            c_term = str(comm_pref).strip().lower()
+            raw_c = str(comm_pref).strip().lower()
+            if "sign" in raw_c:
+                c_pattern = "(sign[ _]?language|sign)"
+            elif "text" in raw_c:
+                c_pattern = "(text[ _]?chat|text)"
+            elif "voice" in raw_c:
+                c_pattern = "(voice|call)"
+            else:
+                c_pattern = raw_c
             query["$or"] = [
-                {"communication_preferences": {"$regex": f"^{c_term}", "$options": "i"}},
-                {"comm_prefs": {"$regex": f"^{c_term}", "$options": "i"}},
-                {"comm_pref": {"$regex": f"^{c_term}", "$options": "i"}}
+                {"communication_preferences": {"$regex": c_pattern, "$options": "i"}},
+                {"comm_prefs": {"$regex": c_pattern, "$options": "i"}},
+                {"comm_pref": {"$regex": c_pattern, "$options": "i"}}
             ]
-        
+
         candidates = list(mongo.db.users.find(query))
         logging.info(f"DISCOVER DEBUG: Current user: {user_id}")
-        logging.info(f"DISCOVER DEBUG: Total users in DB: {total_users}")
         logging.info(f"DISCOVER DEBUG: Candidates before filters (from DB): {len(candidates)}")
-        
+
         filtered_candidates = []
+        seen_candidate_ids = set()
         u_gender = str(user.get("gender", "Not Specified")).strip()
         u_interests = set(str(i).strip().lower() for i in user.get("interests", []) if i and str(i).strip())
 
@@ -195,7 +251,7 @@ class Match:
             except (ValueError, TypeError):
                 u_pref_max_age = 99
 
-        # Gender filtering:
+        # Gender filtering
         if filter_gender and str(filter_gender).strip().lower() not in {"all", "any", ""}:
             pref_genders_normalized = {str(filter_gender).strip().lower()}
             allow_any_gender = False
@@ -225,20 +281,30 @@ class Match:
             from models.message import OnlineTracker
             is_online_checker = OnlineTracker.is_online
 
-        # Apply STRICT filters based on user's preferences, gender, and interests
+        # Apply deterministic rule-based candidate filtering
         for c in candidates:
+            cid_str = str(c.get("_id", ""))
+            # Prevent duplicate cards and excluded candidates
+            if not cid_str or cid_str in seen_candidate_ids or cid_str in excluded:
+                continue
+
+            # Bidirectional block safety check
+            c_blocked = set(str(b) for b in c.get("blocked", []))
+            if uid_str in c_blocked:
+                continue
+
             # Safe candidate age extraction
             try:
                 c_age = int(c.get("age", 18)) if c.get("age") is not None else 18
             except (ValueError, TypeError):
                 c_age = 18
 
-            # Normalized candidate gender
-            c_gender = str(c.get("gender", "")).strip().lower()
-
             # Strict age filter
             if c_age < u_pref_min_age or c_age > u_pref_max_age:
                 continue
+
+            # Normalized candidate gender
+            c_gender = str(c.get("gender", "")).strip().lower()
 
             # 1. Strict Gender Filter: Candidate gender must match user's preferred gender
             if not allow_any_gender and c_gender not in pref_genders_normalized:
@@ -254,7 +320,7 @@ class Match:
                 if u_gender.lower() not in c_pref_norm:
                     continue
 
-            # 3. Interests Filter:
+            # 3. Interests Filter
             c_interests_raw = c.get("interests", []) or []
             c_interests = set(str(i).strip().lower() for i in c_interests_raw if i and str(i).strip())
             shared_interests = u_interests & c_interests
@@ -278,43 +344,46 @@ class Match:
             ]
             c["_shared_interests_count"] = len(shared_interests)
 
-            # 4. Online-only filter:
+            # 4. Online-only filter
             if online_only and is_online_checker:
-                if not is_online_checker(str(c["_id"])):
+                if not is_online_checker(cid_str):
                     continue
 
+            seen_candidate_ids.add(cid_str)
             filtered_candidates.append(c)
 
-        if ai_recommender:
-            # Use AI / calibrated recommender for ranking (it sets the '_match_score' key)
-            filtered_candidates = ai_recommender.rank_candidates(user, filtered_candidates)
-        else:
-            try:
-                from ai_modules.match_recommender import MatchRecommender
-                for c in filtered_candidates:
-                    c["_match_score"] = MatchRecommender.compute_compatibility_score(user, c)
-            except Exception:
-                mine_interests = set(str(i).strip().lower() for i in user.get("interests", []) if i)
-                for c in filtered_candidates:
-                    c_interests = set(str(i).strip().lower() for i in c.get("interests", []) if i)
-                    union = mine_interests | c_interests
-                    jaccard = (len(mine_interests & c_interests) / len(union)) if union else 0.0
-                    c["_match_score"] = int(round(jaccard * 100))
-            filtered_candidates.sort(key=lambda x: x.get("_match_score", 0), reverse=True)
-            
+        # Rank surviving candidates deterministically using Weighted Scoring
+        from ai_modules.match_recommender import MatchRecommender
+        recommender = MatchRecommender()
+        filtered_candidates = recommender.rank_candidates(user, filtered_candidates)
+
         logging.info(f"DISCOVER DEBUG: Final Discover users: {len(filtered_candidates)}")
-        
         return filtered_candidates
 
     @staticmethod
     def get_mutual_matches(user_id):
         user = mongo.db.users.find_one({"_id": Match._oid(user_id)})
-        if not user: return []
+        if not user:
+            return []
+        uid_str = str(user_id)
         restricted_ids = set()
         try:
             from models.restriction import Restriction
-            restricted_ids = Restriction.get_restricted_user_ids(user_id)
+            restricted_ids.update(str(r) for r in Restriction.get_restricted_user_ids(user_id))
         except Exception:
             pass
+
+        # Exclude bidirectional blocked users
+        restricted_ids.update(str(x) for x in user.get("blocked", []))
+        blocked_by_others = mongo.db.users.find({"blocked": uid_str}, {"_id": 1})
+        for b in blocked_by_others:
+            restricted_ids.add(str(b["_id"]))
+
         liked = [Match._oid(x) for x in user.get("liked", []) if Match._oid(x) and str(x) not in restricted_ids]
-        return list(mongo.db.users.find({"_id": {"$in": liked}, "liked": str(user_id), "role": "user", "is_active": True}))
+        return list(mongo.db.users.find({
+            "_id": {"$in": liked},
+            "liked": uid_str,
+            "role": "user",
+            "is_active": {"$ne": False},
+            "blocked": {"$ne": uid_str}
+        }))

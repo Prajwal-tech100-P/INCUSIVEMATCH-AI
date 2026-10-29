@@ -67,7 +67,7 @@
             {% if c._is_member %}
               <a class="btn btn-outline-primary btn-sm rounded-pill px-3" href="{{ url_for('community.view', community_id=c._id) }}">Open</a>
             {% elif c._member_count >= max_members %}
-              <button class="btn btn-secondary btn-sm rounded-pill px-3" disabled>Full</button>
+              <button class="btn btn-secondary btn-sm rounded-pill px-3" disabled>Full ({{ c._member_count }}/{{ max_members }})</button>
             {% else %}
               <form method="POST" action="{{ url_for('community.join', community_id=c._id) }}">
                 <button class="btn btn-primary btn-sm rounded-pill px-3"><i class="bi bi-person-plus me-1"></i>Join</button>
@@ -104,7 +104,7 @@
           <label class="form-label fw-semibold">Description</label>
           <textarea class="form-control rounded-3" name="description" maxlength="300" rows="3" placeholder="What is this group about?"></textarea>
           <div class="alert alert-info small mt-3 mb-0 rounded-3">
-            <i class="bi bi-info-circle me-1"></i>You become the creator and first member. Each community can have up to 5 members.
+            <i class="bi bi-info-circle me-1"></i>You become the creator and first member. Each community can have up to {{ max_members }} members.
           </div>
         </div>
         <div class="modal-footer border-0">

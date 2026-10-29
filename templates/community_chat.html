@@ -8,15 +8,13 @@
         <span class="fs-2">{{ community.get('icon','🤟') }}</span>
         <div>
           <h3 class="fw-bold mb-0">{{ community.get('name') }}</h3>
-          <div class="small text-muted">{{ members|length }} / {{ max_members }} members · {{
+          <div class="small text-muted">{{ member_count if member_count is defined else members|length }} / {{ max_members }} members · {{
             community.get('category','General') }}</div>
         </div>
       </div>
     </div>
     <div class="d-flex gap-2">
       {% if is_member %}
-      <a href="{{ url_for('community.community_call', community_id=community._id) }}"
-        class="btn btn-outline-primary rounded-pill"><i class="bi bi-camera-video me-1"></i>Community Call</a>
       {% if is_owner %}
       <form method="POST" action="{{ url_for('community.delete', community_id=community._id) }}"
         onsubmit="return confirm('Delete this community and its messages?');">
@@ -29,10 +27,14 @@
       </form>
       {% endif %}
       {% else %}
+      {% set count = member_count if member_count is defined else members|length %}
+      {% if count >= max_members %}
+      <button class="btn btn-secondary rounded-pill" disabled><i class="bi bi-slash-circle me-1"></i>Community Full ({{ count }}/{{ max_members }})</button>
+      {% else %}
       <form method="POST" action="{{ url_for('community.join', community_id=community._id) }}">
-        <button class="btn btn-primary rounded-pill" {% if members|length>= max_members %}disabled{% endif %}><i
-            class="bi bi-person-plus me-1"></i>Join</button>
+        <button class="btn btn-primary rounded-pill"><i class="bi bi-person-plus me-1"></i>Join ({{ count }}/{{ max_members }})</button>
       </form>
+      {% endif %}
       {% endif %}
     </div>
   </div>
@@ -126,6 +128,13 @@
                     <button class="dropdown-item text-danger">Block in community</button>
                   </form>
                 </li>
+                {% if (is_owner or current_user.role == 'admin') and member.id != community.created_by %}
+                <li>
+                  <form method="POST" action="{{ url_for('community.remove_member', community_id=community._id, member_id=member.id) }}" onsubmit="return confirm('Remove {{ member.name }} from this community?');">
+                    <button class="dropdown-item text-danger"><i class="bi bi-person-x me-1"></i>Remove member</button>
+                  </form>
+                </li>
+                {% endif %}
               </ul>
             </div>
             {% endif %}
