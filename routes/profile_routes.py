@@ -230,6 +230,21 @@ def verify_profile():
 
         # Retrieve reference profile image data
         if str(photo).startswith(('http://', 'https://')):
+            from urllib.parse import urlparse
+            parsed = urlparse(str(photo))
+            hostname = (parsed.hostname or "").lower()
+
+            if parsed.scheme != "https" and not current_app.config.get("TESTING"):
+                return {'success': False, 'message': 'Profile photo must be hosted over secure HTTPS.'}, 400
+
+            is_trusted_host = (
+                hostname.endswith("cloudinary.com") or
+                hostname.endswith("res.cloudinary.com") or
+                (current_app.config.get("TESTING") and hostname in ("localhost", "127.0.0.1", "testserver"))
+            )
+            if not is_trusted_host:
+                return {'success': False, 'message': 'Invalid profile photo storage host.'}, 400
+
             try:
                 req = urllib.request.Request(photo, headers={'User-Agent': 'InclusiveMatch-AI'})
                 with urllib.request.urlopen(req, timeout=12) as resp:

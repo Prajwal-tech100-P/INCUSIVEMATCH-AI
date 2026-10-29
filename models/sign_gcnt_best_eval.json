@@ -1,10 +1,16 @@
 {
   "checkpoint": "C:\\Users\\ACER\\Desktop\\InclusiveMatch_AI_Secure_WebRTC_HTTPS_Ready 8\\models\\sign_gcnt_best.pt",
   "accuracy": 0.8188976377952756,
+  "top2_accuracy": 0.9291338582677166,
+  "top3_accuracy": 0.952755905511811,
   "macro_f1": 0.814391451460417,
   "weighted_f1": 0.8057864925975162,
   "macro_precision": 0.8338533114395182,
   "macro_recall": 0.8321018062397372,
+  "mean_latency_ms": 2.0482290047220886,
+  "p95_latency_ms": 2.9919199179857965,
+  "total_params": 300189,
+  "model_file_size_mb": 1.207383155822754,
   "num_classes": 29,
   "val_sample_count": 127,
   "per_class_report": {
@@ -1127,5 +1133,9 @@
     "where",
     "yes",
     "you"
+  ],
+  "low_performing_classes": [
+    "friend",
+    "water"
   ]
 }

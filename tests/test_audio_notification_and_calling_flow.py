@@ -282,3 +282,176 @@ class TestAudioNotificationAndCallingFlow(unittest.TestCase):
         res_pending = fc2.get("/api/calls/pending")
         self.assertEqual(res_pending.status_code, 200)
         self.assertFalse(res_pending.get_json()["pending"])
+
+    def test_unauthorized_user_cannot_call_unmatched_recipient(self):
+        """Unmatched user cannot call an unrelated user or emit incoming_call."""
+        u3_id = str(ObjectId())
+        with self.app.app_context():
+            mongo.db.users.insert_one({
+                "_id": ObjectId(u3_id),
+                "id": u3_id,
+                "name": "Eve Intruder",
+                "email": f"eve_{u3_id}@test.com",
+                "password": "pw",
+                "role": "user",
+                "is_active": True,
+            })
+
+        fc3, s3 = self._socket_client(u3_id)
+        fc2, s2 = self._socket_client(self.u2_id)
+
+        # Eve attempts to call Bob (not matched)
+        ack = s3.emit("call_user", {"partner_id": self.u2_id}, callback=True)
+        self.assertFalse(ack.get("ok"))
+        self.assertIn("active mutual match", ack.get("message", ""))
+
+        # Bob receives no incoming call event
+        received_b = s2.get_received()
+        call_events_b = [e for e in received_b if e.get("name") == "incoming_call"]
+        self.assertEqual(len(call_events_b), 0)
+
+        s2.disconnect()
+        s3.disconnect()
+        with self.app.app_context():
+            mongo.db.users.delete_one({"_id": ObjectId(u3_id)})
+
+    def test_unauthorized_user_cannot_cancel_others_call(self):
+        """User C cannot cancel a call between User A and User B."""
+        u3_id = str(ObjectId())
+        with self.app.app_context():
+            mongo.db.users.insert_one({
+                "_id": ObjectId(u3_id),
+                "id": u3_id,
+                "name": "Eve Intruder",
+                "email": f"eve_{u3_id}@test.com",
+                "password": "pw",
+                "role": "user",
+                "is_active": True,
+            })
+
+        fc1, s1 = self._socket_client(self.u1_id)
+        fc2, s2 = self._socket_client(self.u2_id)
+        fc3, s3 = self._socket_client(u3_id)
+
+        # Alice calls Bob
+        ack = s1.emit("call_user", {"partner_id": self.u2_id}, callback=True)
+        self.assertTrue(ack.get("ok"))
+        call_id = ack["call_id"]
+        s2.get_received()  # flush incoming_call
+
+        # Eve attempts to cancel Alice's call
+        ack_spoof = s3.emit("cancel_call", {"partner_id": self.u2_id, "call_id": call_id}, callback=True)
+        self.assertFalse(ack_spoof.get("ok"))
+
+        # Bob receives no call_cancelled event from Eve
+        received_b = s2.get_received()
+        cancel_events = [e for e in received_b if e.get("name") == "call_cancelled"]
+        self.assertEqual(len(cancel_events), 0)
+
+        # Call in DB remains pending
+        inv = mongo.db.call_invitations.find_one({"_id": ObjectId(call_id)})
+        self.assertEqual(inv["status"], "pending")
+
+        s1.disconnect()
+        s2.disconnect()
+        s3.disconnect()
+        with self.app.app_context():
+            mongo.db.users.delete_one({"_id": ObjectId(u3_id)})
+
+    def test_restricted_user_cannot_initiate_call(self):
+        """User under 7-day restriction cannot place calls and cannot establish authenticated sockets."""
+        # 1. Connect while active
+        fc1, s1 = self._socket_client(self.u1_id)
+
+        # Apply 7-day temporary restriction
+        with self.app.app_context():
+            mongo.db.users.update_one(
+                {"_id": ObjectId(self.u1_id)},
+                {"$set": {"is_active": False, "block_expiry": datetime.utcnow() + timedelta(days=7)}}
+            )
+
+        # Emitting call_user is blocked immediately (is_active is False -> not authenticated)
+        ack = s1.emit("call_user", {"partner_id": self.u2_id}, callback=True)
+        self.assertFalse(ack.get("ok"))
+        self.assertTrue(any(word in ack.get("message", "").lower() for word in ["log in", "restricted"]))
+        s1.disconnect()
+
+        # 2. When already restricted, new socket connection is refused
+        fc_reconnect = self.app.test_client()
+        with fc_reconnect.session_transaction() as sess:
+            sess["_user_id"] = self.u1_id
+            sess["_fresh"] = True
+        s_reconnect = socketio.test_client(self.app, flask_test_client=fc_reconnect)
+        self.assertFalse(s_reconnect.is_connected())
+
+        with self.app.app_context():
+            mongo.db.users.update_one(
+                {"_id": ObjectId(self.u1_id)},
+                {"$set": {"is_active": True}, "$unset": {"block_expiry": ""}}
+            )
+
+    def test_duplicate_call_user_supersedes_previous_invitation(self):
+        """Calling again supersedes previous pending invitation for the same pair."""
+        fc1, s1 = self._socket_client(self.u1_id)
+        fc2, s2 = self._socket_client(self.u2_id)
+
+        ack1 = s1.emit("call_user", {"partner_id": self.u2_id}, callback=True)
+        self.assertTrue(ack1.get("ok"))
+        cid1 = ack1["call_id"]
+
+        ack2 = s1.emit("call_user", {"partner_id": self.u2_id}, callback=True)
+        self.assertTrue(ack2.get("ok"))
+        cid2 = ack2["call_id"]
+
+        self.assertNotEqual(cid1, cid2)
+
+        # First call is now marked superseded in DB
+        inv1 = mongo.db.call_invitations.find_one({"_id": ObjectId(cid1)})
+        self.assertEqual(inv1["status"], "superseded")
+
+        # Second call is pending
+        inv2 = mongo.db.call_invitations.find_one({"_id": ObjectId(cid2)})
+        self.assertEqual(inv2["status"], "pending")
+
+        s1.disconnect()
+        s2.disconnect()
+
+    def test_call_user_includes_recipient_online_presence(self):
+        """call_user ack accurately reports whether recipient is online or offline."""
+        # 1. When Bob is online (connected to socket)
+        fc1, s1 = self._socket_client(self.u1_id)
+        fc2, s2 = self._socket_client(self.u2_id)
+
+        ack_online = s1.emit("call_user", {"partner_id": self.u2_id}, callback=True)
+        self.assertTrue(ack_online.get("ok"))
+        self.assertTrue(ack_online.get("recipient_online"))
+
+        # 2. When Bob disconnects and is offline
+        s2.disconnect()
+        from models.message import OnlineTracker
+        OnlineTracker.set_offline(self.u2_id)
+
+        ack_offline = s1.emit("call_user", {"partner_id": self.u2_id}, callback=True)
+        self.assertTrue(ack_offline.get("ok"))
+        self.assertFalse(ack_offline.get("recipient_online"))
+
+        s1.disconnect()
+
+    def test_outgoing_timeout_and_background_notification_in_main_js(self):
+        """Verify main.js contains 60s outgoing timeout, cleanup, and background Web Notification."""
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        main_js_path = os.path.join(base_dir, "static", "js", "main.js")
+        with open(main_js_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Outgoing timeout timer
+        self.assertIn("outgoingTimeoutTimer", content)
+        self.assertIn("60000", content)
+        self.assertIn("cleanupOutgoingCallUI", content)
+        self.assertIn("clearTimeout(outgoingTimeoutTimer)", content)
+
+        # Background Notification
+        self.assertIn("new Notification", content)
+        self.assertIn("backgroundNotif", content)
+        self.assertIn("requireInteraction: true", content)
+        self.assertIn("backgroundNotif.close()", content)

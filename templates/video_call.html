@@ -141,10 +141,11 @@ if (!window.inclusiveSocket) {
 if (typeof stopRingtone === "function") {
     stopRingtone();
 }
-const PARTNER_ID = "{{ partner.id }}";
-const PARTNER_NAME = "{{ partner.name|e }}";
-const MY_ID = "{{ current_user.id }}";
-const MY_NAME = "{{ current_user.name|e }}";
+const PARTNER_ID = {{ partner.id | string | tojson }};
+const PARTNER_NAME = {{ partner.name | tojson }};
+const MY_ID = {{ current_user.id | string | tojson }};
+const MY_NAME = {{ current_user.name | tojson }};
+const IS_DIAG_ENABLED = Boolean({{ 'true' if (config.get('DEBUG') or config.get('SIGN_AI_DEBUG') or config.get('TESTING')) else 'false' }}) || window.location.search.includes("diag=1");
 
 const callParams = new URLSearchParams(window.location.search);
 const CALL_ID = "{{ call_id | default('', true) }}" || callParams.get("call_id") || "";
@@ -684,16 +685,26 @@ socket.on("call_ended", handleRemoteTermination);
 socket.on("call_terminated", handleRemoteTermination);
 socket.on("peer_left", handleRemoteTermination);
 
+let lastRemoteSignText = "";
+let lastRemoteSignTime = 0;
+
 // Partner relayed sign caption
 socket.on("sign_caption", data => {
   if (!data || (!data.text && !data.phrase)) return;
   const speaker = data.speaker || PARTNER_NAME;
   const text = data.text || data.phrase;
-  displayCaption(speaker, text, "sign", data.is_final, data.confidence);
-  appendTranscript(speaker, text, "sign", data.confidence);
+  const isFinal = Boolean(data.is_final);
+  displayCaption(speaker, text, "sign", isFinal, data.confidence);
+
+  const now = Date.now();
+  if (isFinal || text !== lastRemoteSignText || (now - lastRemoteSignTime) > 2500) {
+    lastRemoteSignText = text;
+    lastRemoteSignTime = now;
+    appendTranscript(speaker, isFinal ? `[Turn End] ${text}` : text, "sign", data.confidence);
+  }
 
   // If receiving participant enabled Speak Recognized Text, speak finalized turn text
-  if (data.is_final) {
+  if (isFinal) {
     speakFinalizedSign(text);
   }
 });
@@ -754,6 +765,13 @@ cameraBtn.onclick = () => {
   if (!track) return;
   track.enabled = !track.enabled;
   cameraBtn.innerHTML = track.enabled ? '<i class="bi bi-camera-video me-1"></i> Camera Off' : '<i class="bi bi-camera-video-off me-1"></i> Camera On';
+  if (!track.enabled) {
+    resetServerSignSession();
+    if (signOutput) signOutput.textContent = "Camera turned off. Turn camera on to resume sign recognition.";
+  } else {
+    resetServerSignSession();
+    if (signOutput) signOutput.textContent = "Camera active. Looking for signs…";
+  }
 };
 
 toggleSignAiBtn.onclick = () => {
@@ -764,6 +782,7 @@ toggleSignAiBtn.onclick = () => {
     signStatusPill.className = "badge bg-success-subtle text-success border border-success-subtle rounded-pill small";
     signStatusPill.innerHTML = '<i class="bi bi-circle-fill me-1" style="font-size:7px;"></i> Active';
     signOutput.textContent = "Listening for signs…";
+    resetServerSignSession();
   } else {
     toggleSignAiBtn.className = "btn btn-outline-secondary rounded-pill";
     toggleSignAiBtn.innerHTML = '<i class="bi bi-hand-index-thumb me-1"></i> Sign AI: OFF';
@@ -771,6 +790,7 @@ toggleSignAiBtn.onclick = () => {
     signStatusPill.innerHTML = '<i class="bi bi-pause-circle me-1" style="font-size:7px;"></i> Paused';
     signOutput.textContent = "Sign recognition paused.";
     liveCaptionBanner.classList.add("d-none");
+    resetServerSignSession();
     if (localSigningActive) {
       localSigningActive = false;
       socket.emit("signing_status", { partner_id: PARTNER_ID, state: "IDLE", is_signing: false });
@@ -847,6 +867,7 @@ function cleanupCall() {
     try { clearInterval(signInterval); } catch (e) {}
     signInterval = null;
   }
+  resetServerSignSession();
 
   // 4. Hide overlays and reset indicators
   if (remoteSigningIndicator) {
@@ -969,6 +990,7 @@ function speakRecognizedSign(text) {
 function displayCaption(speaker, text, type, isFinal = true, confidence = null) {
   if (!ccEnabled) return;
   const isSpeech = (type === "speech");
+  const isUncertain = (type === "uncertain");
   const isMe = (speaker === "You" || speaker === MY_NAME);
 
   if (captionSpeaker) {
@@ -980,6 +1002,9 @@ function displayCaption(speaker, text, type, isFinal = true, confidence = null) 
     if (isSpeech) {
       captionType.className = isFinal ? "badge bg-secondary px-2 py-1 rounded-pill" : "badge bg-dark border border-secondary text-warning px-2 py-1 rounded-pill";
       captionType.textContent = isFinal ? "Speech" : "Speaking…";
+    } else if (isUncertain) {
+      captionType.className = "badge bg-warning text-dark px-2 py-1 rounded-pill";
+      captionType.textContent = "Low Confidence";
     } else {
       captionType.className = isFinal ? "badge bg-success px-2 py-1 rounded-pill" : "badge bg-primary px-2 py-1 rounded-pill";
       captionType.textContent = isFinal ? "Final Sign Turn" : "Live Sign";
@@ -989,6 +1014,8 @@ function displayCaption(speaker, text, type, isFinal = true, confidence = null) 
   if (captionText) {
     if (isSpeech) {
       captionText.innerHTML = isFinal ? text : `<span class="text-white-50 fst-italic">${text}…</span>`;
+    } else if (isUncertain) {
+      captionText.innerHTML = `<span class="text-warning">${text}</span>`;
     } else {
       const confStr = confidence ? ` <span class="badge bg-dark bg-opacity-50 text-white-50" style="font-size:0.75rem;">${Number(confidence).toFixed(1)}%</span>` : "";
       captionText.innerHTML = `${text}${confStr}`;
@@ -1040,6 +1067,45 @@ if (btnClearTranscript) {
   };
 }
 
+let lastEmittedSign = "";
+let lastEmittedSignTime = 0;
+
+function checkVideoStreamValid(videoEl) {
+  if (!videoEl) return false;
+  const st = videoEl.srcObject;
+  if (!st || !(st instanceof MediaStream) || !st.active) return false;
+  const tracks = st.getVideoTracks();
+  if (!tracks || tracks.length === 0) return false;
+  const track = tracks[0];
+  if (!track || !track.enabled || track.readyState !== "live") return false;
+  if (videoEl.paused || videoEl.ended) return false;
+  if (videoEl.readyState < 2) return false;
+  if (!videoEl.videoWidth || !videoEl.videoHeight || videoEl.videoWidth < 2 || videoEl.videoHeight < 2) return false;
+  return true;
+}
+
+function resetServerSignSession() {
+  lastEmittedSign = "";
+  lastEmittedSignTime = 0;
+  try {
+    fetch("{{ url_for('video.reset_sign') }}", {
+      method: "POST",
+      credentials: "same-origin"
+    }).catch(() => {});
+  } catch (e) {}
+}
+
+if (signSourceSelect) {
+  signSourceSelect.addEventListener("change", () => {
+    resetServerSignSession();
+    const selectedText = signSourceSelect.options[signSourceSelect.selectedIndex]?.text || signSourceSelect.value;
+    if (signOutput) {
+      signOutput.textContent = `Recognition source set to: ${selectedText}. Waiting for active video…`;
+    }
+    if (IS_DIAG_ENABLED) console.log("[SignAI Diag] Recognition source changed to:", signSourceSelect.value);
+  });
+}
+
 async function runSignRecognition() {
   if (!signAiEnabled || signBusy || ended) return;
 
@@ -1047,30 +1113,49 @@ async function runSignRecognition() {
   let targetVideo = null;
   let isLocalSource = false;
 
+  const localValid = checkVideoStreamValid(localVideo);
+  const remoteValid = checkVideoStreamValid(remoteVideo);
+
   if (mode === "local") {
-    targetVideo = localVideo;
-    isLocalSource = true;
-  } else if (mode === "remote") {
-    targetVideo = remoteVideo;
-    isLocalSource = false;
-  } else {
-    // Mode is auto: prefer local video if user's camera is active to recognize local signs
-    if (localVideo && localVideo.srcObject && localVideo.readyState >= 2 && localVideo.videoWidth >= 2) {
+    if (localValid) {
       targetVideo = localVideo;
       isLocalSource = true;
-    } else if (remoteVideo && remoteVideo.srcObject && remoteVideo.readyState >= 2 && remoteVideo.videoWidth >= 2) {
+    }
+  } else if (mode === "remote") {
+    if (remoteValid) {
+      targetVideo = remoteVideo;
+      isLocalSource = false;
+    }
+  } else {
+    // Mode is auto:
+    // Prioritize local camera if active to recognize own signs and broadcast to partner.
+    // If local camera is not active or disabled, recognize partner's signs from remote video.
+    if (localValid) {
+      targetVideo = localVideo;
+      isLocalSource = true;
+    } else if (remoteValid) {
       targetVideo = remoteVideo;
       isLocalSource = false;
     }
   }
 
-  if (!targetVideo || targetVideo.readyState < 2 || targetVideo.videoWidth < 2) return;
+  if (!targetVideo) {
+    if (IS_DIAG_ENABLED && Math.random() < 0.04) {
+      console.log(`[SignAI Diag] Stream inactive: mode=${mode}, localValid=${localValid}, remoteValid=${remoteValid}`);
+    }
+    return;
+  }
+
+  const vw = targetVideo.videoWidth;
+  const vh = targetVideo.videoHeight;
+  if (!vw || !vh || vw < 2 || vh < 2) return;
+
   signBusy = true;
 
   try {
+    const width = Math.min(vw, 480);
+    const height = Math.max(1, Math.round(width * vh / vw));
     const canvas = document.createElement("canvas");
-    const width = Math.min(targetVideo.videoWidth, 480);
-    const height = Math.round(width * targetVideo.videoHeight / targetVideo.videoWidth);
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -1078,16 +1163,28 @@ async function runSignRecognition() {
 
     canvas.toBlob(async blob => {
       try {
-        if (!blob) return;
+        if (!blob || ended || !signAiEnabled) return;
         const fd = new FormData();
         fd.append("frame", blob, "video-call-frame.jpg");
+        fd.append("source", isLocalSource ? "local" : "remote");
+        if (typeof PARTNER_ID !== "undefined" && PARTNER_ID) {
+          fd.append("partner_id", PARTNER_ID);
+        }
+
         const res = await fetch("{{ url_for('video.recognize_sign') }}", {
           method: "POST",
           body: fd,
           credentials: "same-origin"
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (IS_DIAG_ENABLED) console.warn("[SignAI Diag] recognize_sign returned status:", res.status);
+          return;
+        }
         const result = await res.json();
+
+        if (IS_DIAG_ENABLED && result && (result.text || result.is_signing)) {
+          console.log(`[SignAI Diag] result: text="${result.text}", new_token="${result.new_token || ''}", conf=${result.confidence}%, state=${result.signing_state}`);
+        }
 
         // 1. Automatic signing status synchronization
         if (isLocalSource && Boolean(result.is_signing) !== localSigningActive) {
@@ -1101,32 +1198,41 @@ async function runSignRecognition() {
 
         const speakerName = isLocalSource ? "You" : PARTNER_NAME;
 
-        // 2. Continuous recognized sign output
+        // 2. Continuous recognized sign output & display
         if (result.text && result.text !== "UNCERTAIN") {
           const conf = Number(result.confidence || 0).toFixed(1);
           signOutput.innerHTML = `<span class="badge bg-primary me-1">${speakerName}</span> <strong class="text-dark">${result.text}</strong> <span class="text-muted small">(${conf}%)</span>`;
           displayCaption(speakerName, result.text, "sign", false, conf);
-          appendTranscript(speakerName, result.text, "sign", conf);
 
-          // Broadcast to partner if local camera is the source
-          if (isLocalSource && broadcastCaptions && broadcastCaptions.checked) {
-            socket.emit("sign_caption", {
-              partner_id: PARTNER_ID,
-              text: result.text,
-              phrase: result.phrase || result.text,
-              confidence: result.confidence,
-              is_final: false
-            });
+          // Deduplicated transcript entry & socket broadcast
+          const now = Date.now();
+          const shouldEmit = Boolean(result.new_token) || (result.text !== lastEmittedSign) || ((now - lastEmittedSignTime) > 2500);
+          if (shouldEmit) {
+            lastEmittedSign = result.text;
+            lastEmittedSignTime = now;
+            appendTranscript(speakerName, result.text, "sign", conf);
+
+            if (isLocalSource && broadcastCaptions && broadcastCaptions.checked) {
+              socket.emit("sign_caption", {
+                partner_id: PARTNER_ID,
+                text: result.text,
+                phrase: result.phrase || result.text,
+                confidence: result.confidence,
+                is_final: false
+              });
+            }
           }
         } else if (result.text === "UNCERTAIN") {
           const conf = Number(result.confidence || 0).toFixed(1);
-          signOutput.textContent = `Uncertain sign (${conf}%) — please continue signing`;
+          signOutput.textContent = `Uncertain sign (${conf}%) — please continue holding or repeating`;
+          displayCaption(speakerName, `Uncertain sign (${conf}%) — hold/repeat sign`, "uncertain", false, conf);
         } else if (result.message) {
           signOutput.textContent = result.message;
         }
 
         // 3. Turn completion handling
         if (result.turn_completed && result.finalized_phrase) {
+          lastEmittedSign = "";
           displayCaption(speakerName, result.finalized_phrase, "sign", true, result.confidence);
           appendTranscript(speakerName, `[Turn End] ${result.finalized_phrase}`, "sign", result.confidence);
 
@@ -1146,7 +1252,7 @@ async function runSignRecognition() {
           }
         }
       } catch (err) {
-        console.warn("Sign recognition frame error:", err);
+        if (IS_DIAG_ENABLED) console.warn("[SignAI Diag] Frame error:", err);
       } finally {
         signBusy = false;
       }

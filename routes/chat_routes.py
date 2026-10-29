@@ -221,6 +221,7 @@ def send_message():
         "sender_name": current_user.name,
         "sender_avatar": sender_avatar,
         "text": text,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
     }, to=f"user:{receiver_id}")
     return jsonify(status="sent", message_id=str(msg_id) if msg_id else "")
 
@@ -392,6 +393,70 @@ def join_user_room(data):
     from flask_login import current_user as socket_user
     if socket_user.is_authenticated:
         join_room(f"user:{socket_user.id}")
+
+
+@socketio.on("chat_message")
+@socketio.on("send_message")
+def socket_send_message(data):
+    """Enable sending real-time chat messages via Socket.IO with identical security & moderation."""
+    from flask_login import current_user as socket_user
+    if not getattr(socket_user, "is_authenticated", False):
+        return {"ok": False, "error": "Authentication required."}
+
+    data = data or {}
+    receiver_id = str(data.get("receiver_id", "")).strip()
+    text = str(data.get("text", "")).strip()
+
+    if not text or not receiver_id:
+        return {"ok": False, "error": "Message cannot be empty."}
+
+    # Check if sender restriction has expired and lift if needed
+    socket_user.check_and_lift_restriction()
+
+    if socket_user.block_expiry and datetime.utcnow() < socket_user.block_expiry:
+        return {"ok": False, "error": f"You are temporarily blocked from sending messages until {socket_user.block_expiry.strftime('%Y-%m-%d %H:%M:%S')} UTC."}
+
+    from models.restriction import Restriction
+    receiver = UserModel.get_by_id(receiver_id)
+    if not receiver or not Match.are_matched(socket_user.id, receiver_id) or Restriction.is_restricted_either(socket_user.id, receiver_id):
+        return {"ok": False, "error": "You can only message an active mutual match."}
+
+    if len(text) > 2000:
+        return {"ok": False, "error": "Message is too long (maximum 2000 characters)."}
+
+    result = moderator.analyze_message(text)
+
+    # Log ambiguous messages for review
+    if result.get("action") == "flag_for_review":
+        try:
+            mongo.db.moderation_logs.insert_one({
+                "sender_id": socket_user.id,
+                "receiver_id": receiver_id,
+                "action": "flag_for_review",
+                "scores": result.get("scores", {}),
+                "context_classification": result.get("decision", {}).get("context_classification", "ambiguous"),
+                "timestamp": datetime.utcnow()
+            })
+        except Exception:
+            pass
+
+    if not result["is_safe"] or result.get("requires_warning", False):
+        _handle_warning_with_dedup(socket_user, receiver_id, text)
+        return {"ok": False, "error": "Your message contains potentially harmful language."}
+
+    msg_id = Message.create(socket_user.id, receiver_id, text)
+    sender_avatar = getattr(socket_user, "avatar_url", "/static/uploads/default.png")
+    socketio.emit("new_message", {
+        "message_id": str(msg_id) if msg_id else "",
+        "sender_id": socket_user.id,
+        "receiver_id": receiver_id,
+        "sender_name": socket_user.name,
+        "sender_avatar": sender_avatar,
+        "text": text,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }, to=f"user:{receiver_id}")
+
+    return {"ok": True, "status": "sent", "message_id": str(msg_id) if msg_id else ""}
 
 
 @chat_bp.route("/api/calls/pending", methods=["GET"])

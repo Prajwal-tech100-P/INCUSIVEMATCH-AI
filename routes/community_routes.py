@@ -4,7 +4,6 @@ from models.community import Community, MAX_MEMBERS
 from models.user import UserModel
 from ai_modules.nlp_safety import NLPModerator
 from extensions import socketio
-from routes.video_routes import _ice_servers
 from datetime import datetime
 
 community_bp = Blueprint("community", __name__)
@@ -51,13 +50,17 @@ def view(community_id):
         flash("Community not found.", "danger")
         return redirect(url_for("community.home"))
     is_member = Community.is_member(community_id, current_user.id)
-    members = [UserModel.get_by_id(str(uid)) for uid in community.get("member_ids", [])]
+    raw_member_ids = [str(x) for x in community.get("member_ids", [])]
+    member_count = len(raw_member_ids)
+    members = [UserModel.get_by_id(uid) for uid in raw_member_ids]
     members = [m for m in members if m]
+    messages = Community.messages(community_id) if is_member else []
     return render_template(
         "community_chat.html",
         community=community,
         members=members,
-        messages=Community.messages(community_id),
+        member_count=member_count,
+        messages=messages,
         is_member=is_member,
         is_owner=str(community.get("created_by")) == str(current_user.id),
         max_members=MAX_MEMBERS,
@@ -162,80 +165,21 @@ def join_community_user_room(data):
     if socket_user.is_authenticated:
         join_room(f"user:{socket_user.id}")
 
+@community_bp.route("/community/<community_id>/members/<member_id>/remove", methods=["POST"])
+@login_required
+def remove_member(community_id, member_id):
+    ok, msg = Community.remove_member(community_id, current_user.id, member_id)
+    flash(msg, "success" if ok else "warning")
+    return redirect(url_for("community.view", community_id=community_id))
 
-# --- Optional 5-person community video call signaling (WebRTC mesh) ---
-_community_call_members = {}
-
+# --- Community video calling is completely disabled ---
 @community_bp.route("/community/<community_id>/call")
 @login_required
 def community_call(community_id):
-    community = Community.get(community_id)
-    if not community or not Community.is_member(community_id, current_user.id):
-        return "Join the community before starting a community call.", 403
-    return render_template("community_video_call.html", community=community, max_members=MAX_MEMBERS, webrtc_ice_servers=_ice_servers())
+    flash("Community video calls are not supported. Private 1-to-1 video calling is available with mutual matches.", "warning")
+    return redirect(url_for("community.view", community_id=community_id))
 
 @socketio.on("join_community_call")
 def join_community_call(data):
-    from flask_socketio import join_room, emit
-    from flask_login import current_user as socket_user
-    if not socket_user.is_authenticated:
-        return
-    cid = str((data or {}).get("community_id", ""))
-    if not Community.is_member(cid, socket_user.id):
-        emit("community_call_error", {"message": "Only community members can join the call."})
-        return
-    room = f"community_call:{cid}"
-    sid = getattr(request, "sid", None)
-    members = _community_call_members.setdefault(room, {})
-    if len(members) >= MAX_MEMBERS and str(socket_user.id) not in members:
-        emit("community_call_error", {"message": f"Community video call is full (maximum {MAX_MEMBERS} participants)."})
-        return
-    existing = [{"user_id": uid, "name": name} for uid, name in members.values()]
-    join_room(room)
-    members[str(socket_user.id)] = (str(socket_user.id), socket_user.name)
-    emit("community_call_members", {"members": existing})
-    emit("community_call_user_joined", {"user_id": str(socket_user.id), "name": socket_user.name}, to=room, include_self=False)
-
-@socketio.on("community_call_signal")
-def community_call_signal(data):
-    from flask_login import current_user as socket_user
-    if not socket_user.is_authenticated:
-        return
-    cid = str((data or {}).get("community_id", ""))
-    if not Community.is_member(cid, socket_user.id):
-        return
-    target = str((data or {}).get("target_id", ""))
-    if target not in _community_call_members.get(f"community_call:{cid}", {}):
-        return
-    payload = {
-        "from": str(socket_user.id),
-        "from_name": socket_user.name,
-        "type": data.get("type"),
-        "sdp": data.get("sdp"),
-        "candidate": data.get("candidate"),
-    }
-    # User-room delivery avoids requiring the browser to know Socket.IO sids.
-    socketio.emit("community_call_signal", payload, to=f"user:{target}")
-
-@socketio.on("community_call_user_room")
-def community_call_user_room(data):
-    from flask_socketio import join_room
-    from flask_login import current_user as socket_user
-    if socket_user.is_authenticated:
-        join_room(f"user:{socket_user.id}")
-
-@socketio.on("leave_community_call")
-def leave_community_call(data):
-    from flask_socketio import leave_room, emit
-    from flask_login import current_user as socket_user
-    if not socket_user.is_authenticated:
-        return
-    cid = str((data or {}).get("community_id", ""))
-    room = f"community_call:{cid}"
-    members = _community_call_members.get(room, {})
-    if str(socket_user.id) in members:
-        members.pop(str(socket_user.id), None)
-    leave_room(room)
-    emit("community_call_user_left", {"user_id": str(socket_user.id)}, to=room)
-    if not members:
-        _community_call_members.pop(room, None)
+    from flask_socketio import emit
+    emit("community_call_error", {"message": "Community video calls are not supported. Private 1-to-1 video calling is available with mutual matches."})

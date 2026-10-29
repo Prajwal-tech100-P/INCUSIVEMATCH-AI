@@ -19,10 +19,18 @@ def like(target_id):
     if Restriction.is_restricted_either(current_user.id, target_id):
         return jsonify(error="Invalid profile."),400
 
+    # Enforce bidirectional block safety
+    u_blocked = [str(x) for x in (getattr(current_user, "blocked", []) or [])]
+    t_blocked = [str(x) for x in (getattr(target, "blocked", []) or [])]
+    if str(target_id) in u_blocked or str(current_user.id) in t_blocked:
+        return jsonify(error="Invalid profile."),400
+
     # Only create a match notification when the relationship changes
     # from one-sided to mutual. This prevents duplicate notifications.
     was_mutual = Match.is_mutual(current_user.id, target_id)
-    Match.like(current_user.id,target_id)
+    liked_ok = Match.like(current_user.id, target_id)
+    if not liked_ok:
+        return jsonify(error="Could not process like."),400
     mutual=Match.is_mutual(current_user.id,target_id)
 
     if mutual and not was_mutual:

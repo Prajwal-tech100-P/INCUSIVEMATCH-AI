@@ -192,7 +192,7 @@
                     <div class="text-center mb-3"><span class="badge bg-secondary rounded-pill small">Conversation</span></div>
                     {% if messages %}
                         {% for msg in messages %}
-                        <div class="d-flex mb-3 {% if msg.sender_id == current_user_id %}justify-content-end{% endif %}">
+                        <div class="d-flex mb-3 {% if msg.sender_id == current_user_id %}justify-content-end{% endif %}" data-msg-id="{{ msg._id }}">
                             <div class="message-bubble p-3 rounded-3 shadow-sm {% if msg.sender_id == current_user_id %}bubble-out{% else %}bubble-in{% endif %}">
                                 <p class="mb-0" style="line-height:1.4;">{{ msg.text }}</p>
                             </div>
@@ -360,10 +360,22 @@ if (!window.inclusiveSocket) {
     socket.emit("join_user_room", {});
 }
 
-/* ── Incoming messages (no timestamp) ──────────────────────────────────── */
+/* ── Deduplication set for chat message bubbles ────────────────────────── */
+const seenChatMsgIds = new Set();
+document.querySelectorAll(".chat-history [data-msg-id]").forEach(el => {
+  const mid = el.getAttribute("data-msg-id");
+  if (mid) seenChatMsgIds.add(String(mid));
+});
+
+/* ── Incoming messages (deduplicated against reconnects) ───────────────── */
 function appendIncoming(data){
   if(data.sender_id!==PARTNER_ID || data.receiver_id!==CURRENT_ID) return;
+  const msgKey = data.message_id ? String(data.message_id) : (data.sender_id + '_' + (data.text || '').slice(0, 40));
+  if (seenChatMsgIds.has(msgKey)) return;
+  seenChatMsgIds.add(msgKey);
+
   const div=document.createElement("div"); div.className="d-flex mb-3";
+  if (data.message_id) div.setAttribute("data-msg-id", String(data.message_id));
   const bubble=document.createElement("div"); bubble.className="message-bubble p-3 rounded-3 shadow-sm bubble-in";
   const p=document.createElement("p"); p.className="mb-0"; p.style.lineHeight="1.4"; p.textContent=data.text;
   bubble.appendChild(p); div.appendChild(bubble); chatHistory.appendChild(div); chatHistory.scrollTop=chatHistory.scrollHeight;
@@ -377,7 +389,9 @@ async function sendMessage(){
   const res=await fetch("/chat/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({receiver_id:PARTNER_ID,text})});
   const data=await res.json();
   if(!res.ok){msgError.textContent=data.error||"Unable to send.";msgError.style.display="block";msgInput.value=text;return;}
+  if(data.message_id) seenChatMsgIds.add(String(data.message_id));
   const div=document.createElement("div");div.className="justify-content-end d-flex mb-3";
+  if(data.message_id) div.setAttribute("data-msg-id", String(data.message_id));
   const bubble=document.createElement("div");bubble.className="message-bubble p-3 rounded-3 shadow-sm bubble-out";
   const p=document.createElement("p");p.className="mb-0";p.textContent=text;
   bubble.appendChild(p);div.appendChild(bubble);chatHistory.appendChild(div);chatHistory.scrollTop=chatHistory.scrollHeight;

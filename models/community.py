@@ -2,7 +2,7 @@ from datetime import datetime
 from bson import ObjectId
 from extensions import mongo
 
-MAX_MEMBERS = 10
+MAX_MEMBERS = 50
 
 def _oid(value):
     try:
@@ -21,6 +21,7 @@ class Community:
             member_ids = [str(x) for x in members]
             d["_member_count"] = len(member_ids)
             d["_is_member"] = uid in member_ids
+            d["_is_full"] = len(member_ids) >= MAX_MEMBERS
             result.append(d)
         return result
 
@@ -31,13 +32,14 @@ class Community:
 
     @staticmethod
     def create(owner_id, name, description, category, icon="🤟"):
+        owner_str = str(owner_id)
         doc = {
             "name": name.strip(),
             "description": description.strip(),
             "category": category.strip() or "General",
             "icon": icon.strip() or "🤟",
-            "created_by": str(owner_id),
-            "member_ids": [str(owner_id)],
+            "created_by": owner_str,
+            "member_ids": [owner_str],
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
         }
@@ -62,9 +64,76 @@ class Community:
         if uid in members:
             return True, "You are already a member."
         if len(members) >= MAX_MEMBERS:
-            return False, "This community is full (maximum 5 members)."
-        mongo.db.communities.update_one({"_id": oid}, {"$addToSet": {"member_ids": uid}, "$set": {"updated_at": datetime.utcnow()}})
+            return False, f"This community has reached its maximum capacity of {MAX_MEMBERS} members."
+
+        # Atomic concurrency-safe update in MongoDB:
+        # Require index MAX_MEMBERS - 1 does not exist (meaning array length < MAX_MEMBERS)
+        # and uid is not already in member_ids.
+        limit_index_field = f"member_ids.{MAX_MEMBERS - 1}"
+        result = mongo.db.communities.update_one(
+            {
+                "_id": oid,
+                limit_index_field: {"$exists": False},
+                "member_ids": {"$ne": uid}
+            },
+            {
+                "$addToSet": {"member_ids": uid},
+                "$set": {"updated_at": datetime.utcnow()}
+            }
+        )
+
+        if result.modified_count == 0:
+            # Re-fetch state to report exact reason
+            fresh = mongo.db.communities.find_one({"_id": oid})
+            if not fresh:
+                return False, "Community not found."
+            fresh_members = [str(x) for x in fresh.get("member_ids", [])]
+            if uid in fresh_members:
+                return True, "You are already a member."
+            if len(fresh_members) >= MAX_MEMBERS:
+                return False, f"This community has reached its maximum capacity of {MAX_MEMBERS} members."
+            return False, "Could not join community. Please try again."
+
         return True, "Joined community."
+
+    @staticmethod
+    def remove_member(community_id, actor_id, target_user_id):
+        """
+        Removes a member from the community.
+        Only the community owner (creator) or an administrator can remove members.
+        The owner cannot be removed.
+        """
+        oid = _oid(community_id)
+        c = Community.get(community_id)
+        if not oid or not c:
+            return False, "Community not found."
+
+        actor_str = str(actor_id)
+        target_str = str(target_user_id)
+        creator_str = str(c.get("created_by"))
+
+        # Verify permissions: must be owner or admin
+        from models.user import UserModel
+        actor = UserModel.get_by_id(actor_str)
+        is_owner = (creator_str == actor_str)
+        is_admin = bool(actor and getattr(actor, "role", "") == "admin")
+
+        if not is_owner and not is_admin:
+            return False, "Unauthorized: Only the community owner or an administrator can remove members."
+
+        # Prevent removing the owner
+        if target_str == creator_str:
+            return False, "The community owner cannot be removed."
+
+        members = [str(x) for x in c.get("member_ids", [])]
+        if target_str not in members:
+            return False, "User is not a member of this community."
+
+        mongo.db.communities.update_one(
+            {"_id": oid},
+            {"$pull": {"member_ids": target_str}, "$set": {"updated_at": datetime.utcnow()}}
+        )
+        return True, "Member removed from community."
 
     @staticmethod
     def leave(community_id, user_id):
@@ -75,6 +144,9 @@ class Community:
         uid = str(user_id)
         if str(c.get("created_by")) == uid:
             return False, "The community creator cannot leave. Delete the community instead."
+        members = [str(x) for x in c.get("member_ids", [])]
+        if uid not in members:
+            return False, "You are not a member of this community."
         mongo.db.communities.update_one({"_id": oid}, {"$pull": {"member_ids": uid}, "$set": {"updated_at": datetime.utcnow()}})
         return True, "You left the community."
 

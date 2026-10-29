@@ -1,0 +1,230 @@
+{
+  "version": "1.0.0",
+  "updated_at": "2026-10-29T17:22:29.052624+00:00",
+  "num_classes": 30,
+  "total_samples": 618,
+  "classes": {
+    "drink": {
+      "sample_count": 16,
+      "last_scanned": "2026-10-29T09:20:17.303234+00:00"
+    },
+    "eat": {
+      "sample_count": 18,
+      "last_scanned": "2026-10-29T09:20:17.304365+00:00"
+    },
+    "father": {
+      "sample_count": 16,
+      "last_scanned": "2026-10-29T09:20:17.305819+00:00"
+    },
+    "food": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.306775+00:00"
+    },
+    "friend": {
+      "sample_count": 38,
+      "last_scanned": "2026-10-29T09:20:17.310214+00:00"
+    },
+    "go": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.311081+00:00"
+    },
+    "he": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.311786+00:00"
+    },
+    "hello": {
+      "sample_count": 36,
+      "last_scanned": "2026-10-29T09:20:17.313973+00:00"
+    },
+    "help": {
+      "sample_count": 16,
+      "last_scanned": "2026-10-29T09:20:17.317687+00:00"
+    },
+    "hospital": {
+      "sample_count": 21,
+      "last_scanned": "2026-10-29T09:20:17.319387+00:00"
+    },
+    "market": {
+      "sample_count": 36,
+      "last_scanned": "2026-10-29T09:20:17.321004+00:00"
+    },
+    "mother": {
+      "sample_count": 18,
+      "last_scanned": "2026-10-29T09:20:17.325777+00:00"
+    },
+    "no": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.326957+00:00"
+    },
+    "okay": {
+      "sample_count": 23,
+      "last_scanned": "2026-10-29T09:20:17.327993+00:00"
+    },
+    "please": {
+      "sample_count": 18,
+      "last_scanned": "2026-10-29T09:20:17.328900+00:00"
+    },
+    "school": {
+      "sample_count": 37,
+      "last_scanned": "2026-10-29T09:20:17.330470+00:00"
+    },
+    "she": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.331326+00:00"
+    },
+    "sister": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.332111+00:00"
+    },
+    "sit": {
+      "sample_count": 19,
+      "last_scanned": "2026-10-29T09:20:17.332860+00:00"
+    },
+    "student": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.333584+00:00"
+    },
+    "tea": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.334352+00:00"
+    },
+    "teacher": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.335060+00:00"
+    },
+    "thank_you": {
+      "sample_count": 39,
+      "last_scanned": "2026-10-29T09:20:17.337527+00:00"
+    },
+    "today": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.338506+00:00"
+    },
+    "water": {
+      "sample_count": 18,
+      "last_scanned": "2026-10-29T09:20:17.339284+00:00"
+    },
+    "what": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.340026+00:00"
+    },
+    "where": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.340868+00:00"
+    },
+    "yes": {
+      "sample_count": 17,
+      "last_scanned": "2026-10-29T09:20:17.341593+00:00"
+    },
+    "you": {
+      "sample_count": 18,
+      "last_scanned": "2026-10-29T09:20:17.342323+00:00"
+    },
+    "peace_sign": {
+      "sample_count": 10,
+      "created_at": "2026-10-29T09:29:02.182154+00:00"
+    }
+  },
+  "recordings": {
+    "peace_sign__webcam__20261029_092902_56204c": {
+      "class_name": "peace_sign",
+      "filename": "peace_sign__webcam__20261029_092902_56204c.npy",
+      "total_frames": 20,
+      "active_frames": 10,
+      "signer_id": "admin_6ae311da30096b16e09d8d86",
+      "source": "admin_studio_direct",
+      "fps": 30.0,
+      "saved_at": "2026-10-29T09:29:02.431852+00:00"
+    },
+    "peace_sign__webcam__20261029_092939_9faa64": {
+      "class_name": "peace_sign",
+      "filename": "peace_sign__webcam__20261029_092939_9faa64.npy",
+      "total_frames": 20,
+      "active_frames": 10,
+      "signer_id": "admin_6ae31200a73e1ba6c3dc94d3",
+      "source": "admin_studio_direct",
+      "fps": 30.0,
+      "saved_at": "2026-10-29T09:29:39.241415+00:00"
+    },
+    "peace_sign__webcam__20261029_095712_8c672b": {
+      "class_name": "peace_sign",
+      "filename": "peace_sign__webcam__20261029_095712_8c672b.npy",
+      "total_frames": 20,
+      "active_frames": 10,
+      "signer_id": "admin_6ae31876997a146f80f41fad",
+      "source": "admin_studio_direct",
+      "fps": 30.0,
+      "saved_at": "2026-10-29T09:57:12.186228+00:00"
+    },
+    "peace_sign__webcam__20261029_160032_bd4a13": {
+      "class_name": "peace_sign",
+      "filename": "peace_sign__webcam__20261029_160032_bd4a13.npy",
+      "total_frames": 20,
+      "active_frames": 10,
+      "signer_id": "admin_6ae36d9f4d5c055c5ea8ef9a",
+      "source": "admin_studio_direct",
+      "fps": 30.0,
+      "saved_at": "2026-10-29T16:00:32.738982+00:00"
+    },
+    "peace_sign__webcam__20261029_160416_a5fbfe": {
+      "class_name": "peace_sign",
+      "filename": "peace_sign__webcam__20261029_160416_a5fbfe.npy",
+      "total_frames": 20,
+      "active_frames": 10,
+      "signer_id": "admin_6ae36e7bd1e228ee41dd9c71",
+      "source": "admin_studio_direct",
+      "fps": 30.0,
+      "saved_at": "2026-10-29T16:04:16.329422+00:00"
+    },
+    "peace_sign__webcam__20261029_161307_7ae789": {
+      "class_name": "peace_sign",
+      "filename": "peace_sign__webcam__20261029_161307_7ae789.npy",
+      "total_frames": 20,
+      "active_frames": 10,
+      "signer_id": "admin_6ae3709155131975cfdb0c8f",
+      "source": "admin_studio_direct",
+      "fps": 30.0,
+      "saved_at": "2026-10-29T16:13:07.997607+00:00"
+    },
+    "peace_sign__webcam__20261029_161622_f91fd4": {
+      "class_name": "peace_sign",
+      "filename": "peace_sign__webcam__20261029_161622_f91fd4.npy",
+      "total_frames": 20,
+      "active_frames": 10,
+      "signer_id": "admin_6ae371530fb304740a848b17",
+      "source": "admin_studio_direct",
+      "fps": 30.0,
+      "saved_at": "2026-10-29T16:16:22.854499+00:00"
+    },
+    "peace_sign__webcam__20261029_162440_d2bd6f": {
+      "class_name": "peace_sign",
+      "filename": "peace_sign__webcam__20261029_162440_d2bd6f.npy",
+      "total_frames": 20,
+      "active_frames": 10,
+      "signer_id": "admin_6ae37346cd5190c049467863",
+      "source": "admin_studio_direct",
+      "fps": 30.0,
+      "saved_at": "2026-10-29T16:24:40.725463+00:00"
+    },
+    "peace_sign__webcam__20261029_170039_5ca230": {
+      "class_name": "peace_sign",
+      "filename": "peace_sign__webcam__20261029_170039_5ca230.npy",
+      "total_frames": 20,
+      "active_frames": 10,
+      "signer_id": "admin_6ae37bb57e898d78b7787aa2",
+      "source": "admin_studio_direct",
+      "fps": 30.0,
+      "saved_at": "2026-10-29T17:00:39.237896+00:00"
+    },
+    "peace_sign__webcam__20261029_172229_3018e3": {
+      "class_name": "peace_sign",
+      "filename": "peace_sign__webcam__20261029_172229_3018e3.npy",
+      "total_frames": 20,
+      "active_frames": 10,
+      "signer_id": "admin_6ae380d39707d48c33b163c8",
+      "source": "admin_studio_direct",
+      "fps": 30.0,
+      "saved_at": "2026-10-29T17:22:29.052568+00:00"
+    }
+  }
+}
