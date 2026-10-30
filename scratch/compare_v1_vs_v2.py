@@ -5,8 +5,9 @@ import joblib
 import numpy as np
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 
-PROJECT_ROOT = r"c:\Users\ACER\Desktop\InclusiveMatch_AI_Secure_WebRTC_HTTPS_Ready 8"
-sys.path.insert(0, PROJECT_ROOT)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from ai_modules.nlp_safety import NLPModerator
 
@@ -60,10 +61,17 @@ v1_test_metrics, v1_macro_f1 = evaluate_raw_predictions(probs_v1, thresh_v1, y_t
 v2_test_metrics, v2_macro_f1 = evaluate_raw_predictions(probs_v2, thresh_v2, y_test)
 
 # 3. Load 127-sample audit benchmark
-brain_scratch = r"C:\Users\ACER\.gemini\antigravity-ide\brain\dacbf6b5-77a5-4f53-832c-abf4cf961b49\scratch"
-if brain_scratch not in sys.path:
-    sys.path.insert(0, brain_scratch)
-from run_nlp_audit import EVAL_DATASET
+try:
+    from scratch.run_nlp_audit import EVAL_DATASET
+except (ImportError, ModuleNotFoundError):
+    try:
+        from run_nlp_audit import EVAL_DATASET
+    except (ImportError, ModuleNotFoundError):
+        _scratch_dir = os.path.dirname(os.path.abspath(__file__))
+        if _scratch_dir not in sys.path:
+            sys.path.insert(0, _scratch_dir)
+        from run_nlp_audit import EVAL_DATASET
+
 bench_texts = [x[0] for x in EVAL_DATASET]
 bench_labels = np.array([x[1] for x in EVAL_DATASET], dtype=int)
 

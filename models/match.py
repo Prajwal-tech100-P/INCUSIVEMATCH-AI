@@ -281,6 +281,14 @@ class Match:
             from models.message import OnlineTracker
             is_online_checker = OnlineTracker.is_online
 
+        # Normalize filter_interest (supports string, comma-separated string, list, set)
+        filter_interests_set = set()
+        if filter_interest:
+            if isinstance(filter_interest, (list, tuple, set)):
+                filter_interests_set = {str(i).strip().lower() for i in filter_interest if i and str(i).strip()}
+            elif isinstance(filter_interest, str) and filter_interest.strip():
+                filter_interests_set = {str(i).strip().lower() for i in filter_interest.split(',') if i and str(i).strip()}
+
         # Apply deterministic rule-based candidate filtering
         for c in candidates:
             cid_str = str(c.get("_id", ""))
@@ -325,10 +333,9 @@ class Match:
             c_interests = set(str(i).strip().lower() for i in c_interests_raw if i and str(i).strip())
             shared_interests = u_interests & c_interests
 
-            # Explicit interest filter (from user search / dropdown)
-            if filter_interest and str(filter_interest).strip():
-                f_int = str(filter_interest).strip().lower()
-                if f_int not in c_interests:
+            # Explicit interest filter (from user search / checkbox selection)
+            if filter_interests_set:
+                if not (filter_interests_set & c_interests):
                     continue
 
             # Candidate must match based on interest: require at least 1 shared interest

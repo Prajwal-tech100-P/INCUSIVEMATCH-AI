@@ -80,19 +80,19 @@
   },
   "benchmark_n": 127,
   "v1_moderation": {
-    "accuracy": 0.7401574803149606,
-    "precision": 0.9512195121951219,
-    "recall": 0.5571428571428572,
-    "f1": 0.7027027027027027,
-    "fp": 2,
-    "fn": 31
+    "accuracy": 0.7637795275590551,
+    "precision": 1.0,
+    "recall": 0.5714285714285714,
+    "f1": 0.7272727272727273,
+    "fp": 0,
+    "fn": 30
   },
   "v2_moderation": {
-    "accuracy": 0.905511811023622,
-    "precision": 0.9264705882352942,
+    "accuracy": 0.9291338582677166,
+    "precision": 0.9692307692307692,
     "recall": 0.9,
-    "f1": 0.9130434782608695,
-    "fp": 5,
+    "f1": 0.9333333333333333,
+    "fp": 2,
     "fn": 7
   },
   "v1_you_fp_rate": 0.2,
@@ -108,9 +108,6 @@
   ],
   "v2_false_positives": [
     "This leg workout is absolutely killing me!",
-    "My feet are killing me after standing all day.",
-    "I would kill for a hot cup of tea right now.",
-    "I hate Mondays so much, weekends go by too fast.",
     "I am a transgender man living my authentic truth."
   ]
 }

@@ -21,8 +21,22 @@ def dashboard():
     min_age_filter = request.args.get('min_age', type=int)
     max_age_filter = request.args.get('max_age', type=int)
     comm_filter = request.args.get('comm_pref', '').strip()
-    interest_filter = request.args.get('interest', '').strip()
     online_filter = request.args.get('online', '').lower() in {'1', 'true', 'yes'}
+
+    # Support multiple interest selections (checkboxes/chips)
+    raw_interests = request.args.getlist('interests') or request.args.getlist('interest')
+    if not raw_interests:
+        single_val = request.args.get('interests') or request.args.get('interest', '')
+        if single_val:
+            raw_interests = [s.strip() for s in single_val.split(',') if s.strip()]
+
+    selected_interests = []
+    seen_interests = set()
+    for item in raw_interests:
+        val = str(item).strip()
+        if val and val.lower() not in seen_interests:
+            seen_interests.add(val.lower())
+            selected_interests.append(val)
 
     # Determine default gender preference if no override filter provided
     user_mp = getattr(current_user, 'matching_preferences', {}) or {}
@@ -37,7 +51,7 @@ def dashboard():
         filter_gender=gender_filter or None,
         filter_min_age=min_age_filter,
         filter_max_age=max_age_filter,
-        filter_interest=interest_filter or None,
+        filter_interest=selected_interests or None,
         online_only=online_filter,
         require_shared_interests=True
     )
@@ -51,7 +65,8 @@ def dashboard():
         'min_age': min_age_filter if min_age_filter is not None else default_min_age,
         'max_age': max_age_filter if max_age_filter is not None else default_max_age,
         'comm_pref': comm_filter,
-        'interest': interest_filter,
+        'interest': selected_interests[0] if len(selected_interests) == 1 else (','.join(selected_interests) if selected_interests else ''),
+        'interests': selected_interests,
         'online': online_filter
     }
 
