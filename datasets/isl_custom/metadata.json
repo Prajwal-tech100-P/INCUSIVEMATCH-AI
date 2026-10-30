@@ -1,8 +1,8 @@
 {
   "version": "1.0.0",
-  "updated_at": "2026-10-29T17:22:29.052624+00:00",
+  "updated_at": "2026-10-30T09:03:08.839577+00:00",
   "num_classes": 30,
-  "total_samples": 618,
+  "total_samples": 619,
   "classes": {
     "drink": {
       "sample_count": 16,
@@ -121,7 +121,7 @@
       "last_scanned": "2026-10-29T09:20:17.342323+00:00"
     },
     "peace_sign": {
-      "sample_count": 10,
+      "sample_count": 11,
       "created_at": "2026-10-29T09:29:02.182154+00:00"
     }
   },
@@ -225,6 +225,16 @@
       "source": "admin_studio_direct",
       "fps": 30.0,
       "saved_at": "2026-10-29T17:22:29.052568+00:00"
+    },
+    "peace_sign__webcam__20261030_090308_5215c6": {
+      "class_name": "peace_sign",
+      "filename": "peace_sign__webcam__20261030_090308_5215c6.npy",
+      "total_frames": 20,
+      "active_frames": 10,
+      "signer_id": "admin_6ae45d490c102333d2f5c7aa",
+      "source": "admin_studio_direct",
+      "fps": 30.0,
+      "saved_at": "2026-10-30T09:03:08.839531+00:00"
     }
   }
 }

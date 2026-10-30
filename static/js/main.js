@@ -1,9 +1,16 @@
-// Main JavaScript file for Inclusive Match AI
+// Main JavaScript file for Inclusive Match AI - Universal Audio & Signaling
+
+// --- Shared Audio State ---
+let sharedAudioCtx = null;
+let ringtoneAudioContext = null; // backward compatibility alias
+let messageAudioBuffer = null;
+let ringtoneAudioBuffer = null;
+let isAudioPreloading = false;
+let activeWebAudioRingtoneSource = null;
 
 let incomingRingtone = null;
 let isRingtonePlaying = false;
 let syntheticRingtoneTimer = null;
-let ringtoneAudioContext = null;
 let messageSoundAudio = null;
 let isAudioUnlocked = false;
 const seenMessageIds = new Set();
@@ -17,8 +24,74 @@ function getAudioUrls() {
     const body = document.body;
     return {
         message: (body && body.dataset && body.dataset.audioMessageNotification) || '/static/audio/message_notification.mp3',
+        messageWav: '/static/audio/message_notification.wav',
         ringtone: (body && body.dataset && body.dataset.audioIncomingCall) || '/static/audio/incoming_call.mp3'
     };
+}
+
+function getSharedAudioContext() {
+    if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+        const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtxClass) {
+            try {
+                sharedAudioCtx = new AudioCtxClass();
+                ringtoneAudioContext = sharedAudioCtx;
+            } catch (e) {
+                console.warn('AudioContext initialization failed:', e);
+            }
+        }
+    }
+    return sharedAudioCtx;
+}
+
+async function preloadAudioBuffers() {
+    if (isAudioPreloading) return;
+    isAudioPreloading = true;
+    const ctx = getSharedAudioContext();
+    if (!ctx) {
+        isAudioPreloading = false;
+        return;
+    }
+
+    const urls = getAudioUrls();
+
+    // 1. Preload & decode message notification chime
+    if (!messageAudioBuffer) {
+        try {
+            const resp = await fetch(urls.message, { cache: 'force-cache' });
+            if (resp.ok) {
+                const arrayBuf = await resp.arrayBuffer();
+                messageAudioBuffer = await new Promise((resolve, reject) => {
+                    ctx.decodeAudioData(arrayBuf, resolve, (err) => {
+                        // Fallback to WAV format if MP3 decoding fails in certain browsers
+                        fetch(urls.messageWav, { cache: 'force-cache' })
+                            .then(r => r.arrayBuffer())
+                            .then(ab => ctx.decodeAudioData(ab, resolve, reject))
+                            .catch(reject);
+                    });
+                });
+            }
+        } catch (e) {
+            console.warn('Could not decode message audio buffer:', e);
+        }
+    }
+
+    // 2. Preload & decode incoming call ringtone
+    if (!ringtoneAudioBuffer) {
+        try {
+            const resp = await fetch(urls.ringtone, { cache: 'force-cache' });
+            if (resp.ok) {
+                const arrayBuf = await resp.arrayBuffer();
+                ringtoneAudioBuffer = await new Promise((resolve, reject) => {
+                    ctx.decodeAudioData(arrayBuf, resolve, reject);
+                });
+            }
+        } catch (e) {
+            console.warn('Could not decode ringtone audio buffer:', e);
+        }
+    }
+
+    isAudioPreloading = false;
 }
 
 function isMessageSoundEnabled() {
@@ -32,8 +105,13 @@ function initMessageAudio() {
         messageSoundAudio = new Audio(urls.message);
         messageSoundAudio.preload = 'auto';
         messageSoundAudio.onerror = (e) => {
-            console.warn('Could not load message_notification.mp3, using synthetic chime fallback.', e);
-            playSyntheticChime();
+            console.warn('Could not load message_notification.mp3, trying WAV or synthetic chime fallback.', e);
+            try {
+                messageSoundAudio.src = urls.messageWav;
+                messageSoundAudio.load();
+            } catch (err) {
+                playSyntheticChime();
+            }
         };
     } catch (e) {
         console.warn('Failed to initialize message sound audio:', e);
@@ -75,33 +153,62 @@ function playMessageNotificationSound(msgId) {
     if (!isMessageSoundEnabled()) return;
     if (msgId && !shouldPlayMessageAudio(msgId)) return;
 
+    // 1. Primary Pathway: Preloaded Web Audio buffer
+    // Web Audio preloaded buffer playback
+    const ctx = getSharedAudioContext();
+    if (ctx && ctx.state === 'running' && messageAudioBuffer) {
+        try {
+            const src = ctx.createBufferSource();
+            src.buffer = messageAudioBuffer;
+            const gain = ctx.createGain();
+            gain.gain.value = 0.85;
+            src.connect(gain);
+            gain.connect(ctx.destination);
+            src.start(0);
+            return;
+        } catch (e) {
+            console.warn('Web Audio buffer playback failed:', e);
+        }
+    }
+
+    // 2. Secondary Pathway: HTMLAudioElement playback
     try {
         const audio = initMessageAudio();
-        if (!audio) {
-            playSyntheticChime();
-            return;
-        }
-        audio.currentTime = 0;
-        const p = audio.play();
-        if (p && typeof p.catch === 'function') {
-            p.catch(err => {
-                if (err && err.name === 'AbortError') return;
-                console.warn('Message notification sound blocked or failed:', err);
-                playSyntheticChime();
-            });
+        if (audio) {
+            audio.currentTime = 0;
+            audio.volume = 1.0;
+            const p = audio.play();
+            if (p && typeof p.then === 'function') {
+                p.then(() => {
+                    // Playback succeeded
+                }).catch(err => {
+                    if (err && err.name === 'AbortError') return;
+                    console.warn('HTMLAudioElement message notification blocked or failed:', err);
+                    playSyntheticChime();
+                });
+                return;
+            }
         }
     } catch (e) {
         console.warn('Message sound audio error:', e);
-        playSyntheticChime();
     }
+
+    // 3. Fallback to synthetic dual-tone chime
+    playSyntheticChime();
 }
 
 function playSyntheticChime() {
     if (!isMessageSoundEnabled()) return;
     try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-        const ctx = new AudioCtx();
+        const ctx = getSharedAudioContext();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+        }
+        if (ctx.state !== 'running') {
+            return;
+        }
+
         const now = ctx.currentTime;
 
         // Tone 1: 587.33 Hz (D5)
@@ -136,35 +243,88 @@ function playRingtone() {
     if (isRingtonePlaying) return; // Prevent multiple simultaneous ringtones
     isRingtonePlaying = true;
 
-    try {
-        const ringtone = initRingtoneAudio();
-        if (!ringtone) {
-            startSyntheticRingtone();
-            return;
+    let playedViaWebAudio = false;
+    const ctx = getSharedAudioContext();
+
+    // 1. Primary Pathway: Preloaded Web Audio looping buffer
+    if (ctx && ctx.state === 'running' && ringtoneAudioBuffer) {
+        try {
+            const src = ctx.createBufferSource();
+            src.buffer = ringtoneAudioBuffer;
+            src.loop = true;
+            const gain = ctx.createGain();
+            gain.gain.value = 0.9;
+            src.connect(gain);
+            gain.connect(ctx.destination);
+            src.start(0);
+            activeWebAudioRingtoneSource = src;
+            playedViaWebAudio = true;
+        } catch (e) {
+            console.warn('Web Audio ringtone failed:', e);
         }
-        ringtone.currentTime = 0;
-        const playPromise = ringtone.play();
-        if (playPromise && typeof playPromise.catch === 'function') {
-            playPromise.catch(error => {
-                if (!isRingtonePlaying || (error && error.name === 'AbortError')) {
-                    return;
+    }
+
+    // 2. Secondary Pathway: HTMLAudioElement loop
+    if (!playedViaWebAudio) {
+        try {
+            const ringtone = initRingtoneAudio();
+            if (ringtone) {
+                ringtone.currentTime = 0;
+                ringtone.volume = 1.0;
+                ringtone.loop = true;
+                const playPromise = ringtone.play();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch(error => {
+                        if (!isRingtonePlaying || (error && error.name === 'AbortError')) {
+                            return;
+                        }
+                        console.warn('Ringtone autoplay blocked by browser policy:', error);
+                        const unlockEl = document.getElementById('incoming-audio-unlock');
+                        if (unlockEl) {
+                            unlockEl.classList.remove('d-none');
+                        }
+                        startSyntheticRingtone();
+                    });
                 }
-                console.warn('Ringtone autoplay blocked by browser policy:', error);
-                const unlockEl = document.getElementById('incoming-audio-unlock');
-                if (unlockEl) {
-                    unlockEl.classList.remove('d-none');
-                }
+            } else {
                 startSyntheticRingtone();
-            });
+            }
+        } catch (e) {
+            console.warn('Error starting ringtone:', e);
+            startSyntheticRingtone();
         }
-    } catch (e) {
-        console.warn('Error starting ringtone:', e);
-        startSyntheticRingtone();
     }
 }
 
 function unlockRingtoneAudio() {
-    if (incomingRingtone && isRingtonePlaying) {
+    if (!isRingtonePlaying) return;
+
+    const ctx = getSharedAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+    }
+
+    // If Web Audio buffer is available and wasn't running, start it
+    if (!activeWebAudioRingtoneSource && ctx && ctx.state === 'running' && ringtoneAudioBuffer) {
+        try {
+            const src = ctx.createBufferSource();
+            src.buffer = ringtoneAudioBuffer;
+            src.loop = true;
+            const gain = ctx.createGain();
+            gain.gain.value = 0.9;
+            src.connect(gain);
+            gain.connect(ctx.destination);
+            src.start(0);
+            activeWebAudioRingtoneSource = src;
+            stopSyntheticRingtone();
+            const unlockEl = document.getElementById('incoming-audio-unlock');
+            if (unlockEl) unlockEl.classList.add('d-none');
+            return;
+        } catch (e) {}
+    }
+
+    // Try HTMLAudioElement
+    if (incomingRingtone) {
         incomingRingtone.play().then(() => {
             const unlockEl = document.getElementById('incoming-audio-unlock');
             if (unlockEl) unlockEl.classList.add('d-none');
@@ -178,82 +338,105 @@ function unlockRingtoneAudio() {
 }
 
 function unlockAudio() {
-    if (isAudioUnlocked) {
-        if (isRingtonePlaying && incomingRingtone && incomingRingtone.paused) {
-            unlockRingtoneAudio();
+    // 1. Resume AudioContext and play inaudible 1-sample buffer synchronously in user gesture
+    const ctx = getSharedAudioContext();
+    if (ctx) {
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
         }
-        return;
+        try {
+            const silentBuf = ctx.createBuffer(1, 1, 22050);
+            const src = ctx.createBufferSource();
+            src.buffer = silentBuf;
+            src.connect(ctx.destination);
+            src.start(0);
+        } catch (e) {}
     }
 
+    // 2. Authorize HTMLAudioElements with near-zero volume unmuted play
     try {
         const msgAudio = initMessageAudio();
         const ringAudio = initRingtoneAudio();
 
         if (msgAudio && msgAudio.paused) {
-            const origMuted = msgAudio.muted;
-            msgAudio.muted = true;
+            const origVol = msgAudio.volume;
+            msgAudio.volume = 0.001;
             const p = msgAudio.play();
             if (p && typeof p.then === 'function') {
                 p.then(() => {
                     msgAudio.pause();
                     msgAudio.currentTime = 0;
-                    msgAudio.muted = origMuted;
-                    isAudioUnlocked = true;
+                    msgAudio.volume = origVol;
                 }).catch(() => {
-                    msgAudio.muted = origMuted;
+                    msgAudio.volume = origVol;
                 });
             }
         }
 
         if (ringAudio && !isRingtonePlaying && ringAudio.paused) {
-            const origMuted = ringAudio.muted;
-            ringAudio.muted = true;
+            const origVol = ringAudio.volume;
+            ringAudio.volume = 0.001;
             const p = ringAudio.play();
             if (p && typeof p.then === 'function') {
                 p.then(() => {
                     ringAudio.pause();
                     ringAudio.currentTime = 0;
-                    ringAudio.muted = origMuted;
-                    isAudioUnlocked = true;
+                    ringAudio.volume = origVol;
                 }).catch(() => {
-                    ringAudio.muted = origMuted;
+                    ringAudio.volume = origVol;
                 });
             }
         }
-
-        if (ringtoneAudioContext && ringtoneAudioContext.state === 'suspended') {
-            ringtoneAudioContext.resume().catch(() => {});
-        }
     } catch (e) {}
 
-    if (isRingtonePlaying && incomingRingtone && incomingRingtone.paused) {
+    // 3. Preload decoded buffers in background memory
+    preloadAudioBuffers();
+
+    isAudioUnlocked = true;
+
+    // 4. If a ringtone was blocked waiting for user interaction, unlock it now!
+    if (isRingtonePlaying) {
         unlockRingtoneAudio();
     }
 }
 window.unlockAudio = unlockAudio;
 
+// Register user gesture listeners
 ['click', 'keydown', 'touchstart', 'pointerdown'].forEach(evt => {
     document.addEventListener(evt, unlockAudio, { passive: true });
 });
+
+// Resume AudioContext when tab regains focus or visibility
+window.addEventListener('focus', () => {
+    if (sharedAudioCtx && sharedAudioCtx.state === 'suspended' && isAudioUnlocked) {
+        sharedAudioCtx.resume().catch(() => {});
+    }
+});
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && sharedAudioCtx && sharedAudioCtx.state === 'suspended' && isAudioUnlocked) {
+        sharedAudioCtx.resume().catch(() => {});
+    }
+});
+
+
 
 function startSyntheticRingtone() {
     if (syntheticRingtoneTimer) return;
     const playRingBurst = () => {
         if (!isRingtonePlaying) return;
         try {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (!AudioCtx) return;
-            if (!ringtoneAudioContext || ringtoneAudioContext.state === 'closed') {
-                ringtoneAudioContext = new AudioCtx();
+            const ctx = getSharedAudioContext();
+            if (!ctx) return;
+            if (ctx.state === 'suspended') {
+                ctx.resume().catch(() => {});
             }
-            if (ringtoneAudioContext.state === 'suspended') {
-                ringtoneAudioContext.resume().catch(() => {});
-            }
-            const now = ringtoneAudioContext.currentTime;
+            if (ctx.state !== 'running') return;
 
-            const oscA = ringtoneAudioContext.createOscillator();
-            const oscB = ringtoneAudioContext.createOscillator();
-            const gainNode = ringtoneAudioContext.createGain();
+            const now = ctx.currentTime;
+
+            const oscA = ctx.createOscillator();
+            const oscB = ctx.createOscillator();
+            const gainNode = ctx.createGain();
 
             oscA.frequency.setValueAtTime(440, now);
             oscB.frequency.setValueAtTime(480, now);
@@ -264,7 +447,7 @@ function startSyntheticRingtone() {
 
             oscA.connect(gainNode);
             oscB.connect(gainNode);
-            gainNode.connect(ringtoneAudioContext.destination);
+            gainNode.connect(ctx.destination);
 
             oscA.start(now);
             oscB.start(now);
@@ -284,26 +467,37 @@ function stopSyntheticRingtone() {
         clearInterval(syntheticRingtoneTimer);
         syntheticRingtoneTimer = null;
     }
-    if (ringtoneAudioContext && ringtoneAudioContext.state !== 'closed') {
-        try {
-            ringtoneAudioContext.close().catch(() => {});
-        } catch (e) {}
-        ringtoneAudioContext = null;
-    }
+    // Do NOT close the shared AudioContext so future notifications can play immediately
 }
 
 function stopRingtone(callId) {
     isRingtonePlaying = false;
+
+    // 1. Stop Web Audio buffer source
+    if (activeWebAudioRingtoneSource) {
+        try {
+            activeWebAudioRingtoneSource.stop();
+            activeWebAudioRingtoneSource.disconnect();
+        } catch (e) {}
+        activeWebAudioRingtoneSource = null;
+    }
+
+    // 2. Stop HTMLAudioElement
     if (incomingRingtone) {
         try {
             incomingRingtone.pause();
             incomingRingtone.currentTime = 0;
         } catch (e) {}
     }
+
+    // 3. Stop synthetic ringtone
     stopSyntheticRingtone();
+
+    // 4. Hide unlock helper banner
     const unlockEl = document.getElementById('incoming-audio-unlock');
     if (unlockEl) unlockEl.classList.add('d-none');
 
+    // 5. Cross-tab storage broadcast
     if (callId) {
         try {
             localStorage.setItem('inclusive_call_stopped', `${callId}_${Date.now()}`);
@@ -478,6 +672,17 @@ document.addEventListener('DOMContentLoaded', () => {
         stopRingtone();
     }
 
+    // Preload audio buffers for immediate, zero-latency playback
+    preloadAudioBuffers();
+
+    // Check if AudioContext is already running (e.g. navigation within same origin)
+    if (typeof AudioContext !== 'undefined') {
+        const ctx = getSharedAudioContext();
+        if (ctx && ctx.state === 'running') {
+            isAudioUnlocked = true;
+        }
+    }
+
     console.log('Inclusive Match AI initialized.');
 });
 
@@ -501,8 +706,8 @@ function showOutgoingCallUI(partnerId, partnerName) {
             <h2 style="font-weight: 700; margin-bottom: 2rem;">Inclusive Match AI</h2>
             <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(partnerName)}&background=fff&color=6366f1&size=100" style="border-radius: 50%; width: 100px; height: 100px; margin-bottom: 1rem; object-fit: cover; box-shadow: 0 8px 16px rgba(0,0,0,0.2);" alt="Avatar">
             <h3 style="font-weight: 600; margin-bottom: 1.5rem;">${escapeHtml(partnerName)}</h3>
-            <p style="font-size: 1.25rem; font-weight: 500; margin-bottom: 0.5rem;">Calling...</p>
-            <p style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">Calling ${escapeHtml(partnerName)}</p>
+            <p style="font-size: 1.25rem; font-weight: 500; margin-bottom: 0.5rem;">ISL Video Call</p>
+            <p style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">Calling ${escapeHtml(partnerName)} (Indian Sign Language)...</p>
             <p style="font-size: 0.9rem; opacity: 0.75; margin-bottom: 3rem;">Waiting for ${escapeHtml(partnerName)} to accept...</p>
             <button id="outgoing-cancel-btn" style="background: #ef4444; color: white; border: none; padding: 12px 32px; border-radius: 50px; font-size: 1.1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);">
                 <i class="bi bi-telephone-x-fill" style="margin-right: 8px;"></i> End Call
@@ -661,7 +866,7 @@ function showIncomingCall(data, socket) {
                 <div class="d-flex align-items-center mb-2">
                     <img src="${callerAvatar}" class="rounded-circle me-2" width="36" height="36" style="object-fit:cover;" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(data.caller_name || 'User')}&background=6366f1&color=fff&size=36'">
                     <div>
-                        <span class="fw-bold d-block text-primary">Incoming Video Call</span>
+                        <span class="fw-bold d-block text-primary">Incoming ISL Video Call</span>
                         <span class="small text-dark call-notif-msg">${callerName} is calling you.</span>
                     </div>
                 </div>
@@ -687,7 +892,7 @@ function showIncomingCall(data, socket) {
 
     if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         try {
-            backgroundNotif = new Notification(`Incoming Video Call from ${callerName}`, {
+            backgroundNotif = new Notification(`Incoming ISL Video Call from ${callerName}`, {
                 body: 'Click to view and answer the call.',
                 icon: data.caller_avatar || '/static/uploads/default.png',
                 tag: `call-${callId}`,
@@ -728,7 +933,7 @@ function showIncomingCall(data, socket) {
         showRealtimeNotification({
             type: 'call',
             title: 'Missed Call',
-            message: 'Incoming video call expired.'
+            message: 'Incoming ISL video call expired.'
         });
     }, 60000);
 
@@ -848,7 +1053,7 @@ async function checkPendingIncomingCall() {
                 showRealtimeNotification({
                     type: 'call',
                     title: 'Missed Call',
-                    message: 'Incoming video call expired.'
+                    message: 'Incoming ISL video call expired.'
                 });
             }
             stopRingtone();
