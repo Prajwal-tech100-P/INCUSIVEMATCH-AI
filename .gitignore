@@ -1,8 +1,11 @@
 __pycache__/
 *.py[cod]
 .env
+
 venv/
 .venv/
+experimental/hwgat_env/
+
 # Large ISL training dataset (keep local, exclude from Git)
 datasets/sign-dictionary-isl/
 
