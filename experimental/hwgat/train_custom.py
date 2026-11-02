@@ -24,11 +24,17 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-if CURRENT_DIR not in sys.path:
-    sys.path.insert(0, CURRENT_DIR)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(CURRENT_DIR))
+for path_entry in (PROJECT_ROOT, CURRENT_DIR):
+    if path_entry not in sys.path:
+        sys.path.insert(0, path_entry)
 
-import dataset_utils as du
-import model_utils as mu
+try:
+    from experimental.hwgat import dataset_utils as du
+    from experimental.hwgat import model_utils as mu
+except ImportError:
+    import dataset_utils as du  # type: ignore[import-not-found]
+    import model_utils as mu  # type: ignore[import-not-found]
 
 
 class LandmarkDataset(Dataset):
@@ -40,8 +46,8 @@ class LandmarkDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
-        npy_path, label_idx = self.samples[idx]
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
+        npy_path, label_idx = self.samples[index]
         arr = np.load(npy_path)
         tensor = torch.tensor(arr, dtype=torch.float32)
         return tensor, label_idx

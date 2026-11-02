@@ -1,6 +1,6 @@
 import secrets
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Dict, Any
 from bson import ObjectId
 from pymongo import ReturnDocument
@@ -16,8 +16,24 @@ class PasswordReset:
     IP_RATE_LIMIT_MAX = 10   # Max requests per IP within 15 minutes
     IP_RATE_LIMIT_WINDOW = 15
 
+    @staticmethod
+    def _now() -> datetime:
+        """Return the current UTC timestamp (timezone-aware)."""
+        return datetime.now(timezone.utc)
+
+    @staticmethod
+    def _to_utc(dt: Optional[datetime]) -> Optional[datetime]:
+        """Ensure a datetime object is timezone-aware in UTC for safe comparisons."""
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
     @classmethod
     def _collection(cls):
+        if mongo.db is None:
+            raise RuntimeError("Database connection is not initialized.")
         return mongo.db[cls.COLLECTION]
 
     @staticmethod
@@ -63,7 +79,7 @@ class PasswordReset:
         if not email:
             return False
         normalized_email = email.strip().lower()
-        cutoff = datetime.utcnow() - timedelta(seconds=cls.RATE_LIMIT_SECONDS)
+        cutoff = cls._now() - timedelta(seconds=cls.RATE_LIMIT_SECONDS)
         recent = cls._collection().find_one({
             "email": normalized_email,
             "created_at": {"$gt": cutoff}
@@ -75,7 +91,7 @@ class PasswordReset:
         """Check if an IP address exceeded request limits within the rate-limit window."""
         if not ip_address:
             return False
-        cutoff = datetime.utcnow() - timedelta(minutes=cls.IP_RATE_LIMIT_WINDOW)
+        cutoff = cls._now() - timedelta(minutes=cls.IP_RATE_LIMIT_WINDOW)
         count = cls._collection().count_documents({
             "ip_address": ip_address,
             "created_at": {"$gt": cutoff}
@@ -90,19 +106,19 @@ class PasswordReset:
         """
         raw_token = secrets.token_urlsafe(32)
         token_hash = cls.hash_token(raw_token)
-        now = datetime.utcnow()
+        now = cls._now()
         expires_at = now + timedelta(minutes=cls.EXPIRATION_MINUTES)
 
         col = cls._collection()
 
         # Invalidate any previously active unused tokens for this user
         col.update_many(
-            {"user_id": str(user_id), "used": False},
+            {"user_id": user_id, "used": False},
             {"$set": {"used": True, "invalidated_at": now}}
         )
 
         doc = {
-            "user_id": str(user_id),
+            "user_id": user_id,
             "email": email.strip().lower(),
             "token_hash": token_hash,
             "created_at": now,
@@ -133,8 +149,8 @@ class PasswordReset:
         if doc.get("used", False):
             return None, "This password reset link has already been used. Please request a new one."
 
-        expires_at = doc.get("expires_at")
-        if not expires_at or expires_at < datetime.utcnow():
+        expires_at = cls._to_utc(doc.get("expires_at"))
+        if not expires_at or expires_at < cls._now():
             return None, "This password reset link has expired. Please request a new one."
 
         return doc, None
@@ -149,7 +165,7 @@ class PasswordReset:
             return None, "Invalid or missing password reset token."
 
         token_hash = cls.hash_token(raw_token)
-        now = datetime.utcnow()
+        now = cls._now()
 
         # Atomic find-and-update ensures race-condition safety and single-use enforcement
         updated_doc = cls._collection().find_one_and_update(
@@ -174,7 +190,8 @@ class PasswordReset:
                 return None, "This password reset link is invalid or does not exist."
             if existing.get("used", False):
                 return None, "This password reset link has already been used. Please request a new one."
-            if existing.get("expires_at", now) <= now:
+            exp = cls._to_utc(existing.get("expires_at"))
+            if exp is not None and exp <= now:
                 return None, "This password reset link has expired. Please request a new one."
             return None, "Unable to validate reset token. Please try again."
 
