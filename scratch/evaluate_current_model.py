@@ -6,7 +6,7 @@ import torch.nn as nn
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
-DATA_ROOT = Path(r"C:\Users\ACER\isl-40words\processed_landmarks")
+DATA_ROOT = Path(r"datasets/isl_custom")
 MODEL_PATH = Path("models/sign_gcnt.pt")
 SEQ_LEN = 60
 NUM_NODES = 42

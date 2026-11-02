@@ -1,6 +1,18 @@
 import os
+from typing import Any, cast
 from flask import Flask
 from werkzeug.middleware.proxy_fix import ProxyFix
+
+# Optimize PyTorch CPU threading for constrained container memory
+try:
+    import torch
+    torch.set_num_threads(1)
+    try:
+        torch.set_num_interop_threads(1)
+    except Exception:
+        pass
+except ImportError:
+    pass
 
 from config import Config
 from extensions import mongo, login_manager, socketio
@@ -19,14 +31,17 @@ def create_app(config_class=Config):
     # Flask. Trust the standard proxy headers so Flask knows the original scheme.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
-    mongo.init_app(app)
+    mongo.init_app(app, maxPoolSize=app.config.get("MONGO_MAX_POOL_SIZE", 15))
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"
     login_manager.login_message = "Please log in to access this page."
     login_manager.login_message_category = "warning"
 
-    origins = app.config.get("SOCKETIO_CORS_ALLOWED_ORIGINS") or None
-    socketio.init_app(app, cors_allowed_origins=origins)
+    origins = app.config.get("SOCKETIO_CORS_ALLOWED_ORIGINS")
+    if isinstance(origins, (list, str)):
+        cast(Any, socketio).init_app(app, cors_allowed_origins=origins)
+    else:
+        cast(Any, socketio).init_app(app)
 
     from models.user import UserModel
 
@@ -55,7 +70,7 @@ def create_app(config_class=Config):
             return photo
         return f"/static/uploads/{photo}"
 
-    app.jinja_env.globals["avatar_url"] = avatar_url_filter
+    app.add_template_global(avatar_url_filter, name="avatar_url")
 
     def generate_csrf_token():
         from flask import session
@@ -64,7 +79,7 @@ def create_app(config_class=Config):
             session["_csrf_token"] = secrets.token_hex(32)
         return session["_csrf_token"]
 
-    app.jinja_env.globals["csrf_token"] = generate_csrf_token
+    app.add_template_global(generate_csrf_token, name="csrf_token")
 
     @app.before_request
     def check_maintenance():
@@ -93,7 +108,11 @@ def create_app(config_class=Config):
 
         # Fetch settings from MongoDB safely
         try:
-            settings = mongo.db.app_settings.find_one({"_id": "app_settings"})
+            db = mongo.db
+            if db is not None and hasattr(db, "app_settings"):
+                settings = getattr(db, "app_settings").find_one({"_id": "app_settings"})
+            else:
+                settings = None
         except Exception:
             settings = None
             

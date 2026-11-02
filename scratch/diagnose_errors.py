@@ -19,7 +19,7 @@ model = GCNTransformerClassifier(
 model.load_state_dict(ckpt['state_dict'])
 model.eval()
 
-data_root = Path(r'C:\Users\ACER\isl-40words\processed_landmarks')
+data_root = Path(r'datasets/isl_custom')
 class_to_idx = ckpt['class_to_idx']
 idx_to_class = {i: c for c, i in class_to_idx.items()}
 test_stems = set(ckpt['test_file_stems'])

@@ -3,11 +3,13 @@ services:
     name: inclusivematch-ai
     runtime: python
     buildCommand: pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && pip install --no-cache-dir -r requirements.txt
-    startCommand: gunicorn --workers 1 --threads 100 --timeout 120 app:app
+    startCommand: gunicorn --workers 1 --threads 4 --timeout 120 app:app
     healthCheckPath: /health
     envVars:
       - key: APP_ENV
         value: production
+      - key: MALLOC_ARENA_MAX
+        value: '2'
       - key: PYTHON_VERSION
         value: "3.12.8"
       - key: SESSION_COOKIE_SECURE

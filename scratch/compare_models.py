@@ -10,7 +10,7 @@ test_stems = set(new_ckpt["test_file_stems"])
 classes = new_ckpt["classes"]
 class_to_idx = new_ckpt["class_to_idx"]
 
-DATA_ROOT = Path(r"C:\Users\ACER\isl-40words\processed_landmarks")
+DATA_ROOT = Path(r"datasets/isl_custom")
 
 # Load old model
 old_ckpt = torch.load("models/sign_gcnt_legacy_backup.pt", map_location="cpu", weights_only=False)

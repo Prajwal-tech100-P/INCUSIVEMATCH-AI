@@ -614,7 +614,7 @@ function setupSocketHandlers(socket) {
             (currentOutgoingPartnerId && String(data.user_id) === String(currentOutgoingPartnerId))) {
             cleanupOutgoingCallUI();
             const cid = data.call_id ? `&call_id=${encodeURIComponent(data.call_id)}` : '';
-            window.location.href = `/video/${encodeURIComponent(data.user_id)}?outgoing=1${cid}`;
+            window.location.replace(`/video/${encodeURIComponent(data.user_id)}?outgoing=1${cid}`);
         }
     });
 
@@ -973,11 +973,11 @@ function showIncomingCall(data, socket) {
                 const notifItem = document.getElementById(`call-notification-${callId}`);
                 if (notifItem) notifItem.remove();
                 const cid = callId ? `&call_id=${encodeURIComponent(callId)}` : '';
-                window.location.href = `/video/${encodeURIComponent(data.caller_id)}?incoming=1${cid}`;
+                window.location.replace(`/video/${encodeURIComponent(data.caller_id)}?incoming=1${cid}`);
             });
         } else {
             const cid = callId ? `&call_id=${encodeURIComponent(callId)}` : '';
-            window.location.href = `/video/${encodeURIComponent(data.caller_id)}?incoming=1${cid}`;
+            window.location.replace(`/video/${encodeURIComponent(data.caller_id)}?incoming=1${cid}`);
         }
     };
 

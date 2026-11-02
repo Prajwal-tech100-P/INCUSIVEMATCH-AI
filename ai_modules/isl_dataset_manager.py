@@ -25,7 +25,7 @@ import numpy as np
 # Default dataset path inside the project
 DEFAULT_DATASET_DIR = Path("datasets/isl_custom")
 CLASSES_JSON_PATH = Path("models/sign_gcnt_best_classes.json")
-EXTERNAL_LANDMARKS_DIR = Path(r"C:\Users\ACER\isl-40words\processed_landmarks")
+EXTERNAL_LANDMARKS_DIR = None
 
 
 def get_default_classes() -> List[str]:
@@ -194,14 +194,15 @@ class ISLDatasetManager:
 
     def sync_from_external_landmarks(
         self,
-        source_dir: Path | str = EXTERNAL_LANDMARKS_DIR,
+        source_dir: Optional[Path | str] = None,
         classes: Optional[List[str]] = None,
         copy_mode: bool = True
     ) -> Dict[str, Any]:
         """
-        Imports or links existing landmark files from C:\\Users\\ACER\\isl-40words\\processed_landmarks
-        into datasets/isl_custom/ to preserve all valid existing classes and samples.
+        Imports or links landmark files from an external directory into datasets/isl_custom/.
         """
+        if not source_dir:
+            return {"ok": False, "message": "No external landmark source directory provided.", "synced": 0}
         src = Path(source_dir)
         if not src.exists():
             return {"ok": False, "message": f"Source directory {src} does not exist.", "synced": 0}

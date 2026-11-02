@@ -385,7 +385,6 @@ class SignLanguageRecognizer:
     SVM_MODEL_PATH = Path("models/sign_classifier.joblib")
     TASK_MODEL_PATHS = [
         Path("models/hand_landmarker.task"),
-        Path(r"C:\Users\ACER\isl-40words\models\hand_landmarker.task"),
     ]
 
     SEQ_LEN = 60
@@ -440,6 +439,11 @@ class SignLanguageRecognizer:
 
         try:
             import torch
+            try:
+                torch.set_num_threads(1)
+                torch.set_num_interop_threads(1)
+            except Exception:
+                pass
             ckpt = torch.load(self.model_path, map_location="cpu", weights_only=False)
 
             # Check for enhanced 2-hand GCN-Transformer format (sign_gcnt_best.pt)

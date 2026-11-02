@@ -1,9 +1,11 @@
 import os
 import secrets
 from datetime import timedelta
-from dotenv import load_dotenv
-
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 
 def _bool_env(name, default=False):
@@ -26,7 +28,9 @@ class Config:
     else:
         SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_urlsafe(48)
 
-    TEMPLATES_AUTO_RELOAD = True
+    TEMPLATES_AUTO_RELOAD = (APP_ENV != "production")
+
+    MONGO_MAX_POOL_SIZE = int(os.environ.get("MONGO_MAX_POOL_SIZE", 15))
 
     MONGO_URI = os.environ.get(
         "MONGO_URI",

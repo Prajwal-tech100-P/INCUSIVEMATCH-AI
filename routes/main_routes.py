@@ -21,7 +21,6 @@ def dashboard():
     min_age_filter = request.args.get('min_age', type=int)
     max_age_filter = request.args.get('max_age', type=int)
     comm_filter = request.args.get('comm_pref', '').strip()
-    online_filter = request.args.get('online', '').lower() in {'1', 'true', 'yes'}
 
     # Support multiple interest selections (checkboxes/chips)
     raw_interests = request.args.getlist('interests') or request.args.getlist('interest')
@@ -52,7 +51,7 @@ def dashboard():
         filter_min_age=min_age_filter,
         filter_max_age=max_age_filter,
         filter_interest=selected_interests or None,
-        online_only=online_filter,
+        online_only=False,
         require_shared_interests=True
     )
     mutual_matches = Match.get_mutual_matches(current_user.id)
@@ -66,8 +65,7 @@ def dashboard():
         'max_age': max_age_filter if max_age_filter is not None else default_max_age,
         'comm_pref': comm_filter,
         'interest': selected_interests[0] if len(selected_interests) == 1 else (','.join(selected_interests) if selected_interests else ''),
-        'interests': selected_interests,
-        'online': online_filter
+        'interests': selected_interests
     }
 
     return render_template(

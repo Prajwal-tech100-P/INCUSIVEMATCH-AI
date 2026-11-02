@@ -114,7 +114,6 @@
     {% if active_filters.has_gender_override %}{% set active_count = active_count + 1 %}{% endif %}
     {% if active_filters.interests or active_filters.interest %}{% set active_count = active_count + 1 %}{% endif %}
     {% if active_filters.comm_pref %}{% set active_count = active_count + 1 %}{% endif %}
-    {% if active_filters.online %}{% set active_count = active_count + 1 %}{% endif %}
     {% if (active_filters.min_age and active_filters.min_age != 18) or (active_filters.max_age and active_filters.max_age != 99) %}{% set active_count = active_count + 1 %}{% endif %}
 
     <div class="offcanvas offcanvas-end filter-panel" tabindex="-1" id="filterPanel" aria-labelledby="filterPanelLabel" data-bs-scroll="false" data-bs-backdrop="true">
@@ -197,6 +196,7 @@
 
                     <!-- Hidden form inputs for form submission -->
                     <div id="interests-hidden-inputs">
+                        <input type="hidden" name="interest" value="{{ active_filters.interest or '' }}">
                         {% for interest in active_filters.interests %}
                         <input type="hidden" name="interests" value="{{ interest }}">
                         {% endfor %}
@@ -216,12 +216,6 @@
                         <option value="sign_language" {% if active_filters.comm_pref in ['sign_language', 'sign'] %}selected{% endif %}>🤟 Sign Language</option>
                         <option value="voice" {% if active_filters.comm_pref == 'voice' %}selected{% endif %}>📞 Voice / Call</option>
                     </select>
-                </div>
-
-                <!-- Online Status -->
-                <div class="form-check form-switch mb-3 p-3 bg-light rounded-3 border">
-                    <input class="form-check-input ms-0 me-2" type="checkbox" name="online" value="1" id="filter-online-switch" {% if active_filters.online %}checked{% endif %}>
-                    <label class="form-check-label small fw-semibold text-dark" for="filter-online-switch">🟢 Online users only</label>
                 </div>
             </div>
 

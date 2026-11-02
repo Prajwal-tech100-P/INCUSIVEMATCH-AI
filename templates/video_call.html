@@ -1,13 +1,72 @@
 {% extends "base.html" %}
 {% block title %}Video Call with {{ partner.name }} - Inclusive Match AI{% endblock %}
 {% block content %}
+<style>
+.video-stage-container {
+  position: relative;
+  width: 100%;
+  height: 60vh;
+  min-height: 320px;
+  max-height: 660px;
+  background: #0b0f19;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 1rem 1rem 0 0;
+}
+@media (max-width: 991px) {
+  .video-stage-container {
+    height: 52vh;
+    min-height: 300px;
+  }
+}
+@media (max-width: 576px) {
+  .video-stage-container {
+    height: 48vh;
+    min-height: 270px;
+  }
+}
+.remote-video-feed {
+  width: 100%;
+  height: 100%;
+  object-fit: contain !important;
+  background: #0b0f19;
+  display: block;
+}
+.local-pip-video {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  width: 24%;
+  min-width: 96px;
+  max-width: 180px;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: #1e293b;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  z-index: 15;
+  transition: all 0.2s ease;
+}
+@media (max-width: 576px) {
+  .local-pip-video {
+    width: 30%;
+    min-width: 84px;
+    bottom: 10px;
+    right: 10px;
+  }
+}
+</style>
+
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
       <h3 class="fw-bold mb-0">Video &amp; Audio Call</h3>
       <small class="text-muted">with {{ partner.name }}</small>
     </div>
-    <a href="{{ url_for('chat.chat_with', partner_id=partner.id) }}" class="btn btn-light rounded-pill">
+    <a href="{{ url_for('chat.chat_with', partner_id=partner.id) }}" class="btn btn-light rounded-pill" id="back-to-chat-btn" onclick="handleBackToChat(event)">
       <i class="bi bi-chat-dots me-1"></i> Back to Chat
     </a>
   </div>
@@ -16,9 +75,9 @@
     <!-- Main Video Stage -->
     <div class="col-lg-8" style="flex: 1; display: flex; flex-direction: column;">
       <div class="card bg-dark border-0 rounded-4 overflow-hidden shadow-sm flex-grow-1">
-        <div class="position-relative" style="aspect-ratio:16/9; background:#0f172a;">
+        <div class="position-relative video-stage-container" id="videoStageContainer" style="background:#0b0f19;">
           <!-- Remote Video Feed -->
-          <video id="remoteVideo" autoplay playsinline class="w-100 h-100" style="object-fit:cover"></video>
+          <video id="remoteVideo" autoplay playsinline class="remote-video-feed"></video>
 
           <!-- Remote Placeholder -->
           <div id="remotePlaceholder" class="position-absolute top-50 start-50 translate-middle text-center text-white-50">
@@ -32,7 +91,7 @@
           </button>
 
           <!-- Local Pip Video Feed -->
-          <video id="localVideo" autoplay muted playsinline class="position-absolute bottom-0 end-0 m-3 rounded-3 shadow" style="width:28%;max-height:30%;object-fit:cover;border:2px solid rgba(255,255,255,0.8);background:#1e293b; z-index:15;"></video>
+          <video id="localVideo" autoplay muted playsinline class="position-absolute bottom-0 end-0 local-pip-video"></video>
 
           <!-- Status Badge -->
           <div id="status" class="position-absolute top-0 start-0 m-3 badge bg-secondary" style="z-index:15;">Ready to call</div>
@@ -84,6 +143,17 @@
 
         <!-- Translation Mode Settings -->
         <div class="bg-light p-2 rounded-3 mb-3 border">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <label class="form-label small fw-semibold text-muted mb-0">Sign AI Model</label>
+            <span id="engine-badge" class="badge bg-primary text-white rounded-pill small" style="font-size:0.68rem;">
+              HWGAT · 2,002 Signs
+            </span>
+          </div>
+          <select id="ai-engine-select" class="form-select form-select-sm mb-2">
+            <option value="hwgat" selected>HWGAT Deep Model (2,002 ISL Signs)</option>
+            <option value="gcnt">GCN-T Compact Model (29 ISL Signs)</option>
+          </select>
+
           <div class="d-flex justify-content-between align-items-center mb-1">
             <label class="form-label small fw-semibold text-muted mb-0">Recognition Source</label>
             <span id="speech-status-pill" class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill small" style="font-size:0.7rem;">
@@ -269,25 +339,51 @@ function createPeer() {
 
     let remoteStream = remoteVideo.srcObject;
     if (!remoteStream || !(remoteStream instanceof MediaStream)) {
-      if (event.streams && event.streams[0]) {
-        remoteStream = event.streams[0];
-      } else {
-        remoteStream = new MediaStream();
-      }
+      remoteStream = new MediaStream();
       remoteVideo.srcObject = remoteStream;
+    }
+
+    if (event.track.kind === "audio") {
+      // Audio Requirement: Prevent duplicate remote audio tracks from playing concurrently (eliminates echo & phase reverb)
+      const existingAudio = remoteStream.getAudioTracks();
+      existingAudio.forEach(t => {
+        if (t.id !== event.track.id) {
+          try { remoteStream.removeTrack(t); } catch (e) {}
+        }
+      });
+      if (!remoteStream.getAudioTracks().some(t => t.id === event.track.id)) {
+        remoteStream.addTrack(event.track);
+      }
     } else {
-      if (event.streams && event.streams[0]) {
-        event.streams[0].getTracks().forEach(track => {
-          if (!remoteStream.getTracks().some(t => t.id === track.id)) {
-            remoteStream.addTrack(track);
-          }
-        });
+      // Keep only active video track
+      const existingVideo = remoteStream.getVideoTracks();
+      existingVideo.forEach(t => {
+        if (t.id !== event.track.id) {
+          try { remoteStream.removeTrack(t); } catch (e) {}
+        }
+      });
+      if (!remoteStream.getVideoTracks().some(t => t.id === event.track.id)) {
+        remoteStream.addTrack(event.track);
       }
     }
 
-    if (!remoteStream.getTracks().some(track => track.id === event.track.id)) {
-      remoteStream.addTrack(event.track);
-    }
+    // Adapt video layout dynamically when video resolution / orientation is received
+    const adaptVideoLayout = () => {
+      if (!remoteVideo || !remoteVideo.videoWidth || !remoteVideo.videoHeight) return;
+      const isPortrait = remoteVideo.videoHeight > remoteVideo.videoWidth;
+      const container = document.getElementById("videoStageContainer");
+      if (container) {
+        if (isPortrait) {
+          container.classList.add("remote-is-portrait");
+        } else {
+          container.classList.remove("remote-is-portrait");
+        }
+      }
+    };
+    remoteVideo.removeEventListener("loadedmetadata", adaptVideoLayout);
+    remoteVideo.addEventListener("loadedmetadata", adaptVideoLayout);
+    remoteVideo.removeEventListener("resize", adaptVideoLayout);
+    remoteVideo.addEventListener("resize", adaptVideoLayout);
 
     const hidePlaceholder = () => {
       if (remotePlaceholder) remotePlaceholder.classList.add("d-none");
@@ -390,9 +486,16 @@ async function ensureMedia() {
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1
+        }
       });
       if (localVideo) {
+        localVideo.muted = true;
+        localVideo.volume = 0;
         localVideo.srcObject = stream;
         localVideo.play().catch(() => {});
       }
@@ -677,8 +780,8 @@ function handleRemoteTermination(data) {
   }
   setStatus(msg);
   setTimeout(() => {
-    window.location.href = "{{ url_for('chat.chat_with', partner_id=partner.id) }}";
-  }, 1200);
+    window.location.replace("{{ url_for('chat.chat_with', partner_id=partner.id) }}");
+  }, 1000);
 }
 
 socket.on("call_ended", handleRemoteTermination);
@@ -847,20 +950,35 @@ function cleanupCall() {
   if (ended) return;
   ended = true;
 
-  // 1. Stop speech recognition
+  // 1. Deregister call-specific socket listeners to prevent lingering / duplicate event processing
+  try {
+    socket.off("signal");
+    socket.off("call_ended");
+    socket.off("call_terminated");
+    socket.off("peer_left");
+    socket.off("sign_caption");
+    socket.off("speech_caption");
+    socket.off("signing_started");
+    socket.off("signing_stopped");
+  } catch (e) {}
+
+  // 2. Stop speech recognition
   if (speechRecognizer) {
-    try { speechRecognizer.stop(); } catch (e) {}
+    try {
+      speechRecognizer.onend = null;
+      speechRecognizer.stop();
+    } catch (e) {}
     speechRecognizer = null;
   }
   speechActive = false;
 
-  // 2. Stop speech synthesis
+  // 3. Stop speech synthesis
   if (window.speechSynthesis) {
     try { window.speechSynthesis.cancel(); } catch (e) {}
   }
   isSpeakingSynthesized = false;
 
-  // 3. Stop sign recognition interval and loop
+  // 4. Stop sign recognition interval and loop
   signAiEnabled = false;
   signBusy = false;
   if (signInterval) {
@@ -869,7 +987,7 @@ function cleanupCall() {
   }
   resetServerSignSession();
 
-  // 4. Hide overlays and reset indicators
+  // 5. Hide overlays and reset indicators
   if (remoteSigningIndicator) {
     remoteSigningIndicator.classList.add("d-none");
   }
@@ -880,7 +998,7 @@ function cleanupCall() {
     remotePlaceholder.classList.remove("d-none");
   }
 
-  // 5. Stop all local audio and video media tracks immediately
+  // 6. Stop all local audio and video media tracks immediately
   if (stream) {
     stream.getTracks().forEach(track => {
       try {
@@ -891,7 +1009,7 @@ function cleanupCall() {
     stream = null;
   }
 
-  // 6. Close RTCPeerConnection and clear all listeners
+  // 7. Close RTCPeerConnection and clear all listeners
   if (pc) {
     try {
       pc.onicecandidate = null;
@@ -903,7 +1021,7 @@ function cleanupCall() {
     pc = null;
   }
 
-  // 7. Clear local and remote video elements' srcObject
+  // 8. Clear local and remote video elements' srcObject
   if (remoteVideo) {
     remoteVideo.srcObject = null;
   }
@@ -911,16 +1029,28 @@ function cleanupCall() {
     localVideo.srcObject = null;
   }
 
-  // 8. Stop any active call ringtones
+  // 9. Stop any active call ringtones
   if (typeof stopRingtone === "function") {
     try { stopRingtone(); } catch (e) {}
   }
 
-  // 9. Reset state variables
+  // 10. Reset state variables
   pendingCandidates = [];
   peerPresent = false;
   remoteUserId = null;
   localSigningActive = false;
+}
+
+function handleBackToChat(e) {
+  if (e) e.preventDefault();
+  if (!ended) {
+    cleanupCall();
+    try {
+      socket.emit("end_call", { partner_id: PARTNER_ID, call_id: CALL_ID, reason: "back_to_chat" });
+      socket.emit("leave_call", { partner_id: PARTNER_ID, call_id: CALL_ID, reason: "back_to_chat" });
+    } catch (err) {}
+  }
+  window.location.replace("{{ url_for('chat.chat_with', partner_id=partner.id) }}");
 }
 
 hangupBtn.onclick = () => {
@@ -932,7 +1062,7 @@ hangupBtn.onclick = () => {
   } catch (e) {}
   setStatus("Call ended. Returning to chat…");
   setTimeout(() => {
-    window.location.href = "{{ url_for('chat.chat_with', partner_id=partner.id) }}";
+    window.location.replace("{{ url_for('chat.chat_with', partner_id=partner.id) }}");
   }, 350);
 };
 
@@ -950,6 +1080,25 @@ window.addEventListener("pagehide", () => {
     socket.emit("end_call", { partner_id: PARTNER_ID, call_id: CALL_ID, reason: "page_hide" });
     socket.emit("leave_call", { partner_id: PARTNER_ID, call_id: CALL_ID, reason: "page_hide" });
   } catch (e) {}
+});
+
+// Mobile Browser Back Button Navigation & History Management:
+// 1. If user presses browser back button while on call, terminate cleanly
+window.addEventListener("popstate", () => {
+  if (!ended) {
+    cleanupCall();
+    try {
+      socket.emit("end_call", { partner_id: PARTNER_ID, call_id: CALL_ID, reason: "back_navigation" });
+      socket.emit("leave_call", { partner_id: PARTNER_ID, call_id: CALL_ID, reason: "back_navigation" });
+    } catch (e) {}
+  }
+});
+
+// 2. Prevent reviving ended call from browser back-forward cache (bfcache)
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted || ended) {
+    window.location.replace("{{ url_for('chat.chat_with', partner_id=partner.id) }}");
+  }
 });
 
 // -------------------------------------------------------------------------
@@ -1167,6 +1316,8 @@ async function runSignRecognition() {
         const fd = new FormData();
         fd.append("frame", blob, "video-call-frame.jpg");
         fd.append("source", isLocalSource ? "local" : "remote");
+        const activeEngine = document.getElementById("ai-engine-select")?.value || "hwgat";
+        fd.append("engine", activeEngine);
         if (typeof PARTNER_ID !== "undefined" && PARTNER_ID) {
           fd.append("partner_id", PARTNER_ID);
         }
@@ -1184,6 +1335,19 @@ async function runSignRecognition() {
 
         if (IS_DIAG_ENABLED && result && (result.text || result.is_signing)) {
           console.log(`[SignAI Diag] result: text="${result.text}", new_token="${result.new_token || ''}", conf=${result.confidence}%, state=${result.signing_state}`);
+        }
+
+        if (result && result.engine) {
+          const badgeEl = document.getElementById("engine-badge");
+          if (badgeEl) {
+            if (result.engine === "HWGAT") {
+              badgeEl.className = "badge bg-primary text-white rounded-pill small";
+              badgeEl.textContent = `HWGAT · ${result.vocabulary_size || 2002} Signs`;
+            } else {
+              badgeEl.className = "badge bg-secondary text-white rounded-pill small";
+              badgeEl.textContent = `GCN-T · ${result.vocabulary_size || 29} Signs`;
+            }
+          }
         }
 
         // 1. Automatic signing status synchronization
@@ -1262,7 +1426,7 @@ async function runSignRecognition() {
   }
 }
 
-// 220ms continuous recognition interval
-signInterval = setInterval(runSignRecognition, 220);
+// 450ms continuous recognition interval (optimized for real-time captions without CPU/memory congestion)
+signInterval = setInterval(runSignRecognition, 450);
 </script>
 {% endblock %}

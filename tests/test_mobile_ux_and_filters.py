@@ -134,8 +134,9 @@ def test_filter_panel_structure_and_controls(client, regular_user):
     # Communication preference select
     assert 'name="comm_pref"' in html
 
-    # Online status switch
-    assert 'name="online"' in html
+    # Online status switch completely removed from discover filter
+    assert 'name="online"' not in html
+    assert 'filter-online-switch' not in html
 
     # Sticky Footer actions
     assert 'id="apply-filters-btn"' in html
@@ -167,7 +168,7 @@ def test_filters_preservation_and_active_badge(client, regular_user):
     assert 'value="22"' in html
     assert 'value="35"' in html
     assert 'value="text" selected' in html or ('value="text"' in html and 'selected' in html)
-    assert 'id="filter-online-switch" checked' in html or ('filter-online-switch' in html and 'checked' in html)
+    assert 'filter-online-switch' not in html
 
 
 def test_empty_state_when_filters_yield_no_matches(client, regular_user):

@@ -179,34 +179,11 @@
                     <div class="col-12 mt-4">
                         <h6 class="fw-bold">Location</h6>
                         <div class="mb-3">
-                            <div class="form-check form-check-inline">
-                                <input class="form-check-input" type="radio" name="location_mode" id="loc_current" value="current" {% if user.location.mode == 'current' %}checked{% endif %}>
-                                <label class="form-check-label" for="loc_current">Use Current Location</label>
-                            </div>
-                            <div class="form-check form-check-inline">
-                                <input class="form-check-input" type="radio" name="location_mode" id="loc_manual" value="manual" {% if user.location.mode != 'current' %}checked{% endif %}>
-                                <label class="form-check-label" for="loc_manual">Enter Location Manually</label>
-                            </div>
+                            <label class="form-label fw-semibold" for="val-location">Location (City, State, Country) *</label>
+                            <input type="text" name="location_display" id="val-location" class="form-control" value="{{ user.location.display_name if user.location is mapping else (user.location or '') }}" placeholder="e.g. Bengaluru, Karnataka, India" required>
+                            <div class="form-text">For your privacy, we only display this location on your profile, not your exact coordinates.</div>
                         </div>
-
-                        <div id="location_current_wrapper" class="mb-3 p-3 bg-light rounded" {% if user.location.mode != 'current' %}style="display:none;"{% endif %}>
-                            <button type="button" id="btn-get-location" class="btn btn-outline-primary mb-2">
-                                <i class="bi bi-geo-alt-fill me-2"></i> Detect My Location
-                            </button>
-                            <div id="location-status" class="small mt-2 text-muted"></div>
-                            
-                            <input type="hidden" name="latitude" id="lat" value="{{ user.location.latitude or '' }}">
-                            <input type="hidden" name="longitude" id="lon" value="{{ user.location.longitude or '' }}">
-                            <input type="hidden" name="city" id="city" value="{{ user.location.city or '' }}">
-                            <input type="hidden" name="state" id="state" value="{{ user.location.state or '' }}">
-                            <input type="hidden" name="country" id="country" value="{{ user.location.country or '' }}">
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Location Name (Displayed on profile) *</label>
-                            <input type="text" name="location_display" id="val-location" class="form-control" value="{{ user.location.display_name }}" placeholder="e.g. Bengaluru, Karnataka, India">
-                            <div class="form-text">For your privacy, we only show this text on your profile, not your exact coordinates.</div>
-                        </div>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -668,73 +645,8 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    const locRadios = document.querySelectorAll('input[name="location_mode"]');
-    const locCurrentWrapper = document.getElementById('location_current_wrapper');
-    const displayInput = document.getElementById('val-location');
-    locRadios.forEach(radio => {
-        radio.addEventListener('change', (e) => {
-            if(e.target.value === 'current') {
-                locCurrentWrapper.style.display = 'block';
-                displayInput.readOnly = true;
-            } else {
-                locCurrentWrapper.style.display = 'none';
-                displayInput.readOnly = false;
-            }
-        });
-    });
-
-    const btnGeo = document.getElementById('btn-get-location');
-    const locStatus = document.getElementById('location-status');
-    const latInput = document.getElementById('lat');
-    const lonInput = document.getElementById('lon');
-    const cityInput = document.getElementById('city');
-    const stateInput = document.getElementById('state');
-    const countryInput = document.getElementById('country');
-    if(btnGeo) {
-        btnGeo.addEventListener('click', () => {
-            if (!navigator.geolocation) {
-                locStatus.innerHTML = '<span class="text-danger">Geolocation is not supported by your browser.</span>';
-                return;
-            }
-            locStatus.innerHTML = '<i class="bi bi-hourglass-split"></i> Requesting location access...';
-            btnGeo.disabled = true;
-            navigator.geolocation.getCurrentPosition(
-                async (position) => {
-                    const lat = position.coords.latitude;
-                    const lon = position.coords.longitude;
-                    latInput.value = lat;
-                    lonInput.value = lon;
-                    try {
-                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
-                        const data = await res.json();
-                        let city = data.address.city || data.address.town || data.address.village || "";
-                        let state = data.address.state || "";
-                        let country = data.address.country || "";
-                        cityInput.value = city; stateInput.value = state; countryInput.value = country;
-                        let displayParts = [];
-                        if(city) displayParts.push(city);
-                        if(state) displayParts.push(state);
-                        if(country) displayParts.push(country);
-                        if(displayParts.length > 0) displayInput.value = displayParts.join(', ');
-                        else displayInput.value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-                        locStatus.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Location retrieved successfully!</span>';
-                    } catch (e) {
-                        displayInput.value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-                        locStatus.innerHTML = '<span class="text-warning">Could not get city name, using coordinates.</span>';
-                    }
-                    btnGeo.disabled = false;
-                },
-                (error) => {
-                    let msg = "Unable to retrieve your location.";
-                    if(error.code === 1) msg = "Location permission denied. Please enter manually.";
-                    locStatus.innerHTML = `<span class="text-danger">${msg}</span>`;
-                    btnGeo.disabled = false;
-                    document.getElementById('loc_manual').click();
-                }
-            );
-        });
-    }
-
+    // Manual location entry enabled; browser geolocation removed for user privacy
+    
     // ---------------------------
     // VERIFICATION LOGIC
     // ---------------------------

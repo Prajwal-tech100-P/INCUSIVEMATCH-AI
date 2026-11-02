@@ -65,12 +65,12 @@ try:
     from scratch.run_nlp_audit import EVAL_DATASET
 except (ImportError, ModuleNotFoundError):
     try:
-        from run_nlp_audit import EVAL_DATASET
+        from .run_nlp_audit import EVAL_DATASET
     except (ImportError, ModuleNotFoundError):
         _scratch_dir = os.path.dirname(os.path.abspath(__file__))
         if _scratch_dir not in sys.path:
             sys.path.insert(0, _scratch_dir)
-        from run_nlp_audit import EVAL_DATASET
+        from run_nlp_audit import EVAL_DATASET  # type: ignore[import-not-found]
 
 bench_texts = [x[0] for x in EVAL_DATASET]
 bench_labels = np.array([x[1] for x in EVAL_DATASET], dtype=int)

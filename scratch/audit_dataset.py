@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import numpy as np
 
-DATA_ROOT = Path(r"C:\Users\ACER\isl-40words\processed_landmarks")
+DATA_ROOT = Path(r"datasets/isl_custom")
 CKPT_CLASSES_FILE = Path("sign_model_output/classes.json")
 
 print("=" * 70)

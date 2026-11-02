@@ -379,7 +379,7 @@ def api_isl_save_recording():
     import numpy as np
     from flask import jsonify
     from ai_modules.isl_dataset_manager import ISLDatasetManager
-    from ai_modules.sign_language import SignLanguageRecognizer
+    from routes.video_routes import recognizer
 
     data = request.get_json(silent=True) or {}
     class_name = str(data.get("class_name", "")).strip()
@@ -387,7 +387,6 @@ def api_isl_save_recording():
         return jsonify(ok=False, message="Class name is required."), 400
 
     mgr = ISLDatasetManager()
-    recognizer = SignLanguageRecognizer()
 
     # Case A: Raw landmark array passed directly
     if "landmarks" in data and isinstance(data["landmarks"], list):

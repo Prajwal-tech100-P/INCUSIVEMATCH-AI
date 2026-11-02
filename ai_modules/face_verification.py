@@ -17,6 +17,7 @@ import os
 import cv2
 import numpy as np
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,15 @@ DEFAULT_NMS_THRESHOLD = 0.3
 
 
 class FaceVerifier:
-    """Production-grade face detection and deep facial embedding verification."""
+    """Production-grade face detection and deep facial embedding verification.
+    
+    Implements thread-safe singleton caching for underlying OpenCV DNN models
+    (YuNet and SFace) to avoid high memory allocations on concurrent requests.
+    """
+    _cached_detector = None
+    _cached_recognizer = None
+    _cached_paths = None
+    _model_lock = threading.Lock()
 
     def __init__(self, yunet_path=None, sface_path=None, cosine_threshold=DEFAULT_COSINE_THRESHOLD):
         self.yunet_path = yunet_path or YUNET_PATH
@@ -45,25 +54,41 @@ class FaceVerifier:
         self._init_models()
 
     def _init_models(self):
-        """Load deep neural network models for face detection and recognition."""
+        """Load deep neural network models with thread-safe singleton caching."""
         if not os.path.exists(self.yunet_path) or not os.path.exists(self.sface_path):
             logger.warning("YuNet or SFace model file not found in %s", MODELS_DIR)
             return
 
-        try:
-            self.detector = cv2.FaceDetectorYN.create(
-                self.yunet_path,
-                "",
-                (320, 320),
-                score_threshold=DEFAULT_DETECTION_SCORE_THRESHOLD,
-                nms_threshold=DEFAULT_NMS_THRESHOLD,
-            )
-            self.recognizer = cv2.FaceRecognizerSF.create(self.sface_path, "")
-            self._initialized = True
-            logger.info("FaceVerifier initialized with YuNet and SFace models.")
-        except Exception as e:
-            logger.error("Failed to initialize YuNet / SFace models: %s", e)
-            self._initialized = False
+        with FaceVerifier._model_lock:
+            if (
+                FaceVerifier._cached_detector is not None
+                and FaceVerifier._cached_recognizer is not None
+                and FaceVerifier._cached_paths == (self.yunet_path, self.sface_path)
+            ):
+                self.detector = FaceVerifier._cached_detector
+                self.recognizer = FaceVerifier._cached_recognizer
+                self._initialized = True
+                return
+
+            try:
+                detector = cv2.FaceDetectorYN.create(
+                    self.yunet_path,
+                    "",
+                    (320, 320),
+                    score_threshold=DEFAULT_DETECTION_SCORE_THRESHOLD,
+                    nms_threshold=DEFAULT_NMS_THRESHOLD,
+                )
+                recognizer = cv2.FaceRecognizerSF.create(self.sface_path, "")
+                FaceVerifier._cached_detector = detector
+                FaceVerifier._cached_recognizer = recognizer
+                FaceVerifier._cached_paths = (self.yunet_path, self.sface_path)
+                self.detector = detector
+                self.recognizer = recognizer
+                self._initialized = True
+                logger.info("FaceVerifier initialized and cached singleton YuNet and SFace models.")
+            except Exception as e:
+                logger.error("Failed to initialize YuNet / SFace models: %s", e)
+                self._initialized = False
 
     def _decode_image(self, image_data):
         """Decode raw bytes into a BGR OpenCV numpy image with dimension and size validation."""
@@ -90,9 +115,10 @@ class FaceVerifier:
             return None, None, {"verified": False, "reason": "Face verification service is currently unavailable."}
 
         h, w = img.shape[:2]
-        # YuNet requires explicit input size set matching image dimensions
-        self.detector.setInputSize((w, h))
-        _, faces = self.detector.detect(img)
+        with FaceVerifier._model_lock:
+            # YuNet requires explicit input size set matching image dimensions
+            self.detector.setInputSize((w, h))
+            _, faces = self.detector.detect(img)
 
         num_faces = len(faces) if faces is not None else 0
 
@@ -116,8 +142,9 @@ class FaceVerifier:
             return None, None, {"verified": False, "reason": f"Face in {source_label} is not clear enough (confidence {conf:.2f})."}
 
         try:
-            aligned_face = self.recognizer.alignCrop(img, face)
-            embedding = self.recognizer.feature(aligned_face)
+            with FaceVerifier._model_lock:
+                aligned_face = self.recognizer.alignCrop(img, face)
+                embedding = self.recognizer.feature(aligned_face)
             return face, embedding, None
         except Exception as e:
             logger.error("Error extracting face features: %s", e)
@@ -159,8 +186,9 @@ class FaceVerifier:
 
         # 5. Compute Deep Cosine Similarity
         try:
-            cosine_score = float(self.recognizer.match(live_emb, profile_emb, cv2.FaceRecognizerSF_FR_COSINE))
-            l2_distance = float(self.recognizer.match(live_emb, profile_emb, cv2.FaceRecognizerSF_FR_NORM_L2))
+            with FaceVerifier._model_lock:
+                cosine_score = float(self.recognizer.match(live_emb, profile_emb, cv2.FaceRecognizerSF_FR_COSINE))
+                l2_distance = float(self.recognizer.match(live_emb, profile_emb, cv2.FaceRecognizerSF_FR_NORM_L2))
         except Exception as e:
             logger.error("Error matching facial embeddings: %s", e)
             return {"verified": False, "reason": "Failed to compare facial embeddings."}

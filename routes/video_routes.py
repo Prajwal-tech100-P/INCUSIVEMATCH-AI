@@ -1,15 +1,60 @@
+import threading
 from flask import Blueprint, render_template, request, jsonify
 from flask_login import login_required, current_user
 from flask_socketio import join_room, leave_room, emit
 from models.user import UserModel
 from models.match import Match
 from models.call_invitation import CallInvitation
-from ai_modules.sign_language import SignLanguageRecognizer
 from extensions import socketio
 from flask import current_app
 
 video_bp = Blueprint("video", __name__)
-recognizer = SignLanguageRecognizer()
+
+
+class _LazySignRecognizerProxy:
+    """Thread-safe lazy proxy for SignLanguageRecognizer.
+    
+    Prevents PyTorch and MediaPipe hand tracking models from being eagerly loaded
+    into memory during application boot or idle WebRTC calls. Models are initialized
+    only on the first active ISL sign recognition request.
+    """
+
+    def __init__(self):
+        self._instance = None
+        self._lock = threading.Lock()
+
+    def _get_instance(self):
+        if self._instance is None:
+            with self._lock:
+                if self._instance is None:
+                    from ai_modules.sign_language import SignLanguageRecognizer
+                    self._instance = SignLanguageRecognizer()
+        return self._instance
+
+    @property
+    def lock(self):
+        return self._get_instance().lock
+
+    @property
+    def sequences(self):
+        return self._get_instance().sequences
+
+    def recognize_frame(self, *args, **kwargs):
+        return self._get_instance().recognize_frame(*args, **kwargs)
+
+    def reset_user(self, user_id):
+        if self._instance is not None:
+            return self._instance.reset_user(user_id)
+        return None
+
+    def _extract_landmarks(self, *args, **kwargs):
+        return self._get_instance()._extract_landmarks(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._get_instance(), name)
+
+
+recognizer = _LazySignRecognizerProxy()
 
 
 def call_room(user_a, user_b):
@@ -86,6 +131,23 @@ def video_call(partner_id):
     )
 
 
+@video_bp.route("/api/sign/status", methods=["GET"])
+@login_required
+def sign_engine_status():
+    """Returns availability and capability status of active sign recognition engines."""
+    from ai_modules.hwgat_client import HWGATClient
+    hwgat = HWGATClient.get_instance()
+    is_hwgat_ready = hwgat.is_available()
+    hwgat_info = hwgat.get_model_info() if is_hwgat_ready else {}
+    return jsonify({
+        "default_engine": "hwgat" if is_hwgat_ready else "gcnt",
+        "hwgat_available": is_hwgat_ready,
+        "hwgat_classes": hwgat_info.get("classes_count", 2002),
+        "gcnt_available": True,
+        "gcnt_classes": 29
+    })
+
+
 @video_bp.route("/api/sign/recognize", methods=["POST"])
 @login_required
 def recognize_sign():
@@ -98,10 +160,28 @@ def recognize_sign():
     if len(frame) > 2 * 1024 * 1024:
         return jsonify(text="", confidence=0, message="Frame is too large.", ready=False), 413
 
+    engine_pref = request.form.get("engine", "hwgat").strip().lower()
     source = request.form.get("source", "").strip()
     session_key = f"{current_user.id}_{source}" if source in ("local", "remote") else str(current_user.id)
+
+    # 1. Primary HWGAT Neural Recognition Path (2,002 Indian Sign Language classes)
+    if engine_pref != "gcnt":
+        try:
+            from ai_modules.hwgat_client import HWGATClient
+            hwgat = HWGATClient.get_instance()
+            if hwgat.is_available():
+                hw_res = hwgat.recognize_frame(frame, user_id=session_key)
+                if hw_res is not None:
+                    return jsonify(hw_res)
+        except Exception as hw_exc:
+            current_app.logger.debug("HWGAT recognition route pass: %s", hw_exc)
+
+    # 2. Seamless Fallback to in-process 29-class GCN-T model
     try:
         result = recognizer.recognize_frame(frame, user_id=session_key)
+        if isinstance(result, dict):
+            result.setdefault("engine", "GCN-T")
+            result.setdefault("vocabulary_size", 29)
         return jsonify(result)
     except Exception as exc:
         current_app.logger.error("Sign recognition error: %s", exc)
@@ -118,6 +198,18 @@ def reset_sign():
     recognizer.reset_user(f"{uid}_remote")
     if source:
         recognizer.reset_user(f"{uid}_{source}")
+
+    try:
+        from ai_modules.hwgat_client import HWGATClient
+        hwgat = HWGATClient.get_instance()
+        hwgat.reset_user(uid)
+        hwgat.reset_user(f"{uid}_local")
+        hwgat.reset_user(f"{uid}_remote")
+        if source:
+            hwgat.reset_user(f"{uid}_{source}")
+    except Exception:
+        pass
+
     return jsonify(ok=True)
 
 
@@ -407,6 +499,14 @@ def _handle_call_termination(data, reason="hangup"):
         recognizer.reset_user(uid_str)
         recognizer.reset_user(f"{uid_str}_local")
         recognizer.reset_user(f"{uid_str}_remote")
+        try:
+            from ai_modules.hwgat_client import HWGATClient
+            hwgat = HWGATClient.get_instance()
+            hwgat.reset_user(uid_str)
+            hwgat.reset_user(f"{uid_str}_local")
+            hwgat.reset_user(f"{uid_str}_remote")
+        except Exception:
+            pass
 
     leave_room(room)
     return {"ok": True, "message": "Call ended successfully.", "call_id": resolved_call_id}

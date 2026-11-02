@@ -50,29 +50,21 @@ def edit_profile():
         marital_status = request.form.get('marital_status', current_user.marital_status)
         relationship_goal = request.form.get('relationship_goal', current_user.relationship_goal)
         
-        # Location logic
-        location_mode = request.form.get('location_mode', 'manual')
+        # Location logic: Manual entry, preserving existing location information in MongoDB
         loc_display = request.form.get('location_display', '').strip()
-        
+        existing_loc = getattr(current_user, 'location', {}) or {}
+        if not isinstance(existing_loc, dict):
+            existing_loc = {"display_name": str(existing_loc)}
+            
         location_data = {
-            "mode": location_mode,
-            "latitude": None,
-            "longitude": None,
-            "city": "",
-            "state": "",
-            "country": "",
-            "display_name": loc_display
+            "mode": "manual",
+            "latitude": existing_loc.get("latitude"),
+            "longitude": existing_loc.get("longitude"),
+            "city": existing_loc.get("city", ""),
+            "state": existing_loc.get("state", ""),
+            "country": existing_loc.get("country", ""),
+            "display_name": loc_display or existing_loc.get("display_name", "")
         }
-        
-        if location_mode == 'current':
-            try:
-                location_data["latitude"] = float(request.form.get('latitude', 0))
-                location_data["longitude"] = float(request.form.get('longitude', 0))
-            except ValueError:
-                pass
-            location_data["city"] = request.form.get('city', '').strip()
-            location_data["state"] = request.form.get('state', '').strip()
-            location_data["country"] = request.form.get('country', '').strip()
         
         # Matching Preferences
         pref_min_age_str = request.form.get('pref_min_age')

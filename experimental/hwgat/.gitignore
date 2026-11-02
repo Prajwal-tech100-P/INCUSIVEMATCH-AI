@@ -1,0 +1,20 @@
+# HWGAT Experimental .gitignore
+*.pt
+*.pyc
+*.zip
+*.mp4
+*.webm
+*.mov
+*.avi
+*.npy
+__pycache__/
+
+# Large datasets and media files
+custom_dataset/raw_videos/
+custom_dataset/landmarks/
+custom_dataset/checkpoints/
+test_videos/
+deployment_package/checkpoint.pt
+
+# Temporary logs
+*.log

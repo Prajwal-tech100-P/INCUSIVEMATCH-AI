@@ -23,7 +23,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, cast
 
 # Ensure project root is in sys.path
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -63,10 +63,7 @@ def evaluate_checkpoint(
             "  .\\venv\\Scripts\\python.exe ai_modules/train_sign_model.py"
         )
 
-    # Fallback to external benchmark directory if custom dataset is empty
     root = Path(data_dir)
-    if not (root.exists() and any(root.glob("*/*.npy"))):
-        root = Path(r"C:\Users\ACER\isl-40words\processed_landmarks")
 
     print("=" * 75)
     print("INCLUSIVE MATCH AI - ISL GCN-TRANSFORMER MODEL EVALUATION")
@@ -211,7 +208,7 @@ def evaluate_checkpoint(
     print(f"Throughput (FPS)        : {1000.0 / mean_latency:.1f} inferences/sec")
 
     # Per-Class Classification Report
-    rep_dict = classification_report(
+    rep_raw = classification_report(
         y_true,
         y_pred,
         labels=list(range(len(classes))),
@@ -219,6 +216,7 @@ def evaluate_checkpoint(
         output_dict=True,
         zero_division=0,
     )
+    rep_dict = cast(Dict[str, Any], rep_raw)
     rep_str = classification_report(
         y_true,
         y_pred,
@@ -241,7 +239,8 @@ def evaluate_checkpoint(
     for i, c_name in enumerate(classes):
         total = int(np.sum(cm[i]))
         correct = int(cm[i, i])
-        f1_val = rep_dict[c_name]["f1-score"]
+        class_entry = rep_dict.get(c_name, {})
+        f1_val = float(class_entry.get("f1-score", 0.0)) if isinstance(class_entry, dict) else 0.0
         if f1_val < 0.60:
             low_performing_classes.append((c_name, f1_val, total))
 
@@ -355,10 +354,14 @@ def evaluate_checkpoint(
     ]
 
     for c in classes:
-        p = rep_dict[c]["precision"]
-        r = rep_dict[c]["recall"]
-        f1 = rep_dict[c]["f1-score"]
-        sup = int(rep_dict[c]["support"])
+        class_entry = rep_dict.get(c, {})
+        if isinstance(class_entry, dict):
+            p = float(class_entry.get("precision", 0.0))
+            r = float(class_entry.get("recall", 0.0))
+            f1 = float(class_entry.get("f1-score", 0.0))
+            sup = int(class_entry.get("support", 0))
+        else:
+            p, r, f1, sup = 0.0, 0.0, 0.0, 0
         status = "Optimal" if f1 >= 0.80 else ("Moderate" if f1 >= 0.60 else "Requires Data Expansion")
         md_lines.append(f"| **{c}** | {p:.2f} | {r:.2f} | {f1:.2f} | {sup} | {status} |")
 

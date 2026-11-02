@@ -18,7 +18,7 @@ from ai_modules.train_sign_gcnt import (
     cosine_lr_schedule,
 )
 
-DATA_ROOT = Path(r"C:\Users\ACER\isl-40words\processed_landmarks")
+DATA_ROOT = Path(r"datasets/isl_custom")
 MIN_SAMPLES = 15
 SEED = 42
 

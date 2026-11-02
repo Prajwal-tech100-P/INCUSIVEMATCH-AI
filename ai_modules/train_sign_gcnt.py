@@ -31,7 +31,7 @@ import os
 import random
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, cast
 
 import matplotlib
 matplotlib.use("Agg")
@@ -176,11 +176,11 @@ class SignLandmarkDataset(Dataset):
     def __len__(self) -> int:
         return len(self.labels)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        feat = self.features[idx]
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        feat = self.features[index]
         if self.augment and random.random() < 0.75:
             feat = augment_sample(feat)
-        return torch.from_numpy(feat).float(), torch.tensor(self.labels[idx], dtype=torch.long)
+        return torch.from_numpy(feat).float(), torch.tensor(self.labels[index], dtype=torch.long)
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +204,7 @@ def cosine_lr_schedule(
 # ---------------------------------------------------------------------------
 
 def train_pipeline(
-    data_dir: str = r"C:\Users\ACER\isl-40words\processed_landmarks",
+    data_dir: str = "datasets/isl_custom",
     output_path: str = "models/sign_gcnt_best.pt",
     min_samples: int = 15,
     seq_len: int = 24,
@@ -349,7 +349,7 @@ def train_pipeline(
     best_macro_f1 = -1.0
     best_acc = -1.0
     best_epoch = 0
-    best_state = None
+    best_state: Dict[str, Any] = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
     patience_counter = 0
 
     history = {
@@ -439,7 +439,8 @@ def train_pipeline(
     print("\n" + "=" * 75)
     print(f"[Evaluation] Restoring best checkpoint from Epoch {best_epoch} for Test Evaluation...")
     print("=" * 75)
-    model.load_state_dict(best_state)
+    if best_state is not None:
+        model.load_state_dict(best_state)
     model.eval()
 
     test_preds, test_targets = [], []
@@ -475,7 +476,7 @@ def train_pipeline(
     print(f"Classes Evaluated       : {len(classes)}")
 
     # Classification Report
-    rep_dict = classification_report(
+    rep_raw = classification_report(
         y_true,
         y_pred,
         labels=list(range(len(classes))),
@@ -483,6 +484,7 @@ def train_pipeline(
         output_dict=True,
         zero_division=0,
     )
+    rep_dict = cast(Dict[str, Any], rep_raw)
     rep_str = classification_report(
         y_true,
         y_pred,
@@ -618,7 +620,7 @@ def train_pipeline(
 
 def main():
     parser = argparse.ArgumentParser(description="Train 2-Hand GCN-Transformer ISL Classifier")
-    parser.add_argument("--data-dir", default=r"C:\Users\ACER\isl-40words\processed_landmarks")
+    parser.add_argument("--data-dir", default="datasets/isl_custom")
     parser.add_argument("--output", default="models/sign_gcnt_best.pt")
     parser.add_argument("--min-samples", type=int, default=15)
     parser.add_argument("--seq-len", type=int, default=24)

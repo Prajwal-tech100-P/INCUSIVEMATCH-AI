@@ -10,7 +10,6 @@ Primary Research Architecture:
 
 Default Dataset:
 - datasets/isl_custom/<class_name>/<sample_id>.npy
-- Fallback: C:\\Users\\ACER\\isl-40words\\processed_landmarks
 
 Usage:
   python ai_modules/train_sign_model.py
@@ -35,11 +34,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="Train Indian Sign Language GCN + Transformer Encoder Classifier"
     )
-    # Default to datasets/isl_custom if populated, else external benchmark
+    # Default to datasets/isl_custom
     default_dir = "datasets/isl_custom"
-    custom_path = Path(default_dir)
-    if not (custom_path.exists() and any(custom_path.glob("*/*.npy"))):
-        default_dir = r"C:\Users\ACER\isl-40words\processed_landmarks"
 
     parser.add_argument("--data-dir", default=default_dir, help="Directory containing <class_name>/*.npy landmark files")
     parser.add_argument("--output", default="models/sign_gcnt_best.pt", help="Output checkpoint path")

@@ -31,7 +31,7 @@ class_to_idx = ckpt["class_to_idx"]
 train_indices = ckpt["train_indices"]
 val_indices = ckpt["val_indices"]
 
-data_root = Path(r"C:\Users\ACER\isl-40words\processed_landmarks")
+data_root = Path(r"datasets/isl_custom")
 
 file_list, label_list = [], []
 for folder in sorted(data_root.iterdir()):
