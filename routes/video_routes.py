@@ -64,17 +64,18 @@ def call_room(user_a, user_b):
 def _authorized_call(data):
     data = data or {}
     partner_id = str(data.get("partner_id", "")).strip()
-    if not partner_id or partner_id == str(current_user.id):
+    cid = getattr(current_user, "id", None)
+    if not partner_id or partner_id == str(cid):
         return None
     try:
         from models.restriction import Restriction
-        if Restriction.is_restricted_either(current_user.id, partner_id):
+        if Restriction.is_restricted_either(cid, partner_id):
             return None
     except Exception:
         pass
-    if not Match.are_matched(current_user.id, partner_id):
+    if not Match.are_matched(cid, partner_id):
         return None
-    return call_room(current_user.id, partner_id)
+    return call_room(cid, partner_id)
 
 
 def _ice_servers():
