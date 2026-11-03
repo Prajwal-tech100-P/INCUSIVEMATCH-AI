@@ -27,12 +27,12 @@ class TestLiveSignRecognizer(unittest.TestCase):
         cls.recognizer = SignLanguageRecognizer()
 
     def test_recognizer_model_loading(self):
-        """Verify model weights, architecture, class labels, and landmarker load cleanly."""
-        self.assertIsNotNone(self.recognizer.model, "GCN-Transformer model failed to load.")
-        self.assertEqual(self.recognizer.arch, "gcn_transformer")
-        self.assertEqual(len(self.recognizer.labels), 29)
-        self.assertIn("hello", self.recognizer.labels)
-        self.assertIn("thank_you", self.recognizer.labels)
+        """Verify HWGAT model weights, architecture, class labels, and landmarker load cleanly."""
+        self.assertIsNotNone(self.recognizer.model, "HWGAT model failed to load.")
+        self.assertEqual(self.recognizer.arch, "HWGAT")
+        self.assertEqual(len(self.recognizer.labels), 2002)
+        self.assertIn("Whistle", self.recognizer.labels)
+        self.assertIn("Sari", self.recognizer.labels)
         self.assertIsNotNone(self.recognizer.landmarker, "MediaPipe HandLandmarker failed to load.")
         self.assertIsNone(self.recognizer.error)
 

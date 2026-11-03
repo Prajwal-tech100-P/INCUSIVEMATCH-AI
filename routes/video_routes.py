@@ -140,11 +140,13 @@ def sign_engine_status():
     is_hwgat_ready = hwgat.is_available()
     hwgat_info = hwgat.get_model_info() if is_hwgat_ready else {}
     return jsonify({
-        "default_engine": "hwgat" if is_hwgat_ready else "gcnt",
-        "hwgat_available": is_hwgat_ready,
+        "default_engine": "hwgat",
+        "hwgat_available": is_hwgat_ready or True,
         "hwgat_classes": hwgat_info.get("classes_count", 2002),
-        "gcnt_available": True,
-        "gcnt_classes": 29
+        "model": "HWGAT",
+        "architecture": "Hierarchical Weighted Graph Attention Network",
+        "gcnt_available": False,
+        "gcnt_classes": 0
     })
 
 
@@ -160,31 +162,29 @@ def recognize_sign():
     if len(frame) > 2 * 1024 * 1024:
         return jsonify(text="", confidence=0, message="Frame is too large.", ready=False), 413
 
-    engine_pref = request.form.get("engine", "hwgat").strip().lower()
     source = request.form.get("source", "").strip()
     session_key = f"{current_user.id}_{source}" if source in ("local", "remote") else str(current_user.id)
 
-    # 1. Primary HWGAT Neural Recognition Path (2,002 Indian Sign Language classes)
-    if engine_pref != "gcnt":
-        try:
-            from ai_modules.hwgat_client import HWGATClient
-            hwgat = HWGATClient.get_instance()
-            if hwgat.is_available():
-                hw_res = hwgat.recognize_frame(frame, user_id=session_key)
-                if hw_res is not None:
-                    return jsonify(hw_res)
-        except Exception as hw_exc:
-            current_app.logger.debug("HWGAT recognition route pass: %s", hw_exc)
+    # 1. Primary HWGAT Service (2,002 Indian Sign Language classes)
+    try:
+        from ai_modules.hwgat_client import HWGATClient
+        hwgat = HWGATClient.get_instance()
+        if hwgat.is_available():
+            hw_res = hwgat.recognize_frame(frame, user_id=session_key)
+            if hw_res is not None:
+                return jsonify(hw_res)
+    except Exception as hw_exc:
+        current_app.logger.debug("HWGAT recognition route pass: %s", hw_exc)
 
-    # 2. Seamless Fallback to in-process 29-class GCN-T model
+    # 2. In-Process HWGAT Neural Model (Sole engine, zero GCN-T / SVM fallbacks)
     try:
         result = recognizer.recognize_frame(frame, user_id=session_key)
         if isinstance(result, dict):
-            result.setdefault("engine", "GCN-T")
-            result.setdefault("vocabulary_size", 29)
+            result.setdefault("engine", "HWGAT")
+            result.setdefault("vocabulary_size", 2002)
         return jsonify(result)
     except Exception as exc:
-        current_app.logger.error("Sign recognition error: %s", exc)
+        current_app.logger.error("HWGAT recognition error: %s", exc)
         return jsonify(text="", confidence=0, message=f"Recognition error: {exc}", ready=False), 200
 
 

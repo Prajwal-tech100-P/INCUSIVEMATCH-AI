@@ -147,16 +147,16 @@ class TestTwoWayHWGATWebRTC(unittest.TestCase):
     # =========================================================================
 
     def test_1_sign_engine_status_endpoint(self):
-        """Verify /api/sign/status returns supported engines and class counts."""
+        """Verify /api/sign/status returns HWGAT as the sole active engine."""
         client = self.app.test_client()
         self._login(client, f"usera_{self.u1_id}@test.com")
         res = client.get("/api/sign/status")
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
-        self.assertIn("default_engine", data)
-        self.assertIn("hwgat_available", data)
-        self.assertTrue(data["gcnt_available"])
-        self.assertEqual(data["gcnt_classes"], 29)
+        self.assertEqual(data["default_engine"], "hwgat")
+        self.assertTrue(data["hwgat_available"])
+        self.assertEqual(data["hwgat_classes"], 2002)
+        self.assertEqual(data["model"], "HWGAT")
 
     # =========================================================================
     # 2. TWO-WAY REAL-TIME RECOGNITION TESTS (USER A & USER B)

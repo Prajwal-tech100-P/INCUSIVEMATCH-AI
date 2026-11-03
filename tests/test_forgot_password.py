@@ -356,8 +356,53 @@ def test_rate_limiting_cooldown(mock_send, client):
 
 def test_missing_brevo_config_handled_safely():
     """send_password_reset_email returns False cleanly when credentials are unconfigured."""
-    with patch.dict("os.environ", {"BREVO_SMTP_LOGIN": "", "BREVO_SMTP_KEY": ""}, clear=True):
+    with patch.dict("os.environ", {"BREVO_SMTP_LOGIN": "", "BREVO_SMTP_KEY": "", "BREVO_API_KEY": ""}, clear=True):
         result = send_password_reset_email("someone@example.com", "https://example.com/reset/123")
+        assert result is False
+
+
+@patch("requests.post")
+def test_brevo_https_api_dispatch_success(mock_post):
+    """Test successful transactional email dispatch via Brevo REST API v3 over HTTPS."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_post.return_value = mock_resp
+
+    with patch.dict("os.environ", {
+        "BREVO_API_KEY": "xkeysib-test-fake-api-key",
+        "BREVO_SENDER_EMAIL": "support@inclusivematch.com",
+        "BREVO_SENDER_NAME": "InclusiveMatch AI"
+    }):
+        result = send_password_reset_email("user@example.com", "https://example.com/reset/xyz", user_name="Alice")
+        assert result is True
+        assert mock_post.called
+        call_url = mock_post.call_args[0][0]
+        assert call_url == "https://api.brevo.com/v3/smtp/email"
+        headers = mock_post.call_args[1]["headers"]
+        assert headers["api-key"] == "xkeysib-test-fake-api-key"
+        payload = mock_post.call_args[1]["json"]
+        assert payload["sender"]["email"] == "support@inclusivematch.com"
+        assert payload["to"][0]["email"] == "user@example.com"
+        assert "Reset Your InclusiveMatch AI Password" in payload["subject"]
+
+
+@patch("requests.post")
+@patch("smtplib.SMTP")
+def test_brevo_smtp_timeout_handled_gracefully(mock_smtp, mock_post):
+    """Test that when Render blocks port 587 (TimeoutError), the error is caught and logged safely."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 500
+    mock_resp.text = "Internal error"
+    mock_post.return_value = mock_resp
+    mock_smtp.side_effect = TimeoutError("Connection timed out")
+
+    with patch.dict("os.environ", {
+        "BREVO_API_KEY": "xkeysib-test-fake-key",
+        "BREVO_SMTP_LOGIN": "testlogin",
+        "BREVO_SMTP_KEY": "testkey",
+        "BREVO_SENDER_EMAIL": "support@inclusivematch.com",
+    }):
+        result = send_password_reset_email("user@example.com", "https://example.com/reset/xyz")
         assert result is False
 
 

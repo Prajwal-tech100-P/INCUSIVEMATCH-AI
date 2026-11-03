@@ -78,6 +78,7 @@ class Config:
         BREVO_SMTP_PORT = 587
     BREVO_SMTP_LOGIN = os.environ.get("BREVO_SMTP_LOGIN", "").strip()
     BREVO_SMTP_KEY = os.environ.get("BREVO_SMTP_KEY", "").strip()
+    BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "").strip() or os.environ.get("BREVO_SMTP_KEY", "").strip()
     BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL", "").strip()
     BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "InclusiveMatch AI").strip()
     APP_BASE_URL = os.environ.get("APP_BASE_URL", "").strip()
