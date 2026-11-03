@@ -129,134 +129,179 @@ class SigningActivityDetector:
 
     def __init__(
         self,
-        idle_velocity_threshold: float = 0.007,
-        erratic_velocity_threshold: float = 0.55,
-        min_signing_evidence_frames: int = 3,
-        turn_end_silence_seconds: float = 1.6,
-        duplicate_suppress_window: float = 2.2,
+        min_active_frames: int = 3,
+        inactivity_timeout: float = 1.6,
+        velocity_idle_threshold: float = 0.0035,
+        velocity_erratic_threshold: float = 0.22,
+        duplicate_suppress_window: float = 1.0,
+        idle_velocity_threshold: Optional[float] = None,
+        erratic_velocity_threshold: Optional[float] = None,
+        min_signing_evidence_frames: Optional[int] = None,
+        turn_end_silence_seconds: Optional[float] = None,
+        **kwargs,
     ):
-        self.idle_threshold = idle_velocity_threshold
-        self.erratic_threshold = erratic_velocity_threshold
-        self.min_evidence_frames = min_signing_evidence_frames
-        self.turn_end_silence = turn_end_silence_seconds
-        self.duplicate_window = duplicate_suppress_window
+        if idle_velocity_threshold is not None:
+            velocity_idle_threshold = idle_velocity_threshold
+        if erratic_velocity_threshold is not None:
+            velocity_erratic_threshold = erratic_velocity_threshold
+        if min_signing_evidence_frames is not None:
+            min_active_frames = min_signing_evidence_frames
+        if turn_end_silence_seconds is not None:
+            inactivity_timeout = turn_end_silence_seconds
 
-        self.state = SigningState.IDLE
-        self.evidence_counter = 0
-        self.silence_counter = 0
+        self.min_active_frames = min_active_frames
+        self.inactivity_timeout = inactivity_timeout
+        self.velocity_idle_threshold = velocity_idle_threshold
+        self.velocity_erratic_threshold = velocity_erratic_threshold
+        self.duplicate_suppress_window = duplicate_suppress_window
 
-        self.last_valid_landmarks: Optional[np.ndarray] = None
-        self.last_signing_time: float = time.time()
-        self.state_enter_time: float = time.time()
+        self.state: SigningState = SigningState.IDLE
+        self.active_frame_count: int = 0
+        self.pause_start_time: Optional[float] = None
+        self.last_active_time: float = time.time()
+        self.last_landmarks: Optional[np.ndarray] = None
 
+        # Turn & phrase tracking
         self.accumulated_phrase: List[str] = []
         self.last_emitted_sign: str = ""
         self.last_emitted_time: float = 0.0
 
-    def compute_articulatory_velocity(self, current_landmarks: Optional[np.ndarray]) -> float:
+    def compute_articulatory_velocity(self, landmarks: Optional[np.ndarray]) -> float:
         """Compute mean Euclidean displacement of active hand joints between frames."""
-        if current_landmarks is None or self.last_valid_landmarks is None:
+        if landmarks is None or self.last_landmarks is None:
             return 0.0
-
-        cur = current_landmarks.reshape(-1, 2)
-        prev = self.last_valid_landmarks.reshape(-1, 2)
-
-        cur_active = np.any(cur != 0, axis=-1)
-        prev_active = np.any(prev != 0, axis=-1)
-        valid_mask = cur_active & prev_active
-
-        if not np.any(valid_mask):
-            return 0.0
-
-        displacements = np.linalg.norm(cur[valid_mask] - prev[valid_mask], axis=-1)
-        return float(np.mean(displacements))
+        active_mask = (landmarks[:, 0] != 0.0) & (self.last_landmarks[:, 0] != 0.0)
+        if np.any(active_mask):
+            diffs = landmarks[active_mask] - self.last_landmarks[active_mask]
+            dists = np.sqrt(np.sum(diffs ** 2, axis=-1))
+            return float(np.mean(dists))
+        return 0.0
 
     def update(
         self,
-        current_landmarks: Optional[np.ndarray],
+        landmarks: Optional[np.ndarray],
         prediction: str = "",
         confidence: float = 0.0,
+        now: Optional[float] = None,
+        **kwargs,
     ) -> Dict[str, Any]:
-        """Update detector with current frame landmarks and model prediction."""
-        now = time.time()
-        velocity = self.compute_articulatory_velocity(current_landmarks)
-        if current_landmarks is not None:
-            self.last_valid_landmarks = current_landmarks.copy()
-
-        has_hands = current_landmarks is not None and np.any(current_landmarks != 0)
-        is_kinematic_motion = (
-            has_hands
-            and (self.idle_threshold <= velocity <= self.erratic_threshold)
-        )
+        if now is None:
+            now = time.time()
 
         turn_completed = False
         finalized_phrase = ""
         accepted_sign = ""
 
-        # --- State Machine Transitions ---
+        # 1. Kinematic evaluation
+        has_hands = landmarks is not None and bool(np.any(landmarks != 0.0))
+        velocity = 0.0
+
+        if has_hands and self.last_landmarks is not None and bool(np.any(self.last_landmarks != 0.0)):
+            active_mask = (landmarks[:, 0] != 0.0) & (self.last_landmarks[:, 0] != 0.0)
+            if np.any(active_mask):
+                diffs = landmarks[active_mask] - self.last_landmarks[active_mask]
+                dists = np.sqrt(np.sum(diffs ** 2, axis=-1))
+                velocity = float(np.mean(dists))
+
+        self.last_landmarks = landmarks.copy() if landmarks is not None else None
+
+        # Kinematic articulatory motion check
+        is_motion_active = (
+            has_hands and
+            (self.velocity_idle_threshold <= velocity <= self.velocity_erratic_threshold)
+        )
+
+        # Model confidence support
+        has_confident_sign = bool(prediction and confidence >= 0.15 and prediction != "UNCERTAIN")
+
+        # Frame evidence: articulatory motion or recognized sign
+        frame_evidence = is_motion_active or (has_hands and has_confident_sign)
+
+        # 2. Debounced state machine
         if self.state == SigningState.IDLE:
-            if is_kinematic_motion:
-                self.evidence_counter += 1
-                if self.evidence_counter >= self.min_evidence_frames:
-                    self.state = SigningState.SIGNING
-                    self.evidence_counter = 0
-                    self.state_enter_time = now
-                    self.last_signing_time = now
-                else:
+            if frame_evidence:
+                self.active_frame_count += 1
+                if self.active_frame_count >= 2 or has_confident_sign:
                     self.state = SigningState.POSSIBLE_SIGNING
+                    self.last_active_time = now
             else:
-                self.evidence_counter = 0
+                self.active_frame_count = max(0, self.active_frame_count - 1)
 
         elif self.state == SigningState.POSSIBLE_SIGNING:
-            if is_kinematic_motion:
-                self.evidence_counter += 1
-                if self.evidence_counter >= self.min_evidence_frames:
+            if frame_evidence:
+                self.active_frame_count += 1
+                self.last_active_time = now
+                if self.active_frame_count >= self.min_active_frames or has_confident_sign:
                     self.state = SigningState.SIGNING
-                    self.evidence_counter = 0
-                    self.state_enter_time = now
-                    self.last_signing_time = now
+                    self.pause_start_time = None
             else:
-                self.evidence_counter = max(0, self.evidence_counter - 1)
-                if self.evidence_counter == 0:
+                self.active_frame_count = max(0, self.active_frame_count - 1)
+                if self.active_frame_count == 0:
                     self.state = SigningState.IDLE
 
         elif self.state == SigningState.SIGNING:
-            if is_kinematic_motion:
-                self.last_signing_time = now
-                self.silence_counter = 0
+            if frame_evidence:
+                self.last_active_time = now
+                self.pause_start_time = None
             else:
-                self.silence_counter += 1
-                if (now - self.last_signing_time) >= 0.5:
-                    self.state = SigningState.POSSIBLE_TURN_END
-                    self.state_enter_time = now
+                # Inter-sign pause or hand temporarily lowered
+                self.state = SigningState.POSSIBLE_TURN_END
+                self.pause_start_time = now
 
         elif self.state == SigningState.POSSIBLE_TURN_END:
-            if is_kinematic_motion:
-                # User resumed signing before pause expired
+            if frame_evidence:
+                # Resumed signing within pause window: turn continues seamlessly!
                 self.state = SigningState.SIGNING
-                self.last_signing_time = now
-                self.silence_counter = 0
+                self.last_active_time = now
+                self.pause_start_time = None
             else:
-                if (now - self.last_signing_time) >= self.turn_end_silence:
-                    # Turn is officially completed
-                    self.state = SigningState.IDLE
+                pause_duration = now - (self.pause_start_time or now)
+                if pause_duration >= self.inactivity_timeout:
+                    # Inactivity timeout expired: turn is concluded
                     turn_completed = True
                     finalized_phrase = " ".join(self.accumulated_phrase).strip()
                     self.accumulated_phrase = []
                     self.last_emitted_sign = ""
+                    self.state = SigningState.IDLE
+                    self.active_frame_count = 0
+                    self.pause_start_time = None
 
-        # --- Sign Token Acceptance & Deduplication ---
-        is_currently_signing = self.state in (SigningState.SIGNING, SigningState.POSSIBLE_TURN_END)
-
-        if is_currently_signing and prediction and prediction != "UNCERTAIN" and confidence >= 0.15:
-            clean_pred = prediction.strip()
-            time_since_last = now - self.last_emitted_time
-
-            if clean_pred != self.last_emitted_sign or time_since_last > self.duplicate_window:
-                accepted_sign = clean_pred
-                self.last_emitted_sign = clean_pred
+        # 3. Sign stabilization & phrase accumulation
+        if self.state in (SigningState.SIGNING, SigningState.POSSIBLE_TURN_END) and has_confident_sign:
+            is_duplicate = (
+                prediction == self.last_emitted_sign and
+                (now - self.last_emitted_time) < self.duplicate_suppress_window
+            )
+            if not is_duplicate:
+                accepted_sign = prediction
+                self.last_emitted_sign = prediction
                 self.last_emitted_time = now
-                self.accumulated_phrase.append(clean_pred)
+                self.accumulated_phrase.append(prediction)
+
+        is_signing_active = self.state in (
+            SigningState.POSSIBLE_SIGNING,
+            SigningState.SIGNING,
+            SigningState.POSSIBLE_TURN_END,
+        )
+
+        return {
+            "state": self.state.value,
+            "is_signing": is_signing_active,
+            "turn_completed": turn_completed,
+            "accepted_sign": accepted_sign,
+            "phrase": " ".join(self.accumulated_phrase).strip(),
+            "finalized_phrase": finalized_phrase,
+            "velocity": round(velocity, 4),
+        }
+
+    def reset(self):
+        self.state = SigningState.IDLE
+        self.active_frame_count = 0
+        self.pause_start_time = None
+        self.last_landmarks = None
+        self.accumulated_phrase = []
+        self.last_emitted_sign = ""
+        self.last_emitted_time = 0.0
 
         return {
             "state": self.state.value,
