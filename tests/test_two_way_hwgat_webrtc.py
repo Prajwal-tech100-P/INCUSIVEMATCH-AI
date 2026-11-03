@@ -5,7 +5,7 @@ Comprehensive test suite verifying real-time two-way sign recognition
 between two users (User A & User B) in active WebRTC video calls.
 
 Tests:
-1. Engine status API and fallback from HWGAT to GCN-T.
+1. Engine status API and sole HWGAT recognition.
 2. User A performs sign -> HWGAT recognition -> socket delivery to both.
 3. User B performs sign -> HWGAT recognition -> socket delivery to both.
 4. Simultaneous recognition from both participants without state collision.

@@ -1339,13 +1339,8 @@ async function runSignRecognition() {
         if (result && result.engine) {
           const badgeEl = document.getElementById("engine-badge");
           if (badgeEl) {
-            if (result.engine === "HWGAT") {
-              badgeEl.className = "badge bg-primary text-white rounded-pill small";
-              badgeEl.textContent = `HWGAT · ${result.vocabulary_size || 2002} Signs`;
-            } else {
-              badgeEl.className = "badge bg-secondary text-white rounded-pill small";
-              badgeEl.textContent = `GCN-T · ${result.vocabulary_size || 29} Signs`;
-            }
+            badgeEl.className = "badge bg-primary text-white rounded-pill small";
+            badgeEl.textContent = `HWGAT · ${result.vocabulary_size || 2002} Signs`;
           }
         }
 

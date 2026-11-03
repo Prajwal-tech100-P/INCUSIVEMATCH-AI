@@ -24,17 +24,24 @@ import numpy as np
 
 # Default dataset path inside the project
 DEFAULT_DATASET_DIR = Path("datasets/isl_custom")
-CLASSES_JSON_PATH = Path("models/sign_gcnt_best_classes.json")
+CLASSES_CSV_PATH = Path("models/class_map_hwgat.csv")
 EXTERNAL_LANDMARKS_DIR = None
 
 
 def get_default_classes() -> List[str]:
-    """Returns the ordered list of default 29 classes from sign_gcnt_best_classes.json."""
-    if CLASSES_JSON_PATH.exists():
+    """Returns the ordered list of classes from class_map_hwgat.csv or fallback."""
+    if CLASSES_CSV_PATH.exists():
         try:
-            with open(CLASSES_JSON_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return [str(c).lower().strip() for c in data.get("classes", [])]
+            import csv
+            with open(CLASSES_CSV_PATH, mode="r", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                header = next(reader, None)
+                labels = []
+                for row in reader:
+                    if row and len(row) >= 2:
+                        labels.append(row[1].strip().lower())
+                if labels:
+                    return labels
         except Exception:
             pass
     return [

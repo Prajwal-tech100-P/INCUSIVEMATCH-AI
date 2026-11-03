@@ -452,17 +452,4 @@ class MatchRecommender(WeightedScorer):
         return f
 
 
-# ===========================================================================
-# Legacy Archival Neural Network Definitions (Kept for Offline Training Code)
-# ===========================================================================
 
-class GraphConvolution:
-    """Legacy GCN layer placeholder for offline research script compatibility."""
-    def __init__(self, *args, **kwargs):
-        pass
-
-
-class MatchPredictorGCNTransformer:
-    """Legacy GCN+Transformer placeholder for offline training script compatibility."""
-    def __init__(self, *args, **kwargs):
-        pass

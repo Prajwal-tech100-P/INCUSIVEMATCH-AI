@@ -1,4 +1,4 @@
-"""Build a GCN-T training CSV from a folder of hand-sign images.
+"""Build a sign language training CSV from a folder of hand-sign images.
 
 No webcam needed — just organise images into labelled sub-folders and run.
 

@@ -7,7 +7,7 @@ HWGAT (Hierarchical Windowed Graph Attention Network) sign-recognition service.
 Provides:
 - Thread-safe HTTP communication with the HWGAT microservice on 127.0.0.1:5055.
 - Cached health monitoring with auto-reconnect.
-- Seamless fallback to production GCN-T model if HWGAT service is stopped or restarting.
+- In-process and microservice HWGAT recognition support.
 - Non-blocking timeouts to protect WebRTC call latency.
 """
 

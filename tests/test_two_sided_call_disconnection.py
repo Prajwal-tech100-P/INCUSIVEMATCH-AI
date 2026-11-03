@@ -34,6 +34,7 @@ class TestTwoSidedCallDisconnection(unittest.TestCase):
         cls.app.config["WTF_CSRF_ENABLED"] = False
 
     def setUp(self):
+        mongo.db.users.delete_many({"email": {"$in": ["alice_term@test.com", "bob_term@test.com", "charlie_term@test.com"]}})
         self.u1_id = UserModel.create_user("alice_term@test.com", "Pw123!test", "Alice Disconnect")
         self.u2_id = UserModel.create_user("bob_term@test.com", "Pw123!test", "Bob Disconnect")
         self.u3_id = UserModel.create_user("charlie_term@test.com", "Pw123!test", "Charlie Stranger")

@@ -2,7 +2,7 @@
 Test Suite for Live Indian Sign Language Recognition Engine & API
 ==================================================================
 Covers:
-1. GCN-Transformer checkpoint loading & architecture verification
+1. HWGAT checkpoint loading & architecture verification
 2. MediaPipe HandLandmarker initialization
 3. Live sliding window sequence buffering & dynamic resampling
 4. Temporal vote smoothing and session reset
@@ -36,10 +36,10 @@ class TestLiveSignRecognizer(unittest.TestCase):
         self.assertIsNotNone(self.recognizer.landmarker, "MediaPipe HandLandmarker failed to load.")
         self.assertIsNone(self.recognizer.error)
 
-    def test_predict_gcnt_with_landmark_sequence(self):
-        """Verify _predict_gcnt accepts variable-length sequences (e.g. 10 frames) and resamples to 60."""
+    def test_predict_hwgat_with_landmark_sequence(self):
+        """Verify _predict_hwgat accepts variable-length sequences (e.g. 12 frames) and resamples to 192."""
         mock_seq = [np.random.uniform(0.1, 0.9, size=(42, 2)).astype(np.float32) for _ in range(12)]
-        label, conf = self.recognizer._predict_gcnt(mock_seq)
+        label, conf = self.recognizer._predict_hwgat(mock_seq)
         self.assertIsInstance(label, str)
         self.assertIn(label, self.recognizer.labels)
         self.assertGreater(conf, 0.0)

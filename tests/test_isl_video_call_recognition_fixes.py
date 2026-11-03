@@ -9,7 +9,7 @@ Validates all 15 operational requirements from Step 8:
 3. Signing in front of intended camera (stream active, nonzero dimensions).
 4. Extracting landmarks with MediaPipe (handedness parity & zero padding).
 5. Sequence collection & temporal buffering (1 to 24 frames).
-6. Model prediction execution (GCN-Transformer logits & softmax probabilities).
+6. Model prediction execution (HWGAT logits & softmax probabilities).
 7. Display formatting (text, confidence, message, ready state).
 8. Authorized caption delivery between matched participants over Socket.IO.
 9. Disabling sign recognition (clean pause without call interruption).
@@ -31,11 +31,6 @@ import numpy as np
 import torch
 
 from ai_modules.sign_language import SignLanguageRecognizer, _resp, SigningState
-from ai_modules.sign_model_gcnt import (
-    GCNTransformerClassifier,
-    preprocess_live_frame_buffer,
-    NUM_NODES,
-)
 from app import create_app
 from extensions import mongo, socketio
 from models.user import UserModel
@@ -157,15 +152,15 @@ class TestISLVideoCallRecognition(unittest.TestCase):
         # Non-empty mock hand test
         dummy_pts = np.random.uniform(0.1, 0.9, size=(42, 2)).astype(np.float32)
         # Verify buffer formatting
-        feat = preprocess_live_frame_buffer([dummy_pts], seq_len=24, node_dim=6)
-        self.assertEqual(feat.shape, (24, 42, 6))
-        self.assertTrue(np.isfinite(feat).all())
+        feat = self.recognizer._build_hwgat_tensor([dummy_pts], target_len=192)
+        self.assertEqual(feat.shape, (1, 192, 64, 2))
+        self.assertTrue(torch.isfinite(feat).all())
 
     # -------------------------------------------------------------------------
     # Case 5: Collecting a complete sequence (1 to 24 frames)
     # -------------------------------------------------------------------------
     def test_case_05_sequence_buffering_progression(self):
-        """Live frame sequence buffers smoothly from 1 frame to target seq_len (24)."""
+        """Live frame sequence buffers smoothly from 1 frame to target seq_len (192)."""
         session_key = "test_user_buffering_progression"
         self.recognizer.reset_user(session_key)
 
@@ -175,16 +170,16 @@ class TestISLVideoCallRecognition(unittest.TestCase):
             pts[8, 0] = 0.3 + (i * 0.01)
             pts[8, 1] = 0.4
             seq.append(pts)
-            feat = preprocess_live_frame_buffer(seq, seq_len=24, node_dim=6)
-            self.assertEqual(feat.shape, (24, 42, 6))
+            feat = self.recognizer._build_hwgat_tensor(seq, target_len=192)
+            self.assertEqual(feat.shape, (1, 192, 64, 2))
 
     # -------------------------------------------------------------------------
     # Case 6: Generating a model prediction
     # -------------------------------------------------------------------------
     def test_case_06_model_prediction_execution(self):
-        """Trained GCN-Transformer produces valid class label and confidence in [0, 1]."""
+        """Trained HWGAT produces valid class label and confidence in [0, 1]."""
         mock_seq = [np.random.uniform(0.1, 0.9, size=(42, 2)).astype(np.float32) for _ in range(24)]
-        label, conf = self.recognizer._predict_gcnt(mock_seq)
+        label, conf = self.recognizer._predict_hwgat(mock_seq)
         self.assertIn(label, self.recognizer.labels)
         self.assertGreater(conf, 0.0)
         self.assertLessEqual(conf, 1.0)
@@ -199,7 +194,7 @@ class TestISLVideoCallRecognition(unittest.TestCase):
             confidence=92.5,
             message="Recognized: Drink",
             ready=True,
-            arch="GCN-Transformer",
+            arch="HWGAT",
             signing_state="SIGNING",
             is_signing=True,
             turn_completed=False,
@@ -334,7 +329,7 @@ class TestISLVideoCallRecognition(unittest.TestCase):
         key = "user_test_low_conf"
         self.recognizer.reset_user(key)
 
-        # Feed 6 frames of random noise to trigger GCN-T
+        # Feed 6 frames of random noise to trigger HWGAT
         dummy = [np.random.uniform(0.1, 0.9, size=(42, 2)).astype(np.float32) for _ in range(6)]
         for pt in dummy:
             self.recognizer.sequences.setdefault(key, []).append(pt)
