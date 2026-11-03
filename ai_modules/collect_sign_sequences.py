@@ -1,4 +1,4 @@
-"""Collect MediaPipe hand-landmark sequences for GRU sign training.
+"""Collect MediaPipe hand-landmark sequences for sign language training.
 
 Usage:
   python ai_modules/collect_sign_sequences.py --labels HELLO YES NO --per-label 40 --output data/sign_sequences.csv

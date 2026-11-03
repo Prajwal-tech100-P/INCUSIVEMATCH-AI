@@ -29,12 +29,8 @@ for path_entry in (PROJECT_ROOT, CURRENT_DIR):
     if path_entry not in sys.path:
         sys.path.insert(0, path_entry)
 
-try:
-    from experimental.hwgat import dataset_utils as du
-    from experimental.hwgat import model_utils as mu
-except ImportError:
-    import dataset_utils as du  # type: ignore[import-not-found]
-    import model_utils as mu  # type: ignore[import-not-found]
+from experimental.hwgat import dataset_utils as du
+from experimental.hwgat import model_utils as mu
 
 
 class LandmarkDataset(Dataset):

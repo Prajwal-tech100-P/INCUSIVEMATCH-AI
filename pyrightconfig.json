@@ -2,9 +2,21 @@
   "include": [
     "."
   ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".git",
+    "venv",
+    "experimental/hwgat_env"
+  ],
   "extraPaths": [
     ".",
     "scratch",
-    "experimental/hwgat"
+    "experimental",
+    "experimental/hwgat",
+    "experimental/hwgat/models",
+    "ai_modules",
+    "models",
+    "routes"
   ]
 }

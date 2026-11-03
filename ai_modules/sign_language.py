@@ -16,7 +16,6 @@ Model paths (searched in order)
   sign_model_output/sign_gcn_transformer.pth  ← trained ISL 29-class GCN-T checkpoint
   models/sign_gcnt.pt                        ← workspace copy
   models/isl_gcn_transformer_best.pt         ← ISL 40-word checkpoint fallback
-  models/sign_gru.pt                         ← legacy BiGRU checkpoint
   models/sign_classifier.joblib              ← legacy SVM
 """
 
@@ -141,37 +140,7 @@ def _build_gcn_transformer_class():
     return GCNTransformer
 
 
-def _build_gru_class():
-    """Legacy BiGRU class for backward compatibility."""
-    import torch.nn as nn
-
-    class GRUNetwork(nn.Module):
-        def __init__(self, input_size, hidden_size, num_layers, num_classes,
-                     dropout=0.25, bidirectional=True):
-            super().__init__()
-            self.gru = nn.GRU(
-                input_size, hidden_size, num_layers=num_layers,
-                batch_first=True,
-                dropout=dropout if num_layers > 1 else 0.0,
-                bidirectional=bidirectional,
-            )
-            out_size = hidden_size * (2 if bidirectional else 1)
-            self.norm = nn.LayerNorm(out_size)
-            self.head = nn.Sequential(
-                nn.Linear(out_size, 96), nn.ReLU(),
-                nn.Dropout(dropout), nn.Linear(96, num_classes),
-            )
-
-        def forward(self, x):
-            y, _ = self.gru(x)
-            y = self.norm(y[:, -1, :])
-            return self.head(y)
-
-    return GRUNetwork
-
-
 _GCNT_CLASS = None
-_GRU_CLASS = None
 
 
 def _make_gcnt(**kw):
@@ -179,13 +148,6 @@ def _make_gcnt(**kw):
     if _GCNT_CLASS is None:
         _GCNT_CLASS = _build_gcn_transformer_class()
     return _GCNT_CLASS(**kw)
-
-
-def _make_gru(**kw):
-    global _GRU_CLASS
-    if _GRU_CLASS is None:
-        _GRU_CLASS = _build_gru_class()
-    return _GRU_CLASS(**kw)
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +342,6 @@ class SignLanguageRecognizer:
         Path("sign_model_output/sign_gcn_transformer.pth"),
         Path("models/sign_gcnt.pt"),
         Path("models/isl_gcn_transformer_best.pt"),
-        Path("models/sign_gru.pt"),
     ]
     SVM_MODEL_PATH = Path("models/sign_classifier.joblib")
     TASK_MODEL_PATHS = [
@@ -524,24 +485,6 @@ class SignLanguageRecognizer:
                 self.arch = "gcn_transformer"
                 self.error = None
                 return
-
-            # Legacy BiGRU format
-            if "labels" in ckpt:
-                self.labels = [str(x) for x in ckpt["labels"]]
-                self.seq_len = int(ckpt.get("seq_len", self.SEQ_LEN))
-                net = _make_gru(
-                    input_size=int(ckpt.get("input_size", 84)),
-                    hidden_size=int(ckpt.get("hidden_size", 128)),
-                    num_layers=int(ckpt.get("num_layers", 2)),
-                    num_classes=len(self.labels),
-                    dropout=float(ckpt.get("dropout", 0.25)),
-                    bidirectional=True,
-                )
-                net.load_state_dict(ckpt["state_dict"])
-                net.eval()
-                self.model = net
-                self.arch = "gru"
-                self.error = None
         except Exception as exc:
             self.model = None
             self.error = f"Could not load sign model ({self.model_path.name}): {exc}"
@@ -747,17 +690,6 @@ class SignLanguageRecognizer:
         label = self.labels[idx] if idx < len(self.labels) else f"sign_{idx}"
         return label, float(probs[idx])
 
-    def _predict_gru(self, sequence: List[np.ndarray]) -> Tuple[str, float]:
-        import torch
-        flat_seq = [j.reshape(-1) for j in sequence[-self.seq_len:]]
-        arr = np.stack(flat_seq, axis=0).astype(np.float32)
-        x = torch.from_numpy(arr).unsqueeze(0).float()
-        with torch.no_grad():
-            logits = self.model(x)
-            probs = torch.softmax(logits, dim=1)[0].numpy()
-        idx = int(np.argmax(probs))
-        return self.labels[idx], float(probs[idx])
-
     def _predict_svm(self, joints: np.ndarray) -> Tuple[str, float]:
         feat = joints.reshape(1, -1)
         pred = self.svm.predict(feat)[0]
@@ -937,45 +869,6 @@ class SignLanguageRecognizer:
                 return _resp(
                     "", 0.0, f"GCN-T inference error: {exc}",
                     ready=False,
-                    signing_state=activity_info["state"],
-                    is_signing=activity_info["is_signing"],
-                    turn_completed=activity_info["turn_completed"],
-                    phrase=activity_info["phrase"],
-                    finalized_phrase=activity_info["finalized_phrase"],
-                )
-
-        # Legacy BiGRU path
-        if self.arch == "gru":
-            if len(seq) < self.MIN_WARMUP_FRAMES:
-                activity_info = detector.update(joints, prediction="", confidence=0.0)
-                return _resp(
-                    "", 0.0, f"Buffering ({len(seq)}/{self.MIN_WARMUP_FRAMES})…",
-                    ready=False,
-                    signing_state=activity_info["state"],
-                    is_signing=activity_info["is_signing"],
-                    turn_completed=activity_info["turn_completed"],
-                    phrase=activity_info["phrase"],
-                    finalized_phrase=activity_info["finalized_phrase"],
-                )
-            try:
-                raw_label, conf = self._predict_gru(seq)
-                smoothed_label, smoothed_conf = self._smooth(key, raw_label, conf)
-                display_text = smoothed_label.replace("_", " ").title()
-                activity_info = detector.update(joints, prediction=display_text, confidence=smoothed_conf)
-                accepted = activity_info["accepted_sign"] or display_text
-                return _resp(
-                    accepted, round(smoothed_conf * 100, 1),
-                    f"Recognized: {display_text}", ready=True, arch="BiGRU",
-                    signing_state=activity_info["state"],
-                    is_signing=activity_info["is_signing"],
-                    turn_completed=activity_info["turn_completed"],
-                    phrase=activity_info["phrase"],
-                    finalized_phrase=activity_info["finalized_phrase"],
-                )
-            except Exception as exc:
-                activity_info = detector.update(joints, prediction="", confidence=0.0)
-                return _resp(
-                    "", 0.0, f"GRU inference error: {exc}", ready=False,
                     signing_state=activity_info["state"],
                     is_signing=activity_info["is_signing"],
                     turn_completed=activity_info["turn_completed"],

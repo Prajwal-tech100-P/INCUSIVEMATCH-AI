@@ -1,7 +1,13 @@
 import os
-import av
+try:
+    import av
+except ImportError:
+    av = None
 import torch
-from pose_modules.Mediapipe import Model
+try:
+    from pose_modules.Mediapipe import Model
+except Exception:
+    Model = None
 import numpy as np
 from data_transform import *
 from models.model_params import HWGATEParams
@@ -47,6 +53,8 @@ class CFG():
         self.save_model_path = os.path.join(_pkg_dir, 'input', 'model_best_loss.pt')
 
 def extract_frames(path):
+    if av is None:
+        raise ImportError("PyAV ('av' package) is required to decode video frames directly.")
     container = av.open(path)
     frames = []
     for frame in container.decode(video=0):
