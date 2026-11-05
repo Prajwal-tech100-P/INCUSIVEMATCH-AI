@@ -295,30 +295,14 @@ class SigningActivityDetector:
         }
 
     def reset(self):
+        """Reset internal detector state and accumulated history."""
         self.state = SigningState.IDLE
         self.active_frame_count = 0
         self.pause_start_time = None
         self.last_landmarks = None
-        self.accumulated_phrase = []
-        self.last_emitted_sign = ""
-        self.last_emitted_time = 0.0
-
-        return {
-            "state": self.state.value,
-            "is_signing": is_currently_signing,
-            "turn_completed": turn_completed,
-            "accepted_sign": accepted_sign,
-            "phrase": " ".join(self.accumulated_phrase).strip(),
-            "finalized_phrase": finalized_phrase,
-            "velocity": velocity,
-        }
-
-    def reset(self):
-        """Reset internal detector state and accumulated history."""
-        self.state = SigningState.IDLE
+        self.last_valid_landmarks = None
         self.evidence_counter = 0
         self.silence_counter = 0
-        self.last_valid_landmarks = None
         self.accumulated_phrase = []
         self.last_emitted_sign = ""
         self.last_emitted_time = 0.0
@@ -350,9 +334,9 @@ class SignLanguageRecognizer:
     HWGAT_HAND_INDICES = [0, 4, 5, 8, 9, 12, 13, 16, 17, 20]
 
     def __init__(self, model_path: Optional[str] = None):
-        self.model: Optional[object] = None
-        self.landmarker: Optional[object] = None
-        self.legacy_hands: Optional[object] = None
+        self.model: Any = None
+        self.landmarker: Any = None
+        self.legacy_hands: Any = None
         self.error: Optional[str] = None
         self.arch: str = "none"
         self.is_2hand: bool = True
@@ -667,7 +651,7 @@ class SignLanguageRecognizer:
 
     def _predict_hwgat(self, sequence: List[np.ndarray]) -> Tuple[str, float]:
         """Perform forward inference on sequence of landmark frames using HWGAT."""
-        if not sequence:
+        if not sequence or self.model is None:
             return "unknown", 0.0
 
         tensor = self._build_hwgat_tensor(sequence, target_len=self.seq_len)
