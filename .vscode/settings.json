@@ -3,6 +3,20 @@
   "python.terminal.activateEnvironment": true,
   "terminal.integrated.env.windows": {
     "PATH": "${workspaceFolder}\\venv\\Scripts;${env:PATH}"
-  }
+  },
+  "python.analysis.exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".git",
+    "venv",
+    "experimental",
+    "experimental/**",
+    "**/experimental/**"
+  ],
+  "python.analysis.ignore": [
+    "experimental",
+    "experimental/**",
+    "**/experimental/**"
+  ]
 }
 

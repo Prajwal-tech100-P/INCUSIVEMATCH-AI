@@ -6,7 +6,15 @@
     "**/node_modules",
     "**/__pycache__",
     ".git",
-    "venv"
+    "venv",
+    "experimental",
+    "experimental/**",
+    "**/experimental/**"
+  ],
+  "ignore": [
+    "experimental",
+    "experimental/**",
+    "**/experimental/**"
   ],
   "extraPaths": [
     ".",
