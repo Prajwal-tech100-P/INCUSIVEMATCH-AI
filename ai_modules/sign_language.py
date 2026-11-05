@@ -687,7 +687,7 @@ class SignLanguageRecognizer:
             return self.activity_detectors[user_id]
 
     def reset_user(self, user_id: str):
-        key = str(user_id)
+        key = user_id
         with self.lock:
             self.sequences.pop(key, None)
             self.empty_streak.pop(key, None)
@@ -718,7 +718,7 @@ class SignLanguageRecognizer:
         if frame is None:
             return _resp("", 0.0, "Invalid image frame.", ready=False, vocabulary_size=len(self.labels))
 
-        key = str(user_id)
+        key = user_id
         detector = self._get_activity_detector(key)
 
         if self.model is None:
