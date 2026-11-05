@@ -1,0 +1,21 @@
+{
+  "test_samples": [
+    [
+      "C:\\Users\\ACER\\Desktop\\InclusiveMatch_AI_Secure_WebRTC_HTTPS_Ready 8\\experimental\\hwgat\\custom_dataset\\landmarks\\MockHello\\MockHello_sample_0.npy",
+      0
+    ],
+    [
+      "C:\\Users\\ACER\\Desktop\\InclusiveMatch_AI_Secure_WebRTC_HTTPS_Ready 8\\experimental\\hwgat\\custom_dataset\\landmarks\\MockNamaste\\MockNamaste_sample_1.npy",
+      1
+    ],
+    [
+      "C:\\Users\\ACER\\Desktop\\InclusiveMatch_AI_Secure_WebRTC_HTTPS_Ready 8\\experimental\\hwgat\\custom_dataset\\landmarks\\MockThankYou\\MockThankYou_sample_0.npy",
+      2
+    ]
+  ],
+  "idx_to_class": {
+    "0": "MockHello",
+    "1": "MockNamaste",
+    "2": "MockThankYou"
+  }
+}

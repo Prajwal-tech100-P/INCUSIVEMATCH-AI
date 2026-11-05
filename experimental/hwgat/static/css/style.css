@@ -1,0 +1,133 @@
+@import url('https://fonts.googleapis.com/css?family=Bungee:&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap');
+
+html {
+    font-family: "Roboto", sans-serif;
+    font-weight: 500;
+    font-size: 20px;
+    color: #080808;
+    text-align: center;
+}
+
+body {
+    background-color: #f8fcff;
+    margin: auto;
+    max-width: 700px;
+    margin-bottom: 50px;
+}
+
+h2 {
+    font-family: "Bungee";
+    font-weight: 300;
+    width: max-content;
+    padding: 10px;
+    text-align: start;
+    border: 2px solid dodgerblue;
+    color: white;
+    background-color: dodgerblue;
+    margin-bottom: -0px;
+}
+
+button {
+    font-family: "Bungee";
+    font-weight: 500;
+    margin-top: 10px;
+    font-size: 15px;
+    padding: 10px;
+    width: 100%;
+}
+
+#Title {
+    font-family: "Bungee";
+    font-weight: 300;
+    color: white;
+    background-color: dodgerblue;
+    border: 2px solid dodgerblue;
+    margin-top: 50px;
+    text-align: center;
+    width: 100%;
+    padding: 20px;
+}
+
+#results-panel p {
+    padding: 10px;
+    border: 2px solid #080808;
+}
+
+#settings-panel p {
+    display: inline-block;
+    text-align: start;
+    width: 200px;
+}
+
+#top_k_value, #record_duration_value {
+    text-align: center !important;
+}
+
+input {
+    width: auto;
+}
+
+#settings-panel, #video-panel, #results-panel, #footer-panel, #publication-panel {
+    width: 100%;
+    border: 2px solid dodgerblue;
+    padding: 20px;
+}
+
+#video {
+    display: none; /* Hide the video element */
+}
+
+#video-feed {
+    width: 640px;
+    height: 480px;
+    margin: auto;
+    position: relative;
+}
+
+#canvas{
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    color: white;
+}
+
+#countdown {
+    width: 600px;
+    height: 440px;
+    text-align: start;
+    position: absolute;
+    padding: 20px;
+    top: 0;
+    left: 0;
+    z-index: 10;
+    font-size: 100px;
+    text-shadow: 2px 2px 4px black;
+}
+
+#processing-window {
+    padding: 20px;
+    display: none;
+}
+
+.pubs ul {
+    list-style-type: "📄";
+}
+
+.pub-element .title {
+    font-size: 1.1em;
+    margin-bottom: -10px;
+}
+
+.cite {
+    margin-top: 20px;
+    display: none;
+    width: 100%;
+    height: 8rem;
+}
+
+#footer-panel {
+    margin-top: 20px;
+}

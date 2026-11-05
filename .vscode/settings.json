@@ -4,19 +4,15 @@
   "terminal.integrated.env.windows": {
     "PATH": "${workspaceFolder}\\venv\\Scripts;${env:PATH}"
   },
-  "python.analysis.exclude": [
-    "**/node_modules",
-    "**/__pycache__",
-    ".git",
-    "venv",
-    "experimental",
-    "experimental/**",
-    "**/experimental/**"
-  ],
-  "python.analysis.ignore": [
-    "experimental",
-    "experimental/**",
-    "**/experimental/**"
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}",
+    "${workspaceFolder}/experimental",
+    "${workspaceFolder}/experimental/hwgat",
+    "${workspaceFolder}/experimental/hwgat/models",
+    "${workspaceFolder}/ai_modules",
+    "${workspaceFolder}/ai_modules/hwgat",
+    "${workspaceFolder}/models",
+    "${workspaceFolder}/routes"
   ]
 }
 

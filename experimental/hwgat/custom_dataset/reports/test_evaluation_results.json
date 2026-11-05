@@ -1,0 +1,75 @@
+{
+  "timestamp": "2026-11-02 15:20:51",
+  "checkpoint": "hwgat_custom_best.pt",
+  "total_test_samples": 3,
+  "num_classes": 3,
+  "classes": [
+    "MockHello",
+    "MockNamaste",
+    "MockThankYou"
+  ],
+  "metrics": {
+    "accuracy": 0.3333,
+    "macro_precision": 0.1111,
+    "macro_recall": 0.3333,
+    "macro_f1": 0.1667,
+    "confusion_matrix": [
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ]
+    ],
+    "per_class": {
+      "0": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 1
+      },
+      "1": {
+        "precision": 0.3333,
+        "recall": 1.0,
+        "f1": 0.5,
+        "support": 1
+      },
+      "2": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 1
+      }
+    }
+  },
+  "latency_cpu_ms": {
+    "mean_ms": 1860.08,
+    "median_ms": 1860.42,
+    "p95_ms": 1982.95,
+    "min_ms": 1732.21,
+    "max_ms": 2018.52
+  },
+  "misclassified": [
+    {
+      "sample": "MockHello_sample_0.npy",
+      "true_class": "MockHello",
+      "pred_class": "MockNamaste",
+      "confidence": 0.9307
+    },
+    {
+      "sample": "MockThankYou_sample_0.npy",
+      "true_class": "MockThankYou",
+      "pred_class": "MockNamaste",
+      "confidence": 0.9307
+    }
+  ]
+}
