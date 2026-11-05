@@ -676,8 +676,8 @@ class SignLanguageRecognizer:
             votes: Dict[str, float] = {}
             for lab, c in buf:
                 votes[lab] = votes.get(lab, 0.0) + c
-            best = max(votes, key=votes.get)
-            best_conf = max(c for l, c in buf if l == best)
+            best = max(votes, key=lambda k: votes[k])
+            best_conf = max((c for l, c in buf if l == best), default=conf)
         return best, best_conf
 
     def _get_activity_detector(self, user_id: str) -> SigningActivityDetector:
