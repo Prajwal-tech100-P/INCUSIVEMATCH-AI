@@ -28,8 +28,8 @@ print(f"Loaded successfully! Total tensor weight keys: {len(state_dict)}")
 assert len(state_dict) > 0, "Checkpoint state dict is empty!"
 
 print("\n=== QUESTION 2: Does its architecture match the checkpoint? ===")
-from experimental.hwgat.models.model_params import HWGATEParams
-from experimental.hwgat.models.HWGATE import Model as HWGATModel
+from ai_modules.hwgat.model_params import HWGATEParams
+from ai_modules.hwgat.HWGATE import Model as HWGATModel
 
 num_classes = 2002
 src_len = 192

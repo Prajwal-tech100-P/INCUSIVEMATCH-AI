@@ -6,16 +6,13 @@
     "**/node_modules",
     "**/__pycache__",
     ".git",
-    "venv",
-    "experimental/hwgat_env"
+    "venv"
   ],
   "extraPaths": [
     ".",
     "scratch",
-    "experimental",
-    "experimental/hwgat",
-    "experimental/hwgat/models",
     "ai_modules",
+    "ai_modules/hwgat",
     "models",
     "routes"
   ]

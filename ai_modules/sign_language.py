@@ -15,10 +15,10 @@ Pipeline
    interpolating smoothly to 192 frames.
 5. Kinematic hand-velocity motion detection debounces intentional signs from resting/idle hands.
 
-Model paths (searched in order)
+Model paths
 --------------------------------
   models/hwgat_best.pt                        ← optimized 84 MB weights checkpoint
-  experimental/hwgat/input/model_best_loss.pt  ← full pretrained 2,002-class checkpoint
+  models/class_map_hwgat.csv                  ← 2,002-class ISL vocabulary mapping
 """
 
 from __future__ import annotations
@@ -333,11 +333,9 @@ class SignLanguageRecognizer:
 
     DEFAULT_PATHS = [
         Path("models/hwgat_best.pt"),
-        Path("experimental/hwgat/input/model_best_loss.pt"),
     ]
     CLASS_MAP_PATHS = [
         Path("models/class_map_hwgat.csv"),
-        Path("experimental/hwgat/input/class_map_FDMSE.csv"),
     ]
     TASK_MODEL_PATHS = [
         Path("models/hand_landmarker.task"),
@@ -431,8 +429,8 @@ class SignLanguageRecognizer:
 
             # Import HWGAT architecture
             try:
-                from experimental.hwgat.models.model_params import HWGATEParams
-                from experimental.hwgat.models.HWGATE import Model as HWGATModel
+                from ai_modules.hwgat.model_params import HWGATEParams
+                from ai_modules.hwgat.HWGATE import Model as HWGATModel
 
                 params = HWGATEParams({"num_class": num_classes, "src_len": self.seq_len}, 2, "cpu").get_model_params()
                 model = HWGATModel(*params)
