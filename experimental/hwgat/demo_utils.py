@@ -10,7 +10,10 @@ except Exception:
     Model = None
 import numpy as np
 from data_transform import *
-from models.model_params import HWGATEParams
+try:
+    from models.model_params import HWGATEParams
+except Exception:
+    from ai_modules.hwgat.model_params import HWGATEParams
 
 class CFG():
     def __init__(self):
@@ -62,7 +65,9 @@ def extract_frames(path):
         frames.append(img)
     return frames
 
-def get_video_features(vid_name) -> list:
+def get_video_features(vid_name) -> tuple:
+    if Model is None:
+        raise RuntimeError("pose_modules.Mediapipe Model is not available.")
     pose_model = Model()
     kp_shape = (543, 4)
 
