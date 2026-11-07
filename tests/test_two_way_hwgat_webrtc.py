@@ -34,9 +34,15 @@ class TestTwoWayHWGATWebRTC(unittest.TestCase):
     def setUpClass(cls):
         os.environ["APP_ENV"] = "testing"
         os.environ["SECRET_KEY"] = "test-two-way-hwgat-webrtc-2026"
+        os.environ["ENABLE_SIGN_AI"] = "1"
         cls.app = create_app()
         cls.app.config["TESTING"] = True
         cls.app.config["WTF_CSRF_ENABLED"] = False
+        cls.app.config["ENABLE_SIGN_AI"] = True
+
+    @classmethod
+    def tearDownClass(cls):
+        os.environ.pop("ENABLE_SIGN_AI", None)
 
     def _socket_client(self, user_id):
         """Creates a Socket.IO test client authenticated as user_id."""
@@ -393,6 +399,56 @@ class TestTwoWayHWGATWebRTC(unittest.TestCase):
 
         s_client_a.disconnect()
         s_client_b.disconnect()
+
+    def test_9_hwgat_preprocessing_alignment(self):
+        """TEST 9: Preprocessing produces exact (1, 192, 64, 2) tensor aligned with HWGAT training normalization."""
+        import torch
+        from ai_modules.sign_language import SignLanguageRecognizer
+        rec = SignLanguageRecognizer()
+        self.assertIsNotNone(rec.model, "Pretrained HWGAT model must load")
+
+        # 1. 42-joint hand sequence (zero_centered mode)
+        seq_42 = []
+        for t in range(12):
+            h1 = np.full((21, 2), 0.55 + t * 0.005, dtype=np.float32)
+            h2 = np.zeros((21, 2), dtype=np.float32)
+            seq_42.append(np.vstack([h1, h2]))
+
+        tensor_42_zero = rec._build_hwgat_tensor(seq_42, target_len=192, mode="zero_centered")
+        self.assertEqual(tensor_42_zero.shape, (1, 192, 64, 2))
+        self.assertEqual(tensor_42_zero.dtype, torch.float32)
+
+        # In zero-centered frame, nose is at origin (0, 0)
+        self.assertAlmostEqual(float(tensor_42_zero[0, 0, 0, 0]), 0.0, places=5)
+        self.assertAlmostEqual(float(tensor_42_zero[0, 0, 0, 1]), 0.0, places=5)
+
+        # 2. 543-joint Holistic sequence (zero_centered mode)
+        seq_543 = []
+        for t in range(10):
+            frame_543 = np.zeros((543, 2), dtype=np.float32)
+            frame_543[0] = [0.50, 0.20]  # nose
+            frame_543[11] = [0.35, 0.45] # left shoulder
+            frame_543[12] = [0.65, 0.45] # right shoulder
+            seq_543.append(frame_543)
+
+        tensor_543_zero = rec._build_hwgat_tensor(seq_543, target_len=192, mode="zero_centered")
+        self.assertEqual(tensor_543_zero.shape, (1, 192, 64, 2))
+        self.assertAlmostEqual(float(tensor_543_zero[0, 0, 0, 0]), 0.0, places=5)
+        self.assertAlmostEqual(float(tensor_543_zero[0, 0, 0, 1]), 0.0, places=5)
+
+        # 3. Training-aligned mode produces exact training coordinate distribution (data_transform.py)
+        # Nose is mapped to (0.50, 0.3333333) with unit distance scaled by 6 * shoulder distance
+        tensor_aligned = rec._build_hwgat_tensor(seq_543, target_len=192, mode="training_aligned")
+        self.assertEqual(tensor_aligned.shape, (1, 192, 64, 2))
+        self.assertAlmostEqual(float(tensor_aligned[0, 0, 0, 0]), 0.50, places=4)
+        self.assertAlmostEqual(float(tensor_aligned[0, 0, 0, 1]), 1.0 / 3.0, places=4)
+
+        # 4. Model inference returns valid probability distribution
+        with torch.no_grad():
+            logits = rec.model(tensor_aligned)
+            probs = torch.softmax(logits, dim=-1)[0].numpy()
+        self.assertEqual(len(probs), 2002)
+        self.assertAlmostEqual(float(np.sum(probs)), 1.0, places=4)
 
 
 if __name__ == "__main__":

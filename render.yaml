@@ -10,6 +10,16 @@ services:
         value: production
       - key: MALLOC_ARENA_MAX
         value: '2'
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
+      - key: TORCH_NUM_THREADS
+        value: "1"
+      - key: ENABLE_SIGN_AI
+        value: "false"
+      - key: HWGAT_SERVICE_URL
+        sync: false
       - key: PYTHON_VERSION
         value: "3.12.8"
       - key: SESSION_COOKIE_SECURE

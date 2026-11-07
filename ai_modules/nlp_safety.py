@@ -531,3 +531,45 @@ class NLPModerator:
             self._inference_cache[cleaned_text] = result
 
         return result.copy()
+
+
+class _LazyNLPModeratorProxy:
+    """Thread-safe lazy proxy for the shared default NLPModerator instance.
+
+    Defers loading the ~117 MB joblib classifier and 60,000 TF-IDF features
+    until the first active text moderation request, preventing container OOM
+    during application boot or sign-only / video-only workloads.
+    """
+
+    _instance: Optional[NLPModerator] = None
+    _lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls) -> NLPModerator:
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = NLPModerator()
+        return cls._instance
+
+    def analyze_message(self, *args, **kwargs):
+        return self.get_instance().analyze_message(*args, **kwargs)
+
+    def classify_raw(self, *args, **kwargs):
+        return self.get_instance().classify_raw(*args, **kwargs)
+
+    def decide_moderation(self, *args, **kwargs):
+        return self.get_instance().decide_moderation(*args, **kwargs)
+
+    def __getattr__(self, name: str):
+        return getattr(self.get_instance(), name)
+
+
+def get_moderator() -> NLPModerator:
+    """Returns the shared process-wide NLPModerator singleton."""
+    return _LazyNLPModeratorProxy.get_instance()
+
+
+# Shared lazy singleton proxy instance
+default_moderator = _LazyNLPModeratorProxy()
+moderator = default_moderator

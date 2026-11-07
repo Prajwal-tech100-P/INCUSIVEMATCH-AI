@@ -7,7 +7,10 @@ mp_holistic = mp.solutions.holistic
 
 class Model:
     def __init__(self) -> None:
-        self.holistic = mp_holistic.Holistic(model_complexity=2, min_detection_confidence=0.0, min_tracking_confidence=0.0)
+        try:
+            self.holistic = mp_holistic.Holistic(model_complexity=2, min_detection_confidence=0.0, min_tracking_confidence=0.0)
+        except Exception:
+            self.holistic = mp_holistic.Holistic(model_complexity=1, min_detection_confidence=0.0, min_tracking_confidence=0.0)
 
     def __call__(self, image):
         if isinstance(image, str):

@@ -2,12 +2,11 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from models.community import Community, MAX_MEMBERS
 from models.user import UserModel
-from ai_modules.nlp_safety import NLPModerator
+from ai_modules.nlp_safety import default_moderator as moderator
 from extensions import socketio
 from datetime import datetime
 
 community_bp = Blueprint("community", __name__)
-moderator = NLPModerator()
 
 def _community_or_404(community_id):
     community = Community.get(community_id)

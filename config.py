@@ -83,3 +83,8 @@ class Config:
     BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "InclusiveMatch AI").strip()
     APP_BASE_URL = os.environ.get("APP_BASE_URL", "").strip()
 
+    # Sign Language AI Configuration (HWGAT)
+    # Disabled by default to safeguard memory on 512MB environments (e.g. Render Free)
+    ENABLE_SIGN_AI = _bool_env("ENABLE_SIGN_AI", False)
+    HWGAT_SERVICE_URL = os.environ.get("HWGAT_SERVICE_URL", "").strip()
+

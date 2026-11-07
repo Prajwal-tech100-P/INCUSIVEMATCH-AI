@@ -1,3 +1,4 @@
+import os
 import threading
 from datetime import datetime, timezone
 from flask import Blueprint, render_template, request, jsonify
@@ -15,16 +16,29 @@ video_bp = Blueprint("video", __name__)
 class _LazySignRecognizerProxy:
     """Thread-safe lazy proxy for SignLanguageRecognizer.
     
-    Prevents PyTorch and MediaPipe hand tracking models from being eagerly loaded
+    Prevents PyTorch and MediaPipe tracking models from being eagerly loaded
     into memory during application boot or idle WebRTC calls. Models are initialized
-    only on the first active ISL sign recognition request.
+    only when ENABLE_SIGN_AI is explicitly active.
     """
 
     def __init__(self):
         self._instance = None
         self._lock = threading.Lock()
+        self._sequences = {}
+
+    def is_enabled(self) -> bool:
+        """Checks if in-process Sign AI is explicitly enabled in app config or environment."""
+        try:
+            from flask import current_app
+            if current_app and current_app.config:
+                return bool(current_app.config.get("ENABLE_SIGN_AI", False))
+        except Exception:
+            pass
+        return os.environ.get("ENABLE_SIGN_AI", "0").strip().lower() in {"1", "true", "yes", "on"}
 
     def _get_instance(self):
+        if not self.is_enabled():
+            return None
         if self._instance is None:
             with self._lock:
                 if self._instance is None:
@@ -34,25 +48,53 @@ class _LazySignRecognizerProxy:
 
     @property
     def lock(self):
-        return self._get_instance().lock
+        inst = self._get_instance()
+        return inst.lock if inst else self._lock
 
     @property
     def sequences(self):
-        return self._get_instance().sequences
+        inst = self._get_instance()
+        return inst.sequences if inst else self._sequences
 
     def recognize_frame(self, *args, **kwargs):
-        return self._get_instance().recognize_frame(*args, **kwargs)
+        inst = self._get_instance()
+        if inst is None:
+            return {
+                "text": "",
+                "new_token": "",
+                "confidence": 0.0,
+                "message": "In-process sign recognition is disabled to safeguard system memory.",
+                "ready": False,
+                "arch": "HWGAT",
+                "signing_state": "IDLE",
+                "is_signing": False,
+                "turn_completed": False,
+                "phrase": "",
+                "finalized_phrase": "",
+                "vocabulary_size": 2002,
+                "status": "unavailable",
+            }
+        return inst.recognize_frame(*args, **kwargs)
 
     def reset_user(self, user_id):
-        if self._instance is not None:
-            return self._instance.reset_user(user_id)
+        inst = self._get_instance()
+        if inst is not None:
+            return inst.reset_user(user_id)
+        with self._lock:
+            self._sequences.pop(user_id, None)
+            self._sequences.pop(f"{user_id}_local", None)
+            self._sequences.pop(f"{user_id}_remote", None)
         return None
 
     def _extract_landmarks(self, *args, **kwargs):
-        return self._get_instance()._extract_landmarks(*args, **kwargs)
+        inst = self._get_instance()
+        return inst._extract_landmarks(*args, **kwargs) if inst else None
 
     def __getattr__(self, name):
-        return getattr(self._get_instance(), name)
+        inst = self._get_instance()
+        if inst is None:
+            raise AttributeError(f"SignLanguageRecognizer is disabled (ENABLE_SIGN_AI=False); attribute '{name}' unavailable.")
+        return getattr(inst, name)
 
 
 recognizer = _LazySignRecognizerProxy()
@@ -139,14 +181,19 @@ def sign_engine_status():
     """Returns availability and capability status of active sign recognition engines."""
     from ai_modules.hwgat_client import HWGATClient
     hwgat = HWGATClient.get_instance()
-    is_hwgat_ready = hwgat.is_available()
-    hwgat_info = hwgat.get_model_info() if is_hwgat_ready else {}
+    is_microservice_ready = hwgat.is_available()
+    is_inprocess_enabled = recognizer.is_enabled()
+    is_ready = is_microservice_ready or is_inprocess_enabled
+    hwgat_info = hwgat.get_model_info() if is_microservice_ready else {}
     return jsonify({
         "default_engine": "hwgat",
-        "hwgat_available": is_hwgat_ready or True,
+        "hwgat_available": is_ready,
+        "hwgat_microservice": is_microservice_ready,
+        "hwgat_inprocess": is_inprocess_enabled,
         "hwgat_classes": hwgat_info.get("classes_count", 2002),
         "model": "HWGAT",
         "architecture": "Hierarchical Weighted Graph Attention Network",
+        "ready": is_ready,
         "gcnt_available": False,
         "gcnt_classes": 0
     })
@@ -166,28 +213,51 @@ def recognize_sign():
 
     source = request.form.get("source", "").strip()
     session_key = f"{current_user.id}_{source}" if source in ("local", "remote") else str(current_user.id)
+    req_w = request.form.get("width", "").strip()
+    req_h = request.form.get("height", "").strip()
+    frame_w = int(req_w) if (req_w.isdigit() and int(req_w) > 0) else None
+    frame_h = int(req_h) if (req_h.isdigit() and int(req_h) > 0) else None
 
-    # 1. Primary HWGAT Service (2,002 Indian Sign Language classes)
+    # 1. Primary HWGAT Service (External microservice)
     try:
         from ai_modules.hwgat_client import HWGATClient
         hwgat = HWGATClient.get_instance()
         if hwgat.is_available():
-            hw_res = hwgat.recognize_frame(frame, user_id=session_key)
+            hw_res = hwgat.recognize_frame(frame, user_id=session_key, width=frame_w, height=frame_h)
             if hw_res is not None:
                 return jsonify(hw_res)
     except Exception as hw_exc:
         current_app.logger.debug("HWGAT recognition route pass: %s", hw_exc)
 
-    # 2. In-Process HWGAT Neural Model (Sole engine, zero GCN-T / SVM fallbacks)
-    try:
-        result = recognizer.recognize_frame(frame, user_id=session_key)
-        if isinstance(result, dict):
-            result.setdefault("engine", "HWGAT")
-            result.setdefault("vocabulary_size", 2002)
-        return jsonify(result)
-    except Exception as exc:
-        current_app.logger.error("HWGAT recognition error: %s", exc)
-        return jsonify(text="", confidence=0, message=f"Recognition error: {exc}", ready=False), 200
+    # 2. In-Process HWGAT Neural Model (Only if ENABLE_SIGN_AI is active)
+    if recognizer.is_enabled():
+        try:
+            result = recognizer.recognize_frame(frame, user_id=session_key, width=frame_w, height=frame_h)
+            if isinstance(result, dict):
+                result.setdefault("engine", "HWGAT")
+                result.setdefault("vocabulary_size", 2002)
+            return jsonify(result)
+        except Exception as exc:
+            current_app.logger.error("HWGAT recognition error: %s", exc)
+            return jsonify(text="", confidence=0, message=f"Recognition error: {exc}", ready=False), 200
+
+    # 3. Graceful fallback when Sign AI is disabled / offline (avoids loading PyTorch on Render Free)
+    return jsonify({
+        "text": "",
+        "new_token": "",
+        "confidence": 0.0,
+        "message": "Sign recognition AI is currently offline. WebRTC calling remains operational.",
+        "ready": False,
+        "arch": "HWGAT",
+        "signing_state": "IDLE",
+        "is_signing": False,
+        "turn_completed": False,
+        "phrase": "",
+        "finalized_phrase": "",
+        "vocabulary_size": 2002,
+        "engine": "HWGAT",
+        "status": "unavailable"
+    }), 200
 
 
 @video_bp.route("/api/sign/reset", methods=["POST"])

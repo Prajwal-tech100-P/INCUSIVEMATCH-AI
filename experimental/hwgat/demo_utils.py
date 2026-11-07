@@ -80,7 +80,18 @@ class CFG():
         
         _pkg_dir = os.path.dirname(os.path.abspath(__file__))
         self.class_map_path = os.path.join(_pkg_dir, 'input', 'class_map_FDMSE.csv')
-        self.save_model_path = os.path.join(_pkg_dir, 'input', 'model_best_loss.pt')
+        if not os.path.exists(self.class_map_path):
+            alt_map = os.path.abspath(os.path.join(_pkg_dir, '..', '..', 'models', 'class_map_hwgat.csv'))
+            if os.path.exists(alt_map):
+                self.class_map_path = alt_map
+
+        ckpt_candidates = [
+            os.environ.get("HWGAT_CHECKPOINT_PATH", "").strip(),
+            os.path.join(_pkg_dir, 'input', 'model_best_loss.pt'),
+            os.path.abspath(os.path.join(_pkg_dir, '..', '..', 'models', 'hwgat_best.pt')),
+            os.path.abspath(os.path.join(os.getcwd(), 'models', 'hwgat_best.pt')),
+        ]
+        self.save_model_path = next((p for p in ckpt_candidates if p and os.path.exists(p)), os.path.join(_pkg_dir, 'input', 'model_best_loss.pt'))
 
 def extract_frames(path):
     if av is None:

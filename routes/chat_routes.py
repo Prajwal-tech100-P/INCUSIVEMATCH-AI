@@ -4,7 +4,7 @@ from models.message import Message, ChatReport, OnlineTracker
 from models.user import UserModel
 from models.match import Match
 from models.call_invitation import CallInvitation
-from ai_modules.nlp_safety import NLPModerator
+from ai_modules.nlp_safety import default_moderator as moderator
 from extensions import socketio, mongo
 from datetime import datetime
 
@@ -13,7 +13,6 @@ import time
 import threading
 
 chat_bp = Blueprint("chat", __name__)
-moderator = NLPModerator()
 
 # Backward compatibility aliases for process-local references
 _warned_requests_cache = {}

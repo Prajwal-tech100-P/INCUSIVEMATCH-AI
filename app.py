@@ -3,17 +3,6 @@ from typing import Any, cast
 from flask import Flask
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-# Optimize PyTorch CPU threading for constrained container memory
-try:
-    import torch
-    torch.set_num_threads(1)
-    try:
-        torch.set_num_interop_threads(1)
-    except Exception:
-        pass
-except ImportError:
-    pass
-
 from config import Config
 from extensions import mongo, login_manager, socketio
 

@@ -39,7 +39,18 @@ import cv2
 import numpy as np
 import torch
 
+try:
+    torch.set_num_threads(1)
+    try:
+        torch.set_num_interop_threads(1)
+    except Exception:
+        pass
+except Exception:
+    pass
+
 logger = logging.getLogger("ai_modules.sign_language")
+
+_BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # ---------------------------------------------------------------------------
@@ -170,9 +181,13 @@ class SigningActivityDetector:
         """Compute mean Euclidean displacement of active hand joints between frames."""
         if landmarks is None or self.last_landmarks is None:
             return 0.0
-        active_mask = (landmarks[:, 0] != 0.0) & (self.last_landmarks[:, 0] != 0.0)
+        if landmarks.shape != self.last_landmarks.shape:
+            return 0.0
+        pts_cur = landmarks[:, :2]
+        pts_last = self.last_landmarks[:, :2]
+        active_mask = (pts_cur[:, 0] != 0.0) & (pts_last[:, 0] != 0.0)
         if np.any(active_mask):
-            diffs = landmarks[active_mask] - self.last_landmarks[active_mask]
+            diffs = pts_cur[active_mask] - pts_last[active_mask]
             dists = np.sqrt(np.sum(diffs ** 2, axis=-1))
             return float(np.mean(dists))
         return 0.0
@@ -316,12 +331,15 @@ class SignLanguageRecognizer:
     """Exclusive Indian Sign Language Recognizer powered by HWGAT (2,002 Classes)."""
 
     DEFAULT_PATHS = [
+        _BASE_DIR / "models" / "hwgat_best.pt",
         Path("models/hwgat_best.pt"),
     ]
     CLASS_MAP_PATHS = [
+        _BASE_DIR / "models" / "class_map_hwgat.csv",
         Path("models/class_map_hwgat.csv"),
     ]
     TASK_MODEL_PATHS = [
+        _BASE_DIR / "models" / "hand_landmarker.task",
         Path("models/hand_landmarker.task"),
     ]
 
@@ -337,6 +355,7 @@ class SignLanguageRecognizer:
         self.model: Any = None
         self.landmarker: Any = None
         self.legacy_hands: Any = None
+        self.holistic_tracker: Any = None
         self.error: Optional[str] = None
         self.arch: str = "none"
         self.is_2hand: bool = True
@@ -420,6 +439,8 @@ class SignLanguageRecognizer:
                 model = HWGATModel(*params)
                 model.load_state_dict(state_dict, strict=False)
                 model.eval()
+                for p in model.parameters():
+                    p.requires_grad = False
 
                 self.model = model
                 self.arch = "HWGAT"
@@ -459,7 +480,12 @@ class SignLanguageRecognizer:
                 from mediapipe.tasks import python
                 from mediapipe.tasks.python import vision
 
-                base_options = python.BaseOptions(model_asset_path=str(task_file.resolve()))
+                try:
+                    task_bytes = task_file.read_bytes()
+                    base_options = python.BaseOptions(model_asset_buffer=task_bytes)
+                except Exception:
+                    base_options = python.BaseOptions(model_asset_path=str(task_file.resolve()))
+
                 options = vision.HandLandmarkerOptions(
                     base_options=base_options,
                     running_mode=vision.RunningMode.IMAGE,
@@ -467,7 +493,8 @@ class SignLanguageRecognizer:
                 )
                 self.landmarker = vision.HandLandmarker.create_from_options(options)
                 return
-            except Exception:
+            except Exception as exc:
+                logger.warning("[SignLanguageRecognizer] HandLandmarker load error: %s", exc)
                 self.landmarker = None
 
         # Fallback to legacy mediapipe solutions if available
@@ -482,6 +509,52 @@ class SignLanguageRecognizer:
                 )
         except Exception:
             self.legacy_hands = None
+
+    def _load_holistic_tracker(self):
+        """Initialize MediaPipe Holistic tracker for full-body and hand landmark extraction."""
+        if self.holistic_tracker is not None:
+            return
+        try:
+            import mediapipe as mp
+            if hasattr(mp, "solutions") and hasattr(mp.solutions, "holistic"):
+                self.holistic_tracker = mp.solutions.holistic.Holistic(
+                    static_image_mode=False,
+                    model_complexity=1,
+                    min_detection_confidence=0.5,
+                    min_tracking_confidence=0.5,
+                )
+        except Exception as exc:
+            logger.debug("[SignLanguageRecognizer] MediaPipe Holistic unavailable: %s", exc)
+            self.holistic_tracker = None
+
+    def _extract_holistic_landmarks(self, frame_bgr: np.ndarray) -> Optional[np.ndarray]:
+        """
+        Extract MediaPipe Holistic landmarks (543, 4) from a BGR image frame:
+          - 33 Pose landmarks
+          - 468 Face landmarks
+          - 21 Left hand landmarks
+          - 21 Right hand landmarks
+        """
+        if frame_bgr is None or not hasattr(frame_bgr, "size") or frame_bgr.size == 0 or frame_bgr.ndim != 3:
+            return None
+        if self.holistic_tracker is None:
+            self._load_holistic_tracker()
+        if self.holistic_tracker is None:
+            return None
+
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        with self.lock:
+            try:
+                results = self.holistic_tracker.process(rgb)
+            except Exception:
+                return None
+
+        default_visibility = 1.0
+        pose = np.array([[res.x, res.y, res.z, res.visibility] for res in results.pose_landmarks.landmark], dtype=np.float32) if results.pose_landmarks else np.zeros((33, 4), dtype=np.float32)
+        face = np.array([[res.x, res.y, res.z, default_visibility] for res in results.face_landmarks.landmark], dtype=np.float32) if results.face_landmarks else np.zeros((468, 4), dtype=np.float32)
+        lh = np.array([[res.x, res.y, res.z, default_visibility] for res in results.left_hand_landmarks.landmark], dtype=np.float32) if results.left_hand_landmarks else np.zeros((21, 4), dtype=np.float32)
+        rh = np.array([[res.x, res.y, res.z, default_visibility] for res in results.right_hand_landmarks.landmark], dtype=np.float32) if results.right_hand_landmarks else np.zeros((21, 4), dtype=np.float32)
+        return np.concatenate([pose, face, lh, rh], axis=0)
 
     def _extract_landmarks(self, frame_bgr: np.ndarray) -> Optional[np.ndarray]:
         """Extract 42 hand landmarks ([x, y]) from a BGR image frame."""
@@ -570,72 +643,276 @@ class SignLanguageRecognizer:
 
         return None
 
-    def _build_hwgat_tensor(self, sequence: List[np.ndarray], target_len: int = 192) -> torch.Tensor:
+    def _preprocess_holistic_training(
+        self,
+        raw_sequence: List[np.ndarray],
+        target_len: int = 192,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+    ) -> np.ndarray:
+        """
+        Reproduces the exact training data transform pipeline from
+        experimental/hwgat/data_transform.py:
+          1. PoseSelect: 29 keypoints (9 pose + 10 left hand + 10 right hand)
+          2. HandCorrection: Spline/linear interpolation for missing hands, falling back to wrist
+          3. Aspect Ratio Correction: Scale x coordinates by width / height prior to NormalizeKeypoints
+          4. NormalizeKeypoints: Center on nose (0.50, 0.333) and scale by 6 * shoulder distance
+          5. TemporalSample: Uniform padding/sampling to target_len (192)
+          6. WindowCreate: 4-window hierarchical structure (64, 2)
+        """
+        raw_array = np.array(raw_sequence, dtype=np.float32)
+
+        selected_kps = [0, 2, 5, 11, 12, 13, 14, 15, 16] + [
+            501, 505, 506, 509, 510, 513, 514, 517, 518, 521,
+            522, 526, 527, 530, 531, 534, 535, 538, 539, 542
+        ]
+
+        if raw_array.shape[1] >= 543:
+            kps_29 = raw_array[:, selected_kps, :2].copy()
+        elif raw_array.shape[1] == 29:
+            kps_29 = raw_array[:, :, :2].copy()
+        else:
+            raise ValueError(f"Expected 543 or 29 keypoints, got shape {raw_array.shape}")
+
+        def _apply_hand_correction(vid_feat, slices):
+            s_start, s_end, s_wrist = slices
+            if np.sum(vid_feat[:, s_start:s_end]) == 0:
+                vid_feat[:, s_start:s_end, :] = np.expand_dims(vid_feat[:, s_wrist, :], axis=1)
+                return vid_feat
+
+            start = end = 0
+            for f_idx in range(len(vid_feat)):
+                if not vid_feat[f_idx, s_start:s_end].any():
+                    vid_feat[f_idx, s_start:s_end, :] = vid_feat[f_idx, s_wrist, :]
+                else:
+                    start = f_idx
+                    break
+
+            for f_idx in reversed(range(len(vid_feat))):
+                if not vid_feat[f_idx, s_start:s_end].any():
+                    vid_feat[f_idx, s_start:s_end, :] = vid_feat[f_idx, s_wrist, :]
+                else:
+                    end = f_idx
+                    break
+
+            present = [f for f in range(start, end + 1) if vid_feat[f, s_start:s_end].any()]
+            missing = [f for f in range(start, end + 1) if not vid_feat[f, s_start:s_end].any()]
+
+            if missing and len(present) >= 2:
+                try:
+                    from scipy import interpolate
+                    k_spline = min(2, len(present) - 1)
+                    for kp in range(s_start, s_end):
+                        x_pts = vid_feat[present, kp, 0]
+                        y_pts = vid_feat[present, kp, 1]
+                        tck_x = interpolate.splrep(present, x_pts, k=k_spline)
+                        tck_y = interpolate.splrep(present, y_pts, k=k_spline)
+                        vid_feat[missing, kp, 0] = interpolate.splev(missing, tck_x)
+                        vid_feat[missing, kp, 1] = interpolate.splev(missing, tck_y)
+                except Exception:
+                    for f in missing:
+                        vid_feat[f, s_start:s_end, :] = vid_feat[f, s_wrist, :]
+            return vid_feat
+
+        kps_29 = _apply_hand_correction(kps_29, [9, 19, 7])
+        kps_29 = _apply_hand_correction(kps_29, [19, 29, 8])
+
+        # Multiply 29 selected landmarks' x coordinates by width / height before NormalizeKeypoints
+        if width is not None and height is not None and width > 0 and height > 0:
+            aspect_ratio = float(width) / float(height)
+            kps_29[:, :, 0] *= aspect_ratio
+
+        left_top = np.zeros(2, dtype=np.float32)
+        edge_dist = 1.0
+        for keypoints in kps_29:
+            if keypoints[0].any() and keypoints[3].any() and keypoints[4].any():
+                root = keypoints[0]
+                unit_dist = np.linalg.norm(keypoints[3] - keypoints[4])
+                if unit_dist > 1e-6:
+                    left_top = root - 3.0 * unit_dist
+                    left_top[1] = root[1] - 2.0 * unit_dist
+                    edge_dist = 6.0 * unit_dist
+                    break
+
+        norm_29 = (kps_29 - left_top) / max(float(edge_dist), 1e-6)
+
+        if norm_29.shape[0] <= target_len:
+            sample = 0.5
+            index = int((target_len - norm_29.shape[0]) * sample)
+            pad1 = norm_29[0]
+            pad2 = norm_29[-1]
+            blank_front = np.full((target_len // 2, 29, 2), pad1, dtype=np.float32)
+            blank_back = np.full((target_len - target_len // 2, 29, 2), pad2, dtype=np.float32)
+            sampled_29 = np.concatenate([blank_front, blank_back], axis=0)
+            sampled_29[index:index + norm_29.shape[0], :] = norm_29
+        else:
+            choices = np.linspace(0, norm_29.shape[0] - 1, num=target_len).astype(int)
+            sampled_29 = norm_29[choices]
+
+        w0_idx = [0, 1, 2, 3, 5, 7] + list(range(9, 19))
+        w1_idx = [0, 1, 2, 4, 6, 8] + list(range(19, 29))
+        w2_idx = [0, 1, 2, 3, 5, 7] + list(range(19, 29))
+        w3_idx = [0, 1, 2, 4, 6, 8] + list(range(9, 19))
+
+        stacked_64 = np.zeros((target_len, 64, 2), dtype=np.float32)
+        stacked_64[:, :16] = sampled_29.take(w0_idx, 1)
+        stacked_64[:, 16:32] = sampled_29.take(w1_idx, 1)
+        stacked_64[:, 32:48] = sampled_29.take(w2_idx, 1)
+        stacked_64[:, 48:64] = sampled_29.take(w3_idx, 1)
+
+        return stacked_64
+
+    def _build_hwgat_tensor(
+        self,
+        sequence: List[np.ndarray],
+        target_len: int = 192,
+        mode: str = "training_aligned",
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+    ) -> torch.Tensor:
         """
         Transform a variable-length sequence of landmark frames into the
         tensor expected by HWGAT: (1, 192, 64, 2).
+
+        Supports:
+          - mode="training_aligned" (default): exact data_transform.py pipeline with nose at
+            (0.50, 0.333), shoulders scaled to span 1/6, aspect-ratio correction, and missing hand correction.
+          - mode="zero_centered" (comparison): zero-centered coordinate frame with nose at
+            (0.0, 0.0) and shoulder span normalized to 1.0.
         """
-        n_frames = len(sequence)
-        stacked_64 = np.zeros((n_frames, 64, 2), dtype=np.float32)
+        if not sequence:
+            return torch.zeros((1, target_len, 64, 2), dtype=torch.float32)
 
-        # Reference normalized head and shoulder anchor keypoints
-        head_arm_anchors = np.array([
-            [0.50, 0.20], [0.48, 0.18], [0.52, 0.18],  # Head (nose, eyes)
-            [0.40, 0.35], [0.35, 0.50], [0.30, 0.65],  # Left arm
-        ], dtype=np.float32)
+        first_arr = np.asarray(sequence[0], dtype=np.float32)
 
-        for i, frame in enumerate(sequence):
-            arr = np.array(frame, dtype=np.float32)
-            if arr.shape == (64, 2):
-                stacked_64[i] = arr
-                continue
-
-            if arr.ndim == 2 and arr.shape[0] >= 42:
-                # 42 hand joints: Hand 1 (Right) at 0..20, Hand 2 (Left) at 21..41
-                h1 = arr[:21]
-                h2 = arr[21:42]
-                h1_sub = h1[self.HWGAT_HAND_INDICES]  # 10 keypoints
-                h2_sub = h2[self.HWGAT_HAND_INDICES]  # 10 keypoints
-
-                # 4 windows of 16 points:
-                # Window 0: Head + L_arm + L_hand
-                w0 = np.vstack([head_arm_anchors, h2_sub])
-                # Window 1: Head + R_arm + R_hand
-                w1 = np.vstack([head_arm_anchors, h1_sub])
-                # Window 2: Head + L_arm + R_hand
-                w2 = np.vstack([head_arm_anchors, h1_sub])
-                # Window 3: Head + R_arm + L_hand
-                w3 = np.vstack([head_arm_anchors, h2_sub])
-
-                stacked_64[i, 0:16] = w0
-                stacked_64[i, 16:32] = w1
-                stacked_64[i, 32:48] = w2
-                stacked_64[i, 48:64] = w3
-
-            elif arr.ndim == 2 and arr.shape[0] == 543:
-                # 543 Holistic joints: select 29 points and create 4 windows
-                # Window layout matches HWGAT specification
-                selected_29 = arr[[0, 2, 5, 11, 12, 13, 14, 15, 16] +
-                                  [501, 505, 506, 509, 510, 513, 514, 517, 518, 521] +
-                                  [522, 526, 527, 530, 531, 534, 535, 538, 539, 542], :2]
-                nose = selected_29[0:1]
-                l_sh = selected_29[3]
-                r_sh = selected_29[4]
-                span = max(float(np.linalg.norm(l_sh - r_sh)), 0.05)
-                norm_29 = (selected_29 - nose) / span
-
-                # Window mapping
+        # Case 1: Sequence contains 543 Holistic joints (or 29 selected points)
+        if first_arr.ndim == 2 and first_arr.shape[0] in (543, 29):
+            if mode == "training_aligned":
+                stacked_64 = self._preprocess_holistic_training(
+                    sequence, target_len=target_len, width=width, height=height
+                )
+                return torch.tensor(stacked_64, dtype=torch.float32).unsqueeze(0)
+            else:
+                n_frames = len(sequence)
                 w0_idx = [0, 1, 2, 3, 5, 7] + list(range(9, 19))
                 w1_idx = [0, 1, 2, 4, 6, 8] + list(range(19, 29))
                 w2_idx = [0, 1, 2, 3, 5, 7] + list(range(19, 29))
                 w3_idx = [0, 1, 2, 4, 6, 8] + list(range(9, 19))
 
-                stacked_64[i, 0:16] = norm_29[w0_idx]
-                stacked_64[i, 16:32] = norm_29[w1_idx]
-                stacked_64[i, 32:48] = norm_29[w2_idx]
-                stacked_64[i, 48:64] = norm_29[w3_idx]
+                stacked_64 = np.zeros((n_frames, 64, 2), dtype=np.float32)
+                selected_kps = [0, 2, 5, 11, 12, 13, 14, 15, 16] + [
+                    501, 505, 506, 509, 510, 513, 514, 517, 518, 521,
+                    522, 526, 527, 530, 531, 534, 535, 538, 539, 542
+                ]
+                for i, frame in enumerate(sequence):
+                    arr = np.asarray(frame, dtype=np.float32)
+                    sel = arr[selected_kps, :2] if arr.shape[0] >= 543 else arr[:, :2]
+                    nose = sel[0:1]
+                    l_sh = sel[3]
+                    r_sh = sel[4]
+                    span = max(float(np.linalg.norm(l_sh - r_sh)), 0.05)
+                    norm_29 = (sel - nose) / span
+                    stacked_64[i, 0:16] = norm_29[w0_idx]
+                    stacked_64[i, 16:32] = norm_29[w1_idx]
+                    stacked_64[i, 32:48] = norm_29[w2_idx]
+                    stacked_64[i, 48:64] = norm_29[w3_idx]
 
-        # Uniform temporal linear interpolation to 192 frames
+                if n_frames == target_len:
+                    resampled = stacked_64
+                else:
+                    indices = np.linspace(0, max(n_frames - 1, 1), target_len)
+                    resampled = np.zeros((target_len, 64, 2), dtype=np.float32)
+                    xp = np.arange(n_frames)
+                    for k in range(64):
+                        for d in range(2):
+                            resampled[:, k, d] = np.interp(indices, xp, stacked_64[:, k, d])
+                return torch.tensor(resampled, dtype=torch.float32).unsqueeze(0)
+
+        # Case 2: Sequence contains 64 keypoints already
+        if first_arr.shape == (64, 2):
+            raw = np.array(sequence, dtype=np.float32)
+            n_frames = len(sequence)
+            if n_frames == target_len:
+                resampled = raw
+            else:
+                indices = np.linspace(0, max(n_frames - 1, 1), target_len)
+                resampled = np.zeros((target_len, 64, 2), dtype=np.float32)
+                xp = np.arange(n_frames)
+                for k in range(64):
+                    for d in range(2):
+                        resampled[:, k, d] = np.interp(indices, xp, raw[:, k, d])
+            return torch.tensor(resampled, dtype=torch.float32).unsqueeze(0)
+
+        # Case 3: Sequence contains 42 hand joints
+        n_frames = len(sequence)
+        stacked_64 = np.zeros((n_frames, 64, 2), dtype=np.float32)
+        w0_idx = [0, 1, 2, 3, 5, 7] + list(range(9, 19))
+        w1_idx = [0, 1, 2, 4, 6, 8] + list(range(19, 29))
+        w2_idx = [0, 1, 2, 3, 5, 7] + list(range(19, 29))
+        w3_idx = [0, 1, 2, 4, 6, 8] + list(range(9, 19))
+
+        for i, frame in enumerate(sequence):
+            arr = np.asarray(frame, dtype=np.float32)
+            h1 = arr[:21]
+            h2 = arr[21:42] if arr.shape[0] >= 42 else np.zeros((21, 2), dtype=np.float32)
+            h1_sub = h1[self.HWGAT_HAND_INDICES]
+            h2_sub = h2[self.HWGAT_HAND_INDICES]
+
+            norm_29 = np.zeros((29, 2), dtype=np.float32)
+
+            if mode == "training_aligned":
+                norm_29[0] = [0.50, 0.33333333]
+                norm_29[1] = [0.475, 0.32]
+                norm_29[2] = [0.525, 0.32]
+                norm_29[3] = [0.41666667, 0.45]
+                norm_29[4] = [0.58333333, 0.45]
+                norm_29[5] = [0.38, 0.55]
+                norm_29[6] = [0.62, 0.55]
+
+                if np.any(h1 != 0):
+                    norm_29[8] = h1_sub[0]
+                    norm_29[19:29] = h1_sub
+                else:
+                    norm_29[8] = [0.65, 0.65]
+                    norm_29[19:29] = norm_29[8]
+
+                if np.any(h2 != 0):
+                    norm_29[7] = h2_sub[0]
+                    norm_29[9:19] = h2_sub
+                else:
+                    norm_29[7] = [0.35, 0.65]
+                    norm_29[9:19] = norm_29[7]
+            else:
+                norm_29[0] = [0.0, 0.0]
+                norm_29[1] = [-0.15, -0.08]
+                norm_29[2] = [0.15, -0.08]
+                norm_29[3] = [-0.50, 0.45]
+                norm_29[4] = [0.50, 0.45]
+                norm_29[5] = [-0.70, 0.90]
+                norm_29[6] = [0.70, 0.90]
+
+                norm_h1 = (h1_sub - np.array([0.50, 0.25], dtype=np.float32)) / 0.35
+                norm_h2 = (h2_sub - np.array([0.50, 0.25], dtype=np.float32)) / 0.35
+
+                if np.any(h1 != 0):
+                    norm_29[8] = norm_h1[0]
+                    norm_29[19:29] = norm_h1
+                else:
+                    norm_29[8] = [0.50, 1.10]
+                    norm_29[19:29] = norm_29[8]
+
+                if np.any(h2 != 0):
+                    norm_29[7] = norm_h2[0]
+                    norm_29[9:19] = norm_h2
+                else:
+                    norm_29[7] = [-0.50, 1.10]
+                    norm_29[9:19] = norm_29[7]
+
+            stacked_64[i, 0:16] = norm_29[w0_idx]
+            stacked_64[i, 16:32] = norm_29[w1_idx]
+            stacked_64[i, 32:48] = norm_29[w2_idx]
+            stacked_64[i, 48:64] = norm_29[w3_idx]
+
         if n_frames == target_len:
             resampled = stacked_64
         else:
@@ -646,17 +923,24 @@ class SignLanguageRecognizer:
                 for d in range(2):
                     resampled[:, k, d] = np.interp(indices, xp, stacked_64[:, k, d])
 
-        tensor = torch.tensor(resampled, dtype=torch.float32).unsqueeze(0)
-        return tensor
+        return torch.tensor(resampled, dtype=torch.float32).unsqueeze(0)
 
-    def _predict_hwgat(self, sequence: List[np.ndarray]) -> Tuple[str, float]:
+    def _predict_hwgat(
+        self,
+        sequence: List[np.ndarray],
+        mode: str = "training_aligned",
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+    ) -> Tuple[str, float]:
         """Perform forward inference on sequence of landmark frames using HWGAT."""
         if not sequence or self.model is None:
             return "unknown", 0.0
 
-        tensor = self._build_hwgat_tensor(sequence, target_len=self.seq_len)
+        tensor = self._build_hwgat_tensor(
+            sequence, target_len=self.seq_len, mode=mode, width=width, height=height
+        )
 
-        with torch.no_grad():
+        with torch.inference_mode():
             logits = self.model(tensor)
             probs = torch.softmax(logits, dim=-1)[0].cpu().numpy()
 
@@ -694,7 +978,13 @@ class SignLanguageRecognizer:
             self.recent_predictions.pop(key, None)
             self.activity_detectors.pop(key, None)
 
-    def recognize_frame(self, frame_data: bytes, user_id: str = "anonymous") -> dict:
+    def recognize_frame(
+        self,
+        frame_data: bytes,
+        user_id: str = "anonymous",
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+    ) -> dict:
         """
         Process incoming video frame through HWGAT inference pipeline.
 
@@ -718,6 +1008,12 @@ class SignLanguageRecognizer:
         if frame is None:
             return _resp("", 0.0, "Invalid image frame.", ready=False, vocabulary_size=len(self.labels))
 
+        frame_h, frame_w = frame.shape[:2]
+        if width is None or width <= 0:
+            width = frame_w
+        if height is None or height <= 0:
+            height = frame_h
+
         key = user_id
         detector = self._get_activity_detector(key)
 
@@ -736,7 +1032,11 @@ class SignLanguageRecognizer:
                 vocabulary_size=len(self.labels),
             )
 
-        joints = self._extract_landmarks(frame)
+        holistic_kps = self._extract_holistic_landmarks(frame)
+        if holistic_kps is not None and (np.any(holistic_kps[501:543, :2] != 0) or np.any(holistic_kps[11:17, :2] != 0)):
+            joints = holistic_kps
+        else:
+            joints = self._extract_landmarks(frame)
 
         if joints is None:
             with self.lock:
@@ -782,7 +1082,7 @@ class SignLanguageRecognizer:
 
         # Execute HWGAT Inference
         try:
-            raw_label, conf = self._predict_hwgat(seq)
+            raw_label, conf = self._predict_hwgat(seq, width=width, height=height)
             smoothed_label, smoothed_conf = self._smooth(key, raw_label, conf)
             display_text = smoothed_label.replace("_", " ").title()
 

@@ -55,9 +55,13 @@ device = cfg.device
 print(f"[Device] Running HWGAT on: {device}")
 
 # Load 2,002 class labels from class_map_FDMSE.csv
-class_map_file = os.path.join(SERVICE_DIR, "input", "class_map_FDMSE.csv")
-if not os.path.exists(class_map_file):
-    class_map_file = cfg.class_map_path
+class_map_candidates = [
+    os.path.join(SERVICE_DIR, "input", "class_map_FDMSE.csv"),
+    os.path.abspath(os.path.join(SERVICE_DIR, "..", "..", "models", "class_map_hwgat.csv")),
+    os.path.abspath(os.path.join(os.getcwd(), "models", "class_map_hwgat.csv")),
+    cfg.class_map_path,
+]
+class_map_file = next((p for p in class_map_candidates if p and os.path.exists(p)), cfg.class_map_path)
 
 class_map: Dict[int, str] = {}
 with open(class_map_file, "r", encoding="utf-8") as f:
@@ -69,12 +73,25 @@ with open(class_map_file, "r", encoding="utf-8") as f:
 
 print(f"[Class Map] Successfully loaded {len(class_map)} Indian Sign Language classes.")
 
-# Load HWGAT Neural Network Model
-checkpoint_file = os.path.join(SERVICE_DIR, "input", "model_best_loss.pt")
-if not os.path.exists(checkpoint_file):
-    checkpoint_file = cfg.save_model_path
+# Load HWGAT Neural Network Model (Priority: HWGAT_CHECKPOINT_PATH -> input/ -> top-level models/ -> cfg fallback)
+checkpoint_candidates = [
+    os.environ.get("HWGAT_CHECKPOINT_PATH", "").strip(),
+    os.path.join(SERVICE_DIR, "input", "model_best_loss.pt"),
+    os.path.abspath(os.path.join(SERVICE_DIR, "..", "..", "models", "hwgat_best.pt")),
+    os.path.abspath(os.path.join(os.getcwd(), "models", "hwgat_best.pt")),
+    cfg.save_model_path,
+]
+checkpoint_file = next((p for p in checkpoint_candidates if p and os.path.exists(p)), cfg.save_model_path)
 
-module = importlib.import_module("models." + cfg.model_type)
+try:
+    module = importlib.import_module("models." + cfg.model_type)
+    if not hasattr(module, "Model"):
+        raise AttributeError("Imported top-level models without Model class")
+except (ModuleNotFoundError, AttributeError):
+    try:
+        from ai_modules.hwgat import HWGATE as module
+    except ImportError:
+        module = importlib.import_module("experimental.hwgat.models." + cfg.model_type)
 model = getattr(module, "Model")(*cfg.model_params.get_model_params())
 
 print(f"[Checkpoint] Loading weights from {os.path.basename(checkpoint_file)}...")
@@ -106,6 +123,8 @@ class UserSession:
         self.landmark_buffer: deque = deque(maxlen=192)
         self.last_landmarks: Optional[np.ndarray] = None
         self.last_active_time: float = time.time()
+        self.last_width: Optional[int] = None
+        self.last_height: Optional[int] = None
         self.is_signing: bool = False
         self.state: str = "IDLE"
         self.active_frame_streak: int = 0
@@ -161,50 +180,147 @@ WINDOW_IDX = {
 }
 
 
-def build_hwgat_tensor(feature_list: List[np.ndarray], target_len: int = 192) -> torch.Tensor:
+def build_hwgat_tensor(
+    feature_list: List[np.ndarray],
+    target_len: int = 192,
+    mode: str = "training_aligned",
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+) -> torch.Tensor:
     """
-    Transforms a list of N frame landmarks (each (543, 4)) into the
+    Transforms a list of N frame landmarks (each (543, 4) or (29, 2)) into the
     exact tensor expected by HWGAT: (1, 192, 64, 2).
+
+    Supports:
+      - mode='training_aligned' (default): exact data_transform.py pipeline with nose origin at (0.50, 0.333),
+        shoulder scaling, HandCorrection spline interpolation, aspect-ratio correction, and 4-window topology.
+      - mode='zero_centered': zero-centered coordinate frame (nose at (0, 0), shoulder span 1.0).
     """
     n_frames = len(feature_list)
-    raw_array = np.array(feature_list, dtype=np.float32)  # (N, 543, 4)
+    raw_array = np.array(feature_list, dtype=np.float32)
 
     # 1. PoseSelect 29 keypoints with 2D coordinates [x, y]
-    kps_29 = raw_array[:, SELECTED_KPS, :2]  # (N, 29, 2)
-
-    # 2. Normalize keypoints with respect to nose (index 0) and shoulders (indices 3, 4)
-    # Nose origin
-    nose = kps_29[:, 0:1, :2]
-    # Shoulder anchor distance
-    l_sh = kps_29[:, 3, :2]
-    r_sh = kps_29[:, 4, :2]
-    shoulder_dist = np.linalg.norm(l_sh - r_sh, axis=1, keepdims=True)
-    shoulder_dist = np.maximum(shoulder_dist, 0.05)  # Avoid div-by-zero
-    scale = np.expand_dims(shoulder_dist, 1)
-
-    norm_kps = (kps_29 - nose) / scale
-
-    # 3. Create 4-Window 64-Keypoint Stack
-    stacked_64 = np.zeros((n_frames, 64, 2), dtype=np.float32)
-    stacked_64[:, 0:16] = norm_kps[:, WINDOW_IDX["window0"], :]
-    stacked_64[:, 16:32] = norm_kps[:, WINDOW_IDX["window1"], :]
-    stacked_64[:, 32:48] = norm_kps[:, WINDOW_IDX["window2"], :]
-    stacked_64[:, 48:64] = norm_kps[:, WINDOW_IDX["window3"], :]
-
-    # 4. Temporal Resampling to target_len (192 frames)
-    if n_frames == target_len:
-        resampled = stacked_64
+    if raw_array.shape[1] >= 543:
+        kps_29 = raw_array[:, SELECTED_KPS, :2].copy()
+    elif raw_array.shape[1] == 29:
+        kps_29 = raw_array[:, :, :2].copy()
     else:
-        # Uniform linear temporal interpolation
-        indices = np.linspace(0, n_frames - 1, target_len)
-        resampled = np.zeros((target_len, 64, 2), dtype=np.float32)
-        for k in range(64):
-            for d in range(2):
-                resampled[:, k, d] = np.interp(indices, np.arange(n_frames), stacked_64[:, k, d])
+        raise ValueError(f"Expected 543 or 29 keypoints, got shape {raw_array.shape}")
 
-    # Convert to PyTorch tensor (1, 192, 64, 2)
-    tensor = torch.tensor(resampled, dtype=torch.float32).unsqueeze(0)
-    return tensor
+    if mode == "training_aligned":
+        # HandCorrection (left_slice=[9, 19, 7], right_slice=[19, 29, 8])
+        def _apply_hand_correction(vid_feat, slices):
+            s_start, s_end, s_wrist = slices
+            if np.sum(vid_feat[:, s_start:s_end]) == 0:
+                vid_feat[:, s_start:s_end, :] = np.expand_dims(vid_feat[:, s_wrist, :], axis=1)
+                return vid_feat
+
+            start = end = 0
+            for f_idx in range(len(vid_feat)):
+                if not vid_feat[f_idx, s_start:s_end].any():
+                    vid_feat[f_idx, s_start:s_end, :] = vid_feat[f_idx, s_wrist, :]
+                else:
+                    start = f_idx
+                    break
+
+            for f_idx in reversed(range(len(vid_feat))):
+                if not vid_feat[f_idx, s_start:s_end].any():
+                    vid_feat[f_idx, s_start:s_end, :] = vid_feat[f_idx, s_wrist, :]
+                else:
+                    end = f_idx
+                    break
+
+            present = [f for f in range(start, end + 1) if vid_feat[f, s_start:s_end].any()]
+            missing = [f for f in range(start, end + 1) if not vid_feat[f, s_start:s_end].any()]
+
+            if missing and len(present) >= 2:
+                try:
+                    from scipy import interpolate
+                    k_spline = min(2, len(present) - 1)
+                    for kp in range(s_start, s_end):
+                        x_pts = vid_feat[present, kp, 0]
+                        y_pts = vid_feat[present, kp, 1]
+                        tck_x = interpolate.splrep(present, x_pts, k=k_spline)
+                        tck_y = interpolate.splrep(present, y_pts, k=k_spline)
+                        vid_feat[missing, kp, 0] = interpolate.splev(missing, tck_x)
+                        vid_feat[missing, kp, 1] = interpolate.splev(missing, tck_y)
+                except Exception:
+                    for f in missing:
+                        vid_feat[f, s_start:s_end, :] = vid_feat[f, s_wrist, :]
+            return vid_feat
+
+        kps_29 = _apply_hand_correction(kps_29, [9, 19, 7])
+        kps_29 = _apply_hand_correction(kps_29, [19, 29, 8])
+
+        # Multiply 29 selected landmarks' x coordinates by width / height before NormalizeKeypoints
+        if width is not None and height is not None and width > 0 and height > 0:
+            aspect_ratio = float(width) / float(height)
+            kps_29[:, :, 0] *= aspect_ratio
+
+        # NormalizeKeypoints (origin_idx=0 [nose], anchor_points=[3, 4] [shoulders])
+        left_top = np.zeros(2, dtype=np.float32)
+        edge_dist = 1.0
+        for keypoints in kps_29:
+            if keypoints[0].any() and keypoints[3].any() and keypoints[4].any():
+                root = keypoints[0]
+                unit_dist = np.linalg.norm(keypoints[3] - keypoints[4])
+                if unit_dist > 1e-6:
+                    left_top = root - 3.0 * unit_dist
+                    left_top[1] = root[1] - 2.0 * unit_dist
+                    edge_dist = 6.0 * unit_dist
+                    break
+
+        norm_kps = (kps_29 - left_top) / max(float(edge_dist), 1e-6)
+
+        # TemporalSample to target_len (192)
+        if norm_kps.shape[0] <= target_len:
+            sample = 0.5
+            index = int((target_len - norm_kps.shape[0]) * sample)
+            pad1 = norm_kps[0]
+            pad2 = norm_kps[-1]
+            blank_front = np.full((target_len // 2, 29, 2), pad1, dtype=np.float32)
+            blank_back = np.full((target_len - target_len // 2, 29, 2), pad2, dtype=np.float32)
+            sampled_29 = np.concatenate([blank_front, blank_back], axis=0)
+            sampled_29[index:index + norm_kps.shape[0], :] = norm_kps
+        else:
+            choices = np.linspace(0, norm_kps.shape[0] - 1, num=target_len).astype(int)
+            sampled_29 = norm_kps[choices]
+
+        stacked_64 = np.zeros((target_len, 64, 2), dtype=np.float32)
+        stacked_64[:, :16] = sampled_29.take(WINDOW_IDX["window0"], 1)
+        stacked_64[:, 16:32] = sampled_29.take(WINDOW_IDX["window1"], 1)
+        stacked_64[:, 32:48] = sampled_29.take(WINDOW_IDX["window2"], 1)
+        stacked_64[:, 48:64] = sampled_29.take(WINDOW_IDX["window3"], 1)
+
+        return torch.tensor(stacked_64, dtype=torch.float32).unsqueeze(0)
+
+    else:
+        # Zero-centered coordinate system
+        nose = kps_29[:, 0:1, :2]
+        l_sh = kps_29[:, 3, :2]
+        r_sh = kps_29[:, 4, :2]
+        shoulder_dist = np.linalg.norm(l_sh - r_sh, axis=1, keepdims=True)
+        shoulder_dist = np.maximum(shoulder_dist, 0.05)
+        scale = np.expand_dims(shoulder_dist, 1)
+
+        norm_kps = (kps_29 - nose) / scale
+
+        stacked_64 = np.zeros((n_frames, 64, 2), dtype=np.float32)
+        stacked_64[:, 0:16] = norm_kps[:, WINDOW_IDX["window0"], :]
+        stacked_64[:, 16:32] = norm_kps[:, WINDOW_IDX["window1"], :]
+        stacked_64[:, 32:48] = norm_kps[:, WINDOW_IDX["window2"], :]
+        stacked_64[:, 48:64] = norm_kps[:, WINDOW_IDX["window3"], :]
+
+        if n_frames == target_len:
+            resampled = stacked_64
+        else:
+            indices = np.linspace(0, n_frames - 1, target_len)
+            resampled = np.zeros((target_len, 64, 2), dtype=np.float32)
+            for k in range(64):
+                for d in range(2):
+                    resampled[:, k, d] = np.interp(indices, np.arange(n_frames), stacked_64[:, k, d])
+
+        return torch.tensor(resampled, dtype=torch.float32).unsqueeze(0)
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +382,10 @@ def recognize_frame():
 
     user_id = request.form.get("user_id", "anonymous").strip()
     conf_threshold = float(request.form.get("threshold", 0.25))
+    req_w = request.form.get("width", "").strip()
+    req_h = request.form.get("height", "").strip()
+    frame_w = int(req_w) if (req_w.isdigit() and int(req_w) > 0) else None
+    frame_h = int(req_h) if (req_h.isdigit() and int(req_h) > 0) else None
 
     # Decode image to RGB
     np_arr = np.frombuffer(frame_bytes, np.uint8)
@@ -275,6 +395,8 @@ def recognize_frame():
 
     # Resize large frames to save CPU during MediaPipe pass
     h, w = bgr_img.shape[:2]
+    if frame_w is None or frame_h is None:
+        frame_w, frame_h = w, h
     if w > 480:
         new_w = 480
         new_h = int(h * (480.0 / w))
@@ -295,6 +417,8 @@ def recognize_frame():
     now = time.time()
 
     with session.lock:
+        session.last_width = frame_w
+        session.last_height = frame_h
         # Kinematic Motion Assessment
         velocity = calculate_hand_velocity(landmarks, session.last_landmarks)
         session.last_landmarks = landmarks.copy()
@@ -357,7 +481,13 @@ def recognize_frame():
 
     # Model Forward Pass (Under model_lock)
     try:
-        input_tensor = build_hwgat_tensor(features_snapshot, target_len=192).to(device)
+        input_tensor = build_hwgat_tensor(
+            features_snapshot,
+            target_len=192,
+            mode="training_aligned",
+            width=session.last_width,
+            height=session.last_height,
+        ).to(device)
         with model_lock:
             with torch.no_grad():
                 logits = model(input_tensor).squeeze(0)
@@ -441,6 +571,78 @@ def recognize_frame():
             "new_token": new_token,
             "top_k": top_k,
         })
+
+
+@app.route("/recognize_landmarks", methods=["POST"])
+def recognize_landmarks():
+    """
+    Direct landmark sequence inference endpoint.
+    Accepts JSON payload:
+      - 'landmarks': List of frame landmarks (each (543, 4) or (29, 2))
+      - 'user_id': Identifier for call participant (default: 'anonymous')
+      - 'mode': 'training_aligned' (default) or 'zero_centered'
+      - 'threshold': Optional confidence cutoff (default: 0.25)
+    """
+    payload = request.get_json(silent=True) or {}
+    landmarks_data = payload.get("landmarks")
+    if not landmarks_data or not isinstance(landmarks_data, list):
+        return jsonify({"text": "", "confidence": 0, "message": "Invalid landmarks list", "ready": False}), 400
+
+    user_id = str(payload.get("user_id", "anonymous")).strip()
+    conf_threshold = float(payload.get("threshold", 0.25))
+    mode = str(payload.get("mode", "training_aligned")).strip()
+    req_w = payload.get("width")
+    req_h = payload.get("height")
+    frame_w = int(req_w) if (req_w is not None and str(req_w).isdigit() and int(req_w) > 0) else None
+    frame_h = int(req_h) if (req_h is not None and str(req_h).isdigit() and int(req_h) > 0) else None
+
+    try:
+        input_tensor = build_hwgat_tensor(
+            landmarks_data,
+            target_len=192,
+            mode=mode,
+            width=frame_w,
+            height=frame_h,
+        ).to(device)
+        with model_lock:
+            with torch.no_grad():
+                logits = model(input_tensor).squeeze(0)
+
+        probs = torch.softmax(logits, dim=-1).cpu().numpy()
+        top_indices = np.argsort(probs)[::-1]
+
+        best_id = int(top_indices[0])
+        best_conf = float(probs[best_id])
+        best_name = class_map.get(best_id, f"Sign_{best_id}")
+
+        top_k = []
+        for rank in range(min(5, len(class_map))):
+            c_id = int(top_indices[rank])
+            top_k.append({
+                "rank": rank + 1,
+                "class_id": c_id,
+                "label": class_map.get(c_id, f"Sign_{c_id}"),
+                "confidence": round(float(probs[c_id]) * 100.0, 1),
+            })
+
+        return jsonify({
+            "text": best_name if best_conf >= conf_threshold else "UNCERTAIN",
+            "confidence": round(best_conf * 100.0, 1),
+            "message": f"Recognized: {best_name}" if best_conf >= conf_threshold else f"Low confidence ({round(best_conf * 100.0, 1)}%)",
+            "ready": True,
+            "arch": "HWGAT",
+            "top_k": top_k,
+            "mode": mode,
+            "class_id": best_id,
+        })
+    except Exception as exc:
+        return jsonify({
+            "text": "",
+            "confidence": 0.0,
+            "message": f"HWGAT landmarks inference error: {exc}",
+            "ready": False,
+            "arch": "HWGAT",
+        }), 200
 
 
 @app.route("/reset_user", methods=["POST"])

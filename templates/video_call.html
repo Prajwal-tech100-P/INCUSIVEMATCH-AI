@@ -1301,7 +1301,7 @@ async function runSignRecognition() {
   signBusy = true;
 
   try {
-    const width = Math.min(vw, 480);
+    const width = Math.min(vw, 320);
     const height = Math.max(1, Math.round(width * vh / vw));
     const canvas = document.createElement("canvas");
     canvas.width = width;
@@ -1315,6 +1315,8 @@ async function runSignRecognition() {
         const fd = new FormData();
         fd.append("frame", blob, "video-call-frame.jpg");
         fd.append("source", isLocalSource ? "local" : "remote");
+        fd.append("width", width);
+        fd.append("height", height);
         const activeEngine = document.getElementById("ai-engine-select")?.value || "hwgat";
         fd.append("engine", activeEngine);
         if (typeof PARTNER_ID !== "undefined" && PARTNER_ID) {
@@ -1414,13 +1416,13 @@ async function runSignRecognition() {
       } finally {
         signBusy = false;
       }
-    }, "image/jpeg", 0.65);
+    }, "image/jpeg", 0.60);
   } catch (e) {
     signBusy = false;
   }
 }
 
-// 450ms continuous recognition interval (optimized for real-time captions without CPU/memory congestion)
-signInterval = setInterval(runSignRecognition, 450);
+// 900ms recognition interval (balanced for real-time captions without CPU/memory congestion)
+signInterval = setInterval(runSignRecognition, 900);
 </script>
 {% endblock %}
