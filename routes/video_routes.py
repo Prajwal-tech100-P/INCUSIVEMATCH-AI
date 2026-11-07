@@ -1,4 +1,5 @@
 import threading
+from datetime import datetime, timezone
 from flask import Blueprint, render_template, request, jsonify
 from flask_login import login_required, current_user
 from flask_socketio import join_room, leave_room, emit
@@ -222,7 +223,8 @@ def call_user(data):
 
     # Verify sender restriction
     current_user.check_and_lift_restriction()
-    if current_user.block_expiry and datetime.utcnow() < current_user.block_expiry:
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    if current_user.block_expiry and now_utc < current_user.block_expiry:
         return {"ok": False, "message": "Your account is temporarily restricted from initiating calls."}
 
     data = data or {}
@@ -360,10 +362,16 @@ def join_call(data):
     data = data or {}
     partner_id = str(data.get("partner_id", "")).strip()
     call_id = str(data.get("call_id", "")).strip()
-    if not call_id:
+    if not call_id and partner_id:
         active_inv = CallInvitation.get_active_call(current_user.id, partner_id)
         if active_inv:
             call_id = str(active_inv["_id"])
+        else:
+            try:
+                call_id = CallInvitation.create(current_user.id, partner_id)
+                CallInvitation.set_status(call_id, partner_id, "accepted")
+            except Exception:
+                call_id = ""
 
     sid = getattr(request, "sid", None)
     if sid:
@@ -431,30 +439,60 @@ def _handle_call_termination(data, reason="hangup"):
     call_id = str(data.get("call_id", "")).strip()
 
     sid = getattr(request, "sid", None)
-    tracked = _active_call_sockets.pop(sid, None) if sid else None
+    # 1. Non-destructive lookup: Preserve mapping during validation
+    tracked = _active_call_sockets.get(sid) if sid else None
     if not partner_id and tracked:
         partner_id = tracked.get("partner_id", "")
     if not call_id and tracked:
         call_id = tracked.get("call_id", "")
 
-    # Security check: If call_id is supplied, verify caller belongs to that call
-    if call_id:
-        try:
-            from bson import ObjectId
-            from extensions import mongo
-            doc = mongo.db[CallInvitation.COLLECTION].find_one({"_id": ObjectId(call_id)})
-            if doc:
-                uid_str = str(current_user.id)
-                if uid_str != str(doc.get("caller_id")) and uid_str != str(doc.get("recipient_id")):
-                    return {"ok": False, "message": "Unauthorized to end this call."}
-        except Exception:
-            pass
+    # 2. Every call termination must be associated with a valid call ID.
+    # If neither the client nor authenticated socket tracking provides a valid call ID, reject the request.
+    if not call_id:
+        return {"ok": False, "message": "Missing call identifier."}
 
+    # 3. Verify the authenticated user's identity against the MongoDB call record.
+    try:
+        from bson import ObjectId
+        from extensions import mongo
+        db = getattr(mongo, "db", None)
+        if db is None:
+            return {"ok": False, "message": "Database unavailable. Cannot verify call authorization."}
+        try:
+            oid = ObjectId(call_id)
+        except Exception:
+            return {"ok": False, "message": "Invalid call identifier."}
+        doc = db[CallInvitation.COLLECTION].find_one({"_id": oid})
+        if not doc:
+            return {"ok": False, "message": "Call record not found."}
+        uid_str = str(current_user.id)
+        caller_id_str = str(doc.get("caller_id", ""))
+        recipient_id_str = str(doc.get("recipient_id", ""))
+        if uid_str != caller_id_str and uid_str != recipient_id_str:
+            return {"ok": False, "message": "Unauthorized to end this call."}
+
+        # 4. Derive partner ID exclusively from verified caller and recipient IDs
+        if uid_str == caller_id_str:
+            verified_partner_id = recipient_id_str
+        else:
+            verified_partner_id = caller_id_str
+
+        # 5. Reject mismatched client-supplied partner IDs
+        if partner_id and str(partner_id).strip() != verified_partner_id:
+            return {"ok": False, "message": "Partner mismatch for call."}
+
+        # 6. Never use unverified client-supplied partner_id: bind strictly to verified partner
+        partner_id = verified_partner_id
+    except Exception:
+        return {"ok": False, "message": "Database unavailable. Cannot verify call authorization."}
+
+    # 7. Preserve existing mutual-match and block checks
     room = _authorized_call({"partner_id": partner_id})
     if not room:
-        # If call_id was valid and belongs to current_user, mark ended to prevent orphan state
         if call_id:
-            CallInvitation.end_call(call_id=call_id, user_id=current_user.id)
+            success_unauth, _ = CallInvitation.end_call(call_id=call_id, user_id=current_user.id)
+            if success_unauth and sid:
+                _active_call_sockets.pop(sid, None)
         return {"ok": False, "message": "Unauthorized or not matched."}
 
     success, cid = CallInvitation.end_call(
@@ -463,7 +501,14 @@ def _handle_call_termination(data, reason="hangup"):
         partner_id=partner_id,
     )
 
+    if not success:
+        return {"ok": False, "message": "Failed to end call or unauthorized."}
+
     resolved_call_id = call_id or (cid if isinstance(cid, str) and cid not in ("already_ended", "no_active_call") else None)
+
+    # 8. Safe removal: Remove from socket tracking only after confirmed successful or safely idempotent termination
+    if sid:
+        _active_call_sockets.pop(sid, None)
 
     # Clear any active remote signing indicator before leaving
     emit(

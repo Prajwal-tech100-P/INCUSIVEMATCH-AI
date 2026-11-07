@@ -7,7 +7,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app import create_app
 from extensions import mongo, socketio
-from models.user import UserModel
 from models.match import Match
 from bson import ObjectId
 
@@ -21,18 +20,24 @@ class TestSocketRelay(unittest.TestCase):
         cls.app.config["TESTING"] = True
         cls.app.config["WTF_CSRF_ENABLED"] = False
 
+    @property
+    def db(self):
+        db = getattr(mongo, "db", None)
+        assert db is not None, "MongoDB database instance is not connected"
+        return db
+
     def _socket_client(self, user_id):
         flask_client = self.app.test_client()
         with flask_client.session_transaction() as sess:
             sess["_user_id"] = str(user_id)
             sess["_fresh"] = True
-        return socketio.test_client(self.app, flask_test_client=flask_client)
+        return socketio.test_client(self.app, flask_test_client=flask_client)  # type: ignore
 
     def test_relay(self):
         u1_id = str(ObjectId())
         u2_id = str(ObjectId())
 
-        mongo.db.users.insert_one({
+        self.db["users"].insert_one({
             "_id": ObjectId(u1_id),
             "id": u1_id,
             "name": "Signer User A",
@@ -41,7 +46,7 @@ class TestSocketRelay(unittest.TestCase):
             "role": "user",
             "is_active": True,
         })
-        mongo.db.users.insert_one({
+        self.db["users"].insert_one({
             "_id": ObjectId(u2_id),
             "id": u2_id,
             "name": "Receiver User B",
@@ -80,8 +85,8 @@ class TestSocketRelay(unittest.TestCase):
 
         c1.disconnect()
         c2.disconnect()
-        mongo.db.users.delete_many({"_id": {"$in": [ObjectId(u1_id), ObjectId(u2_id)]}})
-        mongo.db.matches.delete_many({"$or": [{"user_a": u1_id}, {"user_b": u1_id}]})
+        self.db["users"].delete_many({"_id": {"$in": [ObjectId(u1_id), ObjectId(u2_id)]}})
+        self.db["matches"].delete_many({"$or": [{"user_a": u1_id}, {"user_b": u1_id}]})
 
 
 if __name__ == "__main__":

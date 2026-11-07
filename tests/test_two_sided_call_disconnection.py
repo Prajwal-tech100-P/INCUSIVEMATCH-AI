@@ -313,3 +313,176 @@ class TestTwoSidedCallDisconnection(unittest.TestCase):
 
         # 8. Duplicate cleanup guard
         self.assertIn("if (ended) return;", content)
+
+    # -------------------------------------------------------------------------
+    # 8. Focused Security & Fail-Closed Termination Tests
+    # -------------------------------------------------------------------------
+
+    def test_missing_call_id_fails_closed(self):
+        """When client supplies no call_id and no partner_id, request fails closed."""
+        s1 = self._socket_client(self.u1_id)
+        ack = s1.emit("end_call", {}, callback=True)
+        self.assertIsNotNone(ack)
+        self.assertFalse(ack.get("ok"))
+        self.assertIn("Missing", ack.get("message", ""))
+        s1.disconnect()
+
+    def test_invalid_call_id_fails_closed(self):
+        """When client supplies an invalid ObjectId call_id, request fails closed."""
+        s1 = self._socket_client(self.u1_id)
+        ack = s1.emit("end_call", {"call_id": "not-an-objectid", "partner_id": self.u2_id}, callback=True)
+        self.assertIsNotNone(ack)
+        self.assertFalse(ack.get("ok"))
+        self.assertIn("Invalid", ack.get("message", ""))
+        s1.disconnect()
+
+    def test_database_unavailable_fails_closed(self):
+        """When database is unavailable, call termination authorization fails closed."""
+        call_id = CallInvitation.create(self.u1_id, self.u2_id)
+        CallInvitation.set_status(call_id, self.u2_id, "accepted")
+
+        s1 = self._socket_client(self.u1_id)
+        orig_getitem = mongo.db.__class__.__getitem__
+
+        def fake_getitem(db_self, name):
+            if name == CallInvitation.COLLECTION:
+                raise Exception("Database connection timeout")
+            return orig_getitem(db_self, name)
+
+        from unittest.mock import patch
+        with patch.object(mongo.db.__class__, "__getitem__", fake_getitem):
+            ack = s1.emit("end_call", {"call_id": call_id, "partner_id": self.u2_id}, callback=True)
+            self.assertIsNotNone(ack)
+            self.assertFalse(ack.get("ok"))
+            self.assertIn("Database unavailable", ack.get("message", ""))
+        s1.disconnect()
+
+    def test_client_supplying_different_partner_id_rejected(self):
+        """When client supplies a partner_id that differs from verified call record, reject request."""
+        call_id = CallInvitation.create(self.u1_id, self.u2_id)
+        CallInvitation.set_status(call_id, self.u2_id, "accepted")
+
+        s1 = self._socket_client(self.u1_id)
+        # Alice is in a call with Bob (u2_id), but passes partner_id as Charlie (u3_id)
+        ack = s1.emit("end_call", {"call_id": call_id, "partner_id": self.u3_id}, callback=True)
+        self.assertIsNotNone(ack)
+        self.assertFalse(ack.get("ok"))
+        self.assertIn("Partner mismatch", ack.get("message", ""))
+
+        # Verify call is still active in MongoDB
+        doc = mongo.db[CallInvitation.COLLECTION].find_one({"_id": ObjectId(call_id)})
+        self.assertEqual(doc.get("status"), "accepted")
+        s1.disconnect()
+
+    def test_server_side_socket_tracking_fallback_for_missing_call_id(self):
+        """When client omits call_id during end_call, server-side socket tracking supplies it."""
+        call_id = CallInvitation.create(self.u1_id, self.u2_id)
+        CallInvitation.set_status(call_id, self.u2_id, "accepted")
+
+        s1 = self._socket_client(self.u1_id)
+        s2 = self._socket_client(self.u2_id)
+
+        # Alice and Bob join supplying call_id to establish socket tracking
+        s1.emit("join_call", {"partner_id": self.u2_id, "call_id": call_id})
+        s2.emit("join_call", {"partner_id": self.u1_id, "call_id": call_id})
+        s1.get_received()
+        s2.get_received()
+
+        # Alice calls end_call omitting call_id and partner_id (relying on socket tracking)
+        ack = s1.emit("end_call", {}, callback=True)
+        self.assertIsNotNone(ack)
+        self.assertTrue(ack.get("ok"))
+        self.assertEqual(ack.get("call_id"), call_id)
+
+        # Bob receives termination event
+        rec2 = s2.get_received()
+        event_names = [e["name"] for e in rec2]
+        self.assertIn("call_ended", event_names)
+
+        doc = mongo.db[CallInvitation.COLLECTION].find_one({"_id": ObjectId(call_id)})
+        self.assertEqual(doc.get("status"), "ended")
+
+        s1.disconnect()
+        s2.disconnect()
+
+    def test_socket_tracking_preserved_when_end_call_fails(self):
+        """When CallInvitation.end_call returns failure, socket tracking is preserved."""
+        from routes.video_routes import _active_call_sockets
+        from unittest.mock import patch
+
+        call_id = CallInvitation.create(self.u1_id, self.u2_id)
+        CallInvitation.set_status(call_id, self.u2_id, "accepted")
+
+        s1 = self._socket_client(self.u1_id)
+        s1.emit("join_call", {"partner_id": self.u2_id, "call_id": call_id})
+        s1.get_received()
+
+        s1_entries = [info for info in _active_call_sockets.values() if info.get("user_id") == self.u1_id]
+        self.assertEqual(len(s1_entries), 1)
+
+        with patch.object(CallInvitation, "end_call", return_value=(False, "database_failure")):
+            ack = s1.emit("end_call", {"call_id": call_id, "partner_id": self.u2_id}, callback=True)
+            self.assertIsNotNone(ack)
+            self.assertFalse(ack.get("ok"))
+            self.assertIn("Failed", ack.get("message", ""))
+
+            # Tracking must be preserved since termination failed
+            s1_entries_after = [info for info in _active_call_sockets.values() if info.get("user_id") == self.u1_id]
+            self.assertEqual(len(s1_entries_after), 1)
+
+        s1.disconnect()
+
+    def test_socket_tracking_cleaned_up_on_successful_or_idempotent_termination(self):
+        """When CallInvitation.end_call succeeds, socket tracking is cleaned up."""
+        from routes.video_routes import _active_call_sockets
+
+        call_id = CallInvitation.create(self.u1_id, self.u2_id)
+        CallInvitation.set_status(call_id, self.u2_id, "accepted")
+
+        s1 = self._socket_client(self.u1_id)
+        s1.emit("join_call", {"partner_id": self.u2_id, "call_id": call_id})
+        s1.get_received()
+
+        s1_entries = [info for info in _active_call_sockets.values() if info.get("user_id") == self.u1_id]
+        self.assertEqual(len(s1_entries), 1)
+
+        ack = s1.emit("end_call", {"call_id": call_id, "partner_id": self.u2_id}, callback=True)
+        self.assertIsNotNone(ack)
+        self.assertTrue(ack.get("ok"))
+
+        # Tracking must be removed on confirmed success
+        s1_entries_after = [info for info in _active_call_sockets.values() if info.get("user_id") == self.u1_id]
+        self.assertEqual(len(s1_entries_after), 0)
+
+        s1.disconnect()
+
+    def test_authorized_call_failure_branch_consistent_state(self):
+        """When _authorized_call fails (e.g. restriction/unmatch), DB is ended and socket tracking is cleaned up."""
+        from routes.video_routes import _active_call_sockets
+        from unittest.mock import patch
+
+        call_id = CallInvitation.create(self.u1_id, self.u2_id)
+        CallInvitation.set_status(call_id, self.u2_id, "accepted")
+
+        s1 = self._socket_client(self.u1_id)
+        s1.emit("join_call", {"partner_id": self.u2_id, "call_id": call_id})
+        s1.get_received()
+
+        s1_entries = [info for info in _active_call_sockets.values() if info.get("user_id") == self.u1_id]
+        self.assertEqual(len(s1_entries), 1)
+
+        with patch("routes.video_routes._authorized_call", return_value=None):
+            ack = s1.emit("end_call", {"call_id": call_id, "partner_id": self.u2_id}, callback=True)
+            self.assertIsNotNone(ack)
+            self.assertFalse(ack.get("ok"))
+            self.assertIn("Unauthorized or not matched", ack.get("message", ""))
+
+            # Consistent DB state: call marked ended
+            doc = mongo.db[CallInvitation.COLLECTION].find_one({"_id": ObjectId(call_id)})
+            self.assertEqual(doc.get("status"), "ended")
+
+            # Consistent socket state: tracking cleaned up to match ended call
+            s1_entries_after = [info for info in _active_call_sockets.values() if info.get("user_id") == self.u1_id]
+            self.assertEqual(len(s1_entries_after), 0)
+
+        s1.disconnect()

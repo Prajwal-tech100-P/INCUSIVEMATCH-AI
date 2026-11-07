@@ -11,7 +11,7 @@ import sys
 import re
 import argparse
 import logging
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any, Optional, Sequence
 import pymongo
 from pymongo.errors import PyMongoError, ServerSelectionTimeoutError
 
@@ -90,7 +90,7 @@ def check_duplicate_community_blocks(collection) -> List[Dict[str, Any]]:
     return list(collection.aggregate(pipeline))
 
 
-def index_matches_spec(existing_spec: Dict[str, Any], keys: List[Tuple[str, int]]) -> bool:
+def index_matches_spec(existing_spec: Dict[str, Any], keys: Sequence[Tuple[str, Any]]) -> bool:
     """Check if existing index spec matches the requested keys sequence."""
     existing_keys = existing_spec.get("key", [])
     if isinstance(existing_keys, dict):

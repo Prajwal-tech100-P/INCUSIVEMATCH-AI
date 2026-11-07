@@ -22,3 +22,4 @@ temp/
 runs/
 wandb/
 lightning_logs/
+.venv312/

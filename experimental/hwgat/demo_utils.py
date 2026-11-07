@@ -1,19 +1,45 @@
 import os
+from typing import Any, Tuple
 try:
     import av
 except ImportError:
     av = None
 import torch
-try:
-    from pose_modules.Mediapipe import Model
-except Exception:
-    Model = None
 import numpy as np
-from data_transform import *
+
 try:
-    from models.model_params import HWGATEParams
+    from experimental.hwgat.pose_modules.Mediapipe import Model
 except Exception:
+    try:
+        from pose_modules.Mediapipe import Model
+    except Exception:
+        Model = None
+
+try:
+    from experimental.hwgat.data_transform import (
+        Compose,
+        MediapipeDataProcess,
+        PoseSelect,
+        HandCorrection,
+        NormalizeKeypoints,
+        TemporalSample,
+        WindowCreate,
+    )
+except ImportError:
+    from data_transform import (  # type: ignore
+        Compose,
+        MediapipeDataProcess,
+        PoseSelect,
+        HandCorrection,
+        NormalizeKeypoints,
+        TemporalSample,
+        WindowCreate,
+    )
+
+try:
     from ai_modules.hwgat.model_params import HWGATEParams
+except ImportError:
+    from experimental.hwgat.models.model_params import HWGATEParams  # type: ignore
 
 class CFG():
     def __init__(self):
@@ -43,13 +69,14 @@ class CFG():
              0+21+33+468, 4+21+33+468, 5+21+33+468, 8+21+33+468, 9+21+33+468, 12+21+33+468, 13+21+33+468, 16+21+33+468,
                17+21+33+468, 20+21+33+468]
 
-        self.test_transform = self.val_transform = Compose([MediapipeDataProcess(),
-                                                            PoseSelect(kps, [0, 1]),
-                                                            HandCorrection(self.left_slice, self.right_slice),
-                                                            NormalizeKeypoints(self.origin_idx, self.anchor_points),
-                                                            TemporalSample(self.src_len),
-                                                            WindowCreate(self.src_len),
-                                                            ])
+        self.test_transform = self.val_transform = Compose([
+            MediapipeDataProcess(),
+            PoseSelect(kps, [0, 1]),
+            HandCorrection(self.left_slice, self.right_slice),
+            NormalizeKeypoints(self.origin_idx, self.anchor_points),
+            TemporalSample(self.src_len),
+            WindowCreate(self.src_len),
+        ])
         
         _pkg_dir = os.path.dirname(os.path.abspath(__file__))
         self.class_map_path = os.path.join(_pkg_dir, 'input', 'class_map_FDMSE.csv')
@@ -65,8 +92,8 @@ def extract_frames(path):
         frames.append(img)
     return frames
 
-def get_video_features(vid_name) -> tuple:
-    if Model is None:
+def get_video_features(vid_name: str) -> Tuple[Any, ...]:
+    if not callable(Model):
         raise RuntimeError("pose_modules.Mediapipe Model is not available.")
     pose_model = Model()
     kp_shape = (543, 4)
